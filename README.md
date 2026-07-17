@@ -11,6 +11,10 @@ planning, and supervised game execution. Configurable Microsoft authentication
 and a credentialless public account registry are available; managed Java
 downloads remain a future milestone.
 
+## NOTICE
+
+This is a vibe coding project.
+
 ## Requirements
 
 - Zig 0.16.0
