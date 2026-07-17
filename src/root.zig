@@ -1,0 +1,38 @@
+pub const name = "jmcl-core";
+pub const version = "0.1.0-dev";
+pub const protocol_version: u32 = 1;
+
+pub const protocol = @import("protocol.zig");
+pub const asset_index = @import("asset_index.zig");
+pub const DownloadSource = @import("download_source.zig").DownloadSource;
+pub const install_plan = @import("install_plan.zig");
+pub const installer = @import("installer.zig");
+pub const preparer = @import("preparer.zig");
+pub const java_runtime = @import("java_runtime.zig");
+pub const launch_plan = @import("launch_plan.zig");
+pub const game_process = @import("game_process.zig");
+pub const launch_executor = @import("launch_executor.zig");
+pub const instance_store = @import("instance_store.zig");
+pub const artifact_store = @import("artifact_store.zig");
+pub const hard_link = @import("hard_link.zig");
+pub const version_manifest = @import("version_manifest.zig");
+pub const version_metadata = @import("version_metadata.zig");
+pub const Service = @import("service.zig").Service;
+
+test {
+    _ = protocol;
+    _ = asset_index;
+    _ = DownloadSource;
+    _ = install_plan;
+    _ = installer;
+    _ = preparer;
+    _ = java_runtime;
+    _ = launch_plan;
+    _ = game_process;
+    _ = launch_executor;
+    _ = instance_store;
+    _ = artifact_store;
+    _ = hard_link;
+    _ = version_manifest;
+    _ = version_metadata;
+}

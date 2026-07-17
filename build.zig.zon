@@ -1,0 +1,14 @@
+.{
+    .name = .jmcl_core,
+    .version = "0.1.0-dev",
+    .fingerprint = 0x514831eea3e81d5b,
+    .minimum_zig_version = "0.16.0",
+    .dependencies = .{},
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "docs",
+        "src",
+        "README.md",
+    },
+}

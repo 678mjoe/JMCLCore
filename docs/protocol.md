@@ -1,0 +1,266 @@
+# CLI Protocol
+
+## Transport
+
+`jmcl-core rpc` starts a persistent JSON Lines session. Each line is one UTF-8
+JSON document. Request lines are limited to 64 KiB in protocol version 1.
+
+- Requests are read from standard input.
+- Events are written to standard output and flushed after every event.
+- Diagnostics are written to standard error.
+- Closing standard input ends the session normally.
+- Every message contains `protocol`.
+- Request IDs are non-empty strings chosen by the client.
+
+## Request
+
+```json
+{"protocol":1,"id":"request-1","method":"ping"}
+```
+
+Unknown request fields are ignored to allow compatible protocol extensions.
+
+## Result event
+
+```json
+{"protocol":1,"id":"request-1","event":"result","result":{"pong":true}}
+```
+
+## Error event
+
+```json
+{"protocol":1,"id":"request-1","event":"error","error":{"code":"METHOD_NOT_FOUND","message":"Unknown RPC method"}}
+```
+
+Malformed requests that do not provide a readable ID use `null` as the event
+ID. One invalid request does not terminate the session.
+
+## Initial methods
+
+| Method | Purpose |
+| --- | --- |
+| `ping` | Verify that the core is responsive. |
+| `core.version` | Query the core name, version, and protocol version. |
+| `version.list` | Fetch and filter the Mojang version manifest. |
+| `version.get` | Fetch and verify detailed metadata for a version ID. |
+| `install.plan` | Generate a validated, platform-specific download plan. |
+| `install.execute` | Download and verify every static file in a generated plan. |
+| `install.prepare` | Prepare legacy natives and projected assets from the cache. |
+| `java.detect` | Probe locally available Java runtimes. |
+| `java.select` | Select a runtime compatible with a Minecraft version. |
+| `launch.plan` | Generate Java and game argv without starting a process. |
+| `launch.execute` | Prepare, start, and supervise the Minecraft process. |
+
+## `version.list`
+
+All parameters are optional. `type` accepts `release`, `snapshot`, `old_beta`,
+or `old_alpha`. `limit` defaults to 20 and must be between 1 and 1000. `source`
+accepts `official` or `bmclapi` and defaults to `official`.
+
+```json
+{"protocol":1,"id":"request-2","method":"version.list","params":{"type":"release","limit":2,"source":"bmclapi"}}
+```
+
+The result contains Mojang's latest release and snapshot IDs followed by the
+selected version entries:
+
+```json
+{"protocol":1,"id":"request-2","event":"result","result":{"latest":{"release":"1.21.6","snapshot":"25w20a"},"versions":[{"id":"1.21.6","type":"release","url":"https://example.invalid/1.21.6.json","time":"2025-06-17T12:00:00+00:00","releaseTime":"2025-06-17T12:00:00+00:00","sha1":"0123456789abcdef","complianceLevel":1}]}}
+```
+
+Fetching honors the standard `HTTP_PROXY`, `HTTPS_PROXY`, and `ALL_PROXY`
+environment variables, including their lowercase forms.
+
+## `version.get`
+
+The required `id` must exactly match an entry in the selected version manifest.
+The optional `source` accepts `official` or `bmclapi` and defaults to `official`.
+
+```json
+{"protocol":1,"id":"request-3","method":"version.get","params":{"id":"1.21.11","source":"bmclapi"}}
+```
+
+The core fetches the URL from the manifest, verifies the response against the
+manifest SHA-1, parses the metadata, and verifies that the returned ID matches
+the requested ID. The result includes:
+
+- Client and optional server or mapping downloads.
+- Asset index metadata.
+- Libraries, classifiers, native mappings, extraction exclusions, and rules.
+- Modern game, JVM, and default-user-JVM arguments.
+- Legacy `minecraftArguments` when present.
+- Java runtime and logging requirements when present.
+
+The normalized result may include `null` for fields omitted by a particular
+Minecraft generation. Argument entries preserve Mojang's untagged string and
+conditional-object JSON representation.
+
+## Download sources
+
+Successful `version.list` and `version.get` events include a top-level `source`
+field so a GUI can visibly identify the active provider:
+
+```json
+{"protocol":1,"id":"request-3","event":"result","source":"bmclapi","result":{}}
+```
+
+The BMCLAPI source rewrites Mojang metadata and object URLs to
+`https://bmclapi2.bangbang93.com`. It also defines mappings for asset objects
+and Maven libraries for the installation stage. Content carrying an official
+SHA-1 is always verified against that value.
+
+Applications using BMCLAPI must visibly identify BMCLAPI as the source, as
+required by its service policy. See <https://bmclapidoc.bangbang93.com/>.
+
+## `install.plan`
+
+`id` is required. `source`, `os`, and `arch` are optional. The target defaults
+to the platform running JMCL Core.
+
+- `source`: `official` or `bmclapi`.
+- `os`: `windows`, `linux`, or `osx`.
+- `arch`: `x86`, `x86_64`, `arm`, or `arm64`.
+
+```json
+{"protocol":1,"id":"request-4","method":"install.plan","params":{"id":"1.6.4","source":"bmclapi","os":"windows","arch":"x86_64"}}
+```
+
+The result contains a deduplicated file list including asset objects, an ordered
+classpath, legacy native extraction instructions, legacy asset projections, and
+total download size. See `docs/install-plan.md`.
+
+## `install.execute`
+
+`id` is required. `directory` defaults to `.minecraft` and `store_directory`
+defaults to `.jmclcore`. Platform and source parameters match `install.plan`.
+`workers` defaults to 8 and accepts 1 through 32. `retries` defaults to 2 and
+accepts 0 through 5.
+
+When `source` is `bmclapi`, metadata planning retries through Mojang if the
+mirror is unavailable. Static artifact URLs remain BMCLAPI-first with Mojang
+fallback and SHA-1 verification.
+
+```json
+{"protocol":1,"id":"install-1","method":"install.execute","params":{"id":"1.21.11","directory":"./.minecraft","store_directory":"./.jmclcore","source":"bmclapi","workers":8,"retries":2}}
+```
+
+After planning succeeds, the request emits a `started` event:
+
+```json
+{"protocol":1,"id":"install-1","event":"started","source":"bmclapi","started":{"stage":"download","version_id":"1.21.11","files_total":5000,"bytes_total":600000000}}
+```
+
+It then emits `file`, `retry`, and aggregate `progress` events. Exactly one
+terminal `result` or `error` event follows.
+
+```json
+{"protocol":1,"id":"install-1","event":"file","source":"bmclapi","file":{"path":"libraries/example.jar","status":"downloaded","placement":"hard_link","size":1234,"attempts":1}}
+{"protocol":1,"id":"install-1","event":"retry","source":"bmclapi","retry":{"path":"assets/objects/ab/abcdef","attempt":1,"max_attempts":3,"error":"UnsuccessfulHttpStatus"}}
+{"protocol":1,"id":"install-1","event":"progress","source":"bmclapi","progress":{"files_completed":100,"files_total":5000,"bytes_verified":12000000,"bytes_total":600000000,"bytes_transferred":8000000}}
+{"protocol":1,"id":"install-1","event":"result","source":"bmclapi","result":{"stage":"download","version_id":"1.21.11","files_total":5000,"files_downloaded":4500,"files_cached":500,"files_hard_linked":4990,"files_copied":10,"bytes_verified":600000000,"bytes_transferred":550000000}}
+```
+
+RPC execution is synchronous in protocol version 1: the session cannot process
+another request until the terminal event. Cancellation will be added with the
+asynchronous task layer.
+
+## `install.prepare`
+
+`id` is required and `directory` defaults to `.minecraft`. Source and platform
+parameters match `install.plan`. All planned native archives and projected
+asset objects must already be present and valid in the cache.
+
+```json
+{"protocol":1,"id":"prepare-1","method":"install.prepare","params":{"id":"1.6.4","directory":"./.minecraft","source":"official","os":"windows","arch":"x86_64"}}
+```
+
+The result returns a fresh native directory relative to `.minecraft`. Modern versions
+receive an empty directory when launcher-managed extraction is unnecessary.
+
+```json
+{"protocol":1,"id":"prepare-1","event":"result","source":"official","result":{"stage":"prepare","version_id":"1.6.4","native_directory":".jmcl/runtime/natives/1234abcd","native_files":8,"projections_created":560,"projections_cached":560}}
+```
+
+## `java.detect`
+
+The optional `paths` array adds explicit Java executables before platform,
+`JAVA_HOME`, and `PATH` discovery.
+
+```json
+{"protocol":1,"id":"java-1","method":"java.detect","params":{"paths":["/custom/jdk/bin/java"]}}
+```
+
+The result contains successfully probed runtimes and per-candidate failures.
+Each probe has bounded output and a ten-second deadline.
+
+## `java.select`
+
+`id` is required. `source`, `arch`, and `paths` are optional. Architecture
+defaults to the current host architecture.
+
+```json
+{"protocol":1,"id":"java-2","method":"java.select","params":{"id":"26.2","source":"official","arch":"arm64"}}
+```
+
+Selection requires the exact Java major from version metadata and a matching
+JVM architecture. Metadata without `javaVersion` requires Java 8.
+
+```json
+{"protocol":1,"id":"java-2","event":"result","source":"official","result":{"version_id":"26.2","required_major":25,"required_arch":"arm64","runtime":{"executable":"/path/to/java","major_version":25,"os_arch":"aarch64"},"probe_failures":[]}}
+```
+
+See `docs/java.md` for discovery and compatibility policy.
+
+## `launch.plan`
+
+This method requires a version ID, native directory returned by
+`install.prepare`, and authentication session. `directory` defaults to
+`.minecraft` and is used as both the static data root and game working
+directory. It automatically selects a compatible local Java runtime.
+
+```json
+{"protocol":1,"id":"launch-1","method":"launch.plan","params":{"id":"26.2","directory":"./.minecraft","natives_directory":".jmcl/runtime/natives/session-id","auth":{"player_name":"Player","uuid":"00000000000000000000000000000000","access_token":"secret"},"options":{"resolution_width":1280,"resolution_height":720}}}
+```
+
+The public result contains Java and working-directory information plus
+`redacted_argv` and `sensitive_argv_indices`. Raw token-bearing arguments remain
+internal and are not serialized by this diagnostic method.
+
+See `docs/launch.md` for argument ordering and supported placeholders.
+
+## `launch.execute`
+
+This method accepts a version, one `.minecraft` directory, authentication,
+options, source, architecture, and Java candidates. It does not accept a native
+directory or client-supplied argv. The core creates and owns the runtime native
+directory internally. `directory` defaults to `.minecraft`.
+
+```json
+{"protocol":1,"id":"game-1","method":"launch.execute","params":{"id":"26.2","directory":"./.minecraft","auth":{"player_name":"Player","uuid":"00000000000000000000000000000000","access_token":"secret"}}}
+```
+
+After spawning Java, the core emits `started` with a numeric PID and redacted
+argv. Child output uses bounded Base64 records so arbitrary bytes remain valid
+JSON.
+
+```json
+{"protocol":1,"id":"game-1","event":"started","source":"official","started":{"stage":"launch","version_id":"26.2","pid":1234,"redacted_argv":["java","...","<redacted>"]}}
+{"protocol":1,"id":"game-1","event":"stdout","source":"official","stdout":{"sequence":1,"encoding":"base64","end":"newline","data":"SGVsbG8="}}
+{"protocol":1,"id":"game-1","event":"stderr","source":"official","stderr":{"sequence":2,"encoding":"base64","end":"more","data":"Li4u"}}
+```
+
+Normal, nonzero, signaled, stopped, and unknown process terminations all produce
+a terminal result. `error` is reserved for planning, preparation, spawning, or
+supervision failures.
+
+```json
+{"protocol":1,"id":"game-1","event":"result","source":"official","result":{"stage":"launch","version_id":"26.2","process":{"pid":1234,"termination":"exited","exit_code":0,"signal":null,"status":null,"duration_ms":120000,"max_rss":536870912},"native_cleanup":"removed"}}
+```
+
+Protocol version 1 remains synchronous and has no in-band launch cancellation.
+If protocol output fails, the core continues draining and supervising the child,
+then cleans its native directory before returning.
+
+
+The protocol remains unstable until the first tagged release, but every
+intentional breaking change must increment the protocol version.
