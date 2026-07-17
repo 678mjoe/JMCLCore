@@ -1365,6 +1365,7 @@ fn writeSourceNotice(writer: *std.Io.Writer, source: jmcl.DownloadSource) std.Io
 
 fn runRpc(init: std.process.Init, service: *jmcl.Service, stdout: *std.Io.Writer) !void {
     var stdin_buffer: [max_request_bytes]u8 = undefined;
+    defer std.crypto.secureZero(u8, &stdin_buffer);
     var stdin_file: std.Io.File.Reader = .init(.stdin(), init.io, &stdin_buffer);
     const stdin = &stdin_file.interface;
 
@@ -1372,6 +1373,7 @@ fn runRpc(init: std.process.Init, service: *jmcl.Service, stdout: *std.Io.Writer
         const maybe_line = stdin.takeDelimiter('\n') catch |err| switch (err) {
             error.StreamTooLong => {
                 _ = try stdin.discardDelimiterInclusive('\n');
+                std.crypto.secureZero(u8, &stdin_buffer);
                 try jmcl.protocol.handleLine(service, "", stdout);
                 try stdout.flush();
                 continue;
@@ -1379,6 +1381,7 @@ fn runRpc(init: std.process.Init, service: *jmcl.Service, stdout: *std.Io.Writer
             else => return err,
         };
         const raw_line = maybe_line orelse break;
+        defer std.crypto.secureZero(u8, @constCast(raw_line));
         const line = if (std.mem.endsWith(u8, raw_line, "\r"))
             raw_line[0 .. raw_line.len - 1]
         else

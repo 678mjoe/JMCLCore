@@ -1,4 +1,7 @@
 const std = @import("std");
+const authentication = @import("authentication.zig");
+const authentication_http = @import("authentication_http.zig");
+const account_store = @import("account_store.zig");
 const asset_index = @import("asset_index.zig");
 const core = @import("root.zig");
 const install_plan = @import("install_plan.zig");
@@ -45,6 +48,108 @@ pub const Service = struct {
         defer body.deinit();
 
         return version_manifest.parse(self.allocator, body.content);
+    }
+
+    pub fn beginMicrosoftDeviceAuthorization(
+        self: Service,
+        config: authentication.Config,
+    ) !authentication.DeviceAuthorizationResult {
+        var adapter: authentication_http.StdHttpTransport = .{
+            .io = self.io,
+            .environ_map = self.environ_map,
+            .user_agent = core.name ++ "/" ++ core.version,
+        };
+        return (authentication.MicrosoftOAuth{ .transport = adapter.transport() }).deviceBegin(self.allocator, config);
+    }
+
+    pub fn pollMicrosoftDeviceAuthorization(
+        self: Service,
+        client_id: []const u8,
+        device_code: []const u8,
+    ) !authentication.DevicePollResultOwned {
+        var adapter: authentication_http.StdHttpTransport = .{
+            .io = self.io,
+            .environ_map = self.environ_map,
+            .user_agent = core.name ++ "/" ++ core.version,
+        };
+        return (authentication.MicrosoftOAuth{ .transport = adapter.transport() }).devicePoll(
+            self.allocator,
+            client_id,
+            device_code,
+        );
+    }
+
+    pub fn refreshMicrosoftAuthorization(
+        self: Service,
+        client_id: []const u8,
+        refresh_token: []const u8,
+    ) !authentication.OAuthCredentialResult {
+        var adapter: authentication_http.StdHttpTransport = .{
+            .io = self.io,
+            .environ_map = self.environ_map,
+            .user_agent = core.name ++ "/" ++ core.version,
+        };
+        return (authentication.MicrosoftOAuth{ .transport = adapter.transport() }).refresh(
+            self.allocator,
+            client_id,
+            refresh_token,
+        );
+    }
+
+    pub fn refreshMinecraftSession(
+        self: Service,
+        client_id: []const u8,
+        refresh_token: []const u8,
+    ) !authentication.RefreshExchangeResult {
+        var adapter: authentication_http.StdHttpTransport = .{
+            .io = self.io,
+            .environ_map = self.environ_map,
+            .user_agent = core.name ++ "/" ++ core.version,
+        };
+        return (authentication.MicrosoftOAuth{ .transport = adapter.transport() }).refreshMinecraftSession(
+            self.allocator,
+            client_id,
+            refresh_token,
+        );
+    }
+
+    pub fn exchangeMinecraftSession(
+        self: Service,
+        microsoft: authentication.MicrosoftAccess,
+    ) !authentication.SessionResult {
+        var adapter: authentication_http.StdHttpTransport = .{
+            .io = self.io,
+            .environ_map = self.environ_map,
+            .user_agent = core.name ++ "/" ++ core.version,
+        };
+        return (authentication.MicrosoftOAuth{ .transport = adapter.transport() }).minecraftExchange(
+            self.allocator,
+            microsoft,
+        );
+    }
+
+    pub fn saveAccount(self: Service, directory: []const u8, account: account_store.Account) !void {
+        const root = try account_store.openRoot(self.io, directory);
+        defer root.close(self.io);
+        try account_store.save(self.io, root, account);
+    }
+
+    pub fn loadAccount(self: Service, directory: []const u8, id: []const u8) !account_store.Document {
+        const root = try account_store.openRoot(self.io, directory);
+        defer root.close(self.io);
+        return account_store.load(self.allocator, self.io, root, id);
+    }
+
+    pub fn listAccounts(self: Service, directory: []const u8) !account_store.List {
+        const root = try account_store.openRoot(self.io, directory);
+        defer root.close(self.io);
+        return account_store.list(self.allocator, self.io, root);
+    }
+
+    pub fn deleteAccount(self: Service, directory: []const u8, id: []const u8) !void {
+        const root = try account_store.openRoot(self.io, directory);
+        defer root.close(self.io);
+        try account_store.delete(self.allocator, self.io, root, id);
     }
 
     pub fn fetchVersionMetadata(

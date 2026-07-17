@@ -157,15 +157,16 @@ pub fn build(allocator: std.mem.Allocator, input: Input) !Plan {
 
     var jvm_args: std.ArrayList([]const u8) = .empty;
     var game_args: std.ArrayList([]const u8) = .empty;
+    var sensitive_jvm_indices: std.ArrayList(usize) = .empty;
     var sensitive_game_indices: std.ArrayList(usize) = .empty;
 
     if (input.metadata.arguments) |arguments| {
         if (input.options.include_default_user_jvm) {
             if (arguments.@"default-user-jvm") |defaults| {
-                try appendArguments(plan_allocator, &jvm_args, null, defaults, resolver);
+                try appendArguments(plan_allocator, &jvm_args, &sensitive_jvm_indices, defaults, resolver);
             }
         }
-        try appendArguments(plan_allocator, &jvm_args, null, arguments.jvm, resolver);
+        try appendArguments(plan_allocator, &jvm_args, &sensitive_jvm_indices, arguments.jvm, resolver);
         try appendArguments(plan_allocator, &game_args, &sensitive_game_indices, arguments.game, resolver);
     } else {
         const native_arg = try std.fmt.allocPrint(
@@ -188,7 +189,9 @@ pub fn build(allocator: std.mem.Allocator, input: Input) !Plan {
     }
 
     for (input.options.extra_jvm_args) |argument| {
+        const index = jvm_args.items.len;
         try jvm_args.append(plan_allocator, try plan_allocator.dupe(u8, argument));
+        if (containsAuthSecret(argument, input.auth)) try sensitive_jvm_indices.append(plan_allocator, index);
     }
     if (input.metadata.logging) |logging| {
         const logging_path = try std.fs.path.join(plan_allocator, &.{
@@ -206,7 +209,9 @@ pub fn build(allocator: std.mem.Allocator, input: Input) !Plan {
         try jvm_args.append(plan_allocator, logging_argument);
     }
     for (input.options.extra_game_args) |argument| {
+        const index = game_args.items.len;
         try game_args.append(plan_allocator, try plan_allocator.dupe(u8, argument));
+        if (containsAuthSecret(argument, input.auth)) try sensitive_game_indices.append(plan_allocator, index);
     }
 
     const owned_jvm_args = try jvm_args.toOwnedSlice(plan_allocator);
@@ -227,10 +232,16 @@ pub fn build(allocator: std.mem.Allocator, input: Input) !Plan {
         argv_index += 1;
     }
 
-    const sensitive_argv_indices = try plan_allocator.alloc(usize, sensitive_game_indices.items.len);
+    const sensitive_argv_indices = try plan_allocator.alloc(
+        usize,
+        sensitive_jvm_indices.items.len + sensitive_game_indices.items.len,
+    );
+    for (sensitive_jvm_indices.items, 0..) |index, output_index| {
+        sensitive_argv_indices[output_index] = 1 + index;
+    }
     const game_offset = 1 + owned_jvm_args.len + 1;
     for (sensitive_game_indices.items, 0..) |index, output_index| {
-        sensitive_argv_indices[output_index] = game_offset + index;
+        sensitive_argv_indices[sensitive_jvm_indices.items.len + output_index] = game_offset + index;
     }
     const redacted_argv = try plan_allocator.dupe([]const u8, argv);
     for (sensitive_argv_indices) |index| redacted_argv[index] = "<redacted>";
@@ -530,6 +541,14 @@ fn isSensitiveTemplate(template: []const u8) bool {
         std.mem.indexOf(u8, template, "${auth_session}") != null;
 }
 
+fn containsAuthSecret(argument: []const u8, auth: Auth) bool {
+    if (auth.access_token.len != 0 and std.mem.indexOf(u8, argument, auth.access_token) != null) return true;
+    if (auth.session) |session| {
+        if (session.len != 0 and std.mem.indexOf(u8, argument, session) != null) return true;
+    }
+    return false;
+}
+
 test "builds modern launch arguments with rule features and redaction" {
     const source =
         \\{
@@ -538,7 +557,7 @@ test "builds modern launch arguments with rule features and redaction" {
         \\  "mainClass":"example.Main",
         \\  "arguments":{
         \\    "game":["--username","${auth_player_name}","--token","${auth_access_token}",{"rules":[{"action":"allow","features":{"has_custom_resolution":true}}],"value":["--width","${resolution_width}"]}],
-        \\    "jvm":["-Djava.library.path=${natives_directory}","-cp","${classpath}"]
+        \\    "jvm":["-Djava.library.path=${natives_directory}","-cp","${classpath}","-Dtoken=${auth_access_token}"]
         \\  },
         \\  "downloads":{"client":{"sha1":"1111111111111111111111111111111111111111","size":1,"url":"https://example.invalid/client.jar"}},
         \\  "libraries":[],
@@ -585,7 +604,12 @@ test "builds modern launch arguments with rule features and redaction" {
             .uuid = "uuid",
             .access_token = "secret-token",
         },
-        .options = .{ .resolution_width = 1280, .resolution_height = 720 },
+        .options = .{
+            .resolution_width = 1280,
+            .resolution_height = 720,
+            .extra_jvm_args = &.{"-Dliteral=secret-token"},
+            .extra_game_args = &.{"--literal=secret-token"},
+        },
     });
     defer plan.deinit();
 
@@ -593,9 +617,11 @@ test "builds modern launch arguments with rule features and redaction" {
     try std.testing.expect(std.mem.indexOf(u8, plan.value.jvm_args[2], "/game/libraries/test.jar") != null);
     try std.testing.expectEqualStrings("Player", plan.value.game_args[1]);
     try std.testing.expectEqualStrings("1280", plan.value.game_args[5]);
-    try std.testing.expectEqual(@as(usize, 1), plan.value.sensitive_argv_indices.len);
-    try std.testing.expectEqualStrings("secret-token", plan.value.argv[plan.value.sensitive_argv_indices[0]]);
-    try std.testing.expectEqualStrings("<redacted>", plan.value.redacted_argv[plan.value.sensitive_argv_indices[0]]);
+    try std.testing.expectEqual(@as(usize, 4), plan.value.sensitive_argv_indices.len);
+    try std.testing.expectEqualStrings("-Dtoken=secret-token", plan.value.argv[plan.value.sensitive_argv_indices[0]]);
+    for (plan.value.sensitive_argv_indices) |index| {
+        try std.testing.expectEqualStrings("<redacted>", plan.value.redacted_argv[index]);
+    }
 }
 
 test "tokenizes legacy quoted arguments before substitution" {

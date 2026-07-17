@@ -3,6 +3,9 @@ pub const version = "0.1.0-dev";
 pub const protocol_version: u32 = 1;
 
 pub const protocol = @import("protocol.zig");
+pub const authentication = @import("authentication.zig");
+pub const authentication_http = @import("authentication_http.zig");
+pub const account_store = @import("account_store.zig");
 pub const asset_index = @import("asset_index.zig");
 pub const DownloadSource = @import("download_source.zig").DownloadSource;
 pub const install_plan = @import("install_plan.zig");
@@ -21,6 +24,9 @@ pub const Service = @import("service.zig").Service;
 
 test {
     _ = protocol;
+    _ = authentication;
+    _ = authentication_http;
+    _ = account_store;
     _ = asset_index;
     _ = DownloadSource;
     _ = install_plan;

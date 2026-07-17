@@ -10,5 +10,8 @@
         "docs",
         "src",
         "README.md",
+        "LICENSE",
+        "COPYING",
+        "NOTICE",
     },
 }

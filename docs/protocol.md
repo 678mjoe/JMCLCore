@@ -50,6 +50,15 @@ ID. One invalid request does not terminate the session.
 | `java.select` | Select a runtime compatible with a Minecraft version. |
 | `launch.plan` | Generate Java and game argv without starting a process. |
 | `launch.execute` | Prepare, start, and supervise the Minecraft process. |
+| `auth.microsoft.device.begin` | Start Microsoft device-code authorization. |
+| `auth.microsoft.device.poll` | Perform one Microsoft device-code poll. |
+| `auth.microsoft.refresh` | Refresh a Microsoft OAuth credential. |
+| `auth.minecraft.refresh_exchange` | Refresh and exchange a credential for a Minecraft launch session. |
+| `auth.minecraft.exchange` | Exchange Microsoft access for a Minecraft launch session. |
+| `account.microsoft.save` | Atomically save public Microsoft account metadata. |
+| `account.microsoft.list` | List public Microsoft account metadata. |
+| `account.microsoft.get` | Read one public Microsoft account record. |
+| `account.microsoft.delete` | Remove one public Microsoft account record. |
 
 ## `version.list`
 
@@ -70,6 +79,93 @@ selected version entries:
 
 Fetching honors the standard `HTTP_PROXY`, `HTTPS_PROXY`, and `ALL_PROXY`
 environment variables, including their lowercase forms.
+
+## Authentication RPC
+
+Authentication result events contain credentials and must be treated as
+secret-bearing IPC. Callers must not log, persist in ordinary files, or expose
+raw request and result lines. Error events never contain tokens, device codes,
+or service response bodies.
+
+`auth.microsoft.device.begin` requires a configured public-client ID and
+optionally accepts a locale:
+
+```json
+{"protocol":1,"id":"auth-1","method":"auth.microsoft.device.begin","params":{"client_id":"00001111-aaaa-2222-bbbb-3333cccc4444","locale":"zh-CN"}}
+```
+
+Its result contains `device_code`, `user_code`, URI data, expiry, polling
+interval, and optional message. Display only the user code and URI; retain the
+device code privately until the flow completes or expires.
+
+`auth.microsoft.device.poll` performs exactly one poll. The caller schedules
+subsequent calls according to the returned device interval and RFC 8628:
+
+```json
+{"protocol":1,"id":"auth-2","method":"auth.microsoft.device.poll","params":{"client_id":"00001111-aaaa-2222-bbbb-3333cccc4444","device_code":"secret"}}
+```
+
+Pending results have `state` `authorization_pending` or `slow_down`. A
+successful poll has `state` `authenticated` and an OAuth credential containing
+the access and refresh tokens. `slow_down` requires the caller to add five
+seconds to all later poll intervals for that flow.
+
+`auth.microsoft.refresh` accepts `client_id` and `refresh_token`; its result
+contains a refreshed credential. Persist the returned refresh token atomically
+before discarding the previous one.
+
+```json
+{"protocol":1,"id":"auth-3","method":"auth.microsoft.refresh","params":{"client_id":"00001111-aaaa-2222-bbbb-3333cccc4444","refresh_token":"secret"}}
+```
+
+`auth.minecraft.refresh_exchange` is a convenience normal-launch operation. It
+accepts the same `client_id` and `refresh_token`, refreshes Microsoft OAuth,
+performs the Xbox/XSTS/Minecraft exchange, and does not return the intermediate
+Microsoft access token. A successful result has `state` `authenticated`, a
+rotated `refresh_token`, and a launch-compatible Minecraft `session`.
+
+```json
+{"protocol":1,"id":"auth-4","method":"auth.minecraft.refresh_exchange","params":{"client_id":"00001111-aaaa-2222-bbbb-3333cccc4444","refresh_token":"secret"}}
+```
+
+Persist the returned refresh token atomically before launching the returned
+session. If refresh succeeds but a downstream exchange step fails, the result
+instead has `state` `exchange_failed`, the rotated `refresh_token`, and a fixed
+`exchange_error.code`; it has no session. Persist the token before surfacing or
+retrying that exchange error. If the session is no longer needed, discard it
+rather than persisting its short-lived Minecraft access token.
+
+Credential rotation cannot be made atomic across a broken stdin/stdout IPC
+channel without a core-owned secret store. If the caller cannot read a complete
+terminal result due to process or pipe failure, it must treat the account as
+requiring recovery or a new device authorization rather than assuming the old
+refresh token remains valid.
+
+`auth.minecraft.exchange` accepts a Microsoft access-only credential and
+returns a Minecraft launch session with profile, Minecraft access token,
+expiry, optional XUID, and client ID:
+
+```json
+{"protocol":1,"id":"auth-5","method":"auth.minecraft.exchange","params":{"client_id":"00001111-aaaa-2222-bbbb-3333cccc4444","access_token":"secret"}}
+```
+
+The `session` result is directly compatible with the `auth` field of
+`launch.plan` or `launch.execute`; ignore its additional `expires_in` field.
+The core validates Xbox access, Minecraft Java ownership, and the Java profile
+during this exchange.
+
+Authentication errors use fixed error codes such as `AUTH_NETWORK_ERROR`,
+`AUTH_TIMEOUT`, `AUTH_RATE_LIMITED`, `AUTHORIZATION_DECLINED`,
+`XBOX_ACCOUNT_REQUIRED`, `MINECRAFT_ACCESS_DENIED`, `GAME_NOT_OWNED`, and
+`PROFILE_NOT_FOUND`. See `docs/authentication.md` for the complete policy.
+
+## Account Registry
+
+The account registry stores public profile metadata only and never includes
+refresh tokens or access tokens. `account.microsoft.save`, `.list`, `.get`, and
+`.delete` manage those records. The caller owns durable credentials through a
+platform secret store. See `docs/accounts.md` for the record format and refresh
+workflow.
 
 ## `version.get`
 

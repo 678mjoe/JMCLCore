@@ -7,8 +7,9 @@ command-line protocol.
 The project currently provides the protocol and CLI foundation, Mojang metadata
 resolution, complete static installs, concurrent verified downloads, secure
 native extraction, legacy asset projection, Java runtime selection, launch
-planning, and supervised game execution. Authentication and managed Java
-downloads remain future milestones.
+planning, and supervised game execution. Configurable Microsoft authentication
+and a credentialless public account registry are available; managed Java
+downloads remain a future milestone.
 
 ## Requirements
 
@@ -98,3 +99,15 @@ Java selection is documented in `docs/java.md`.
 Launch argument generation is documented in `docs/launch.md`.
 Instance management is documented in `docs/instances.md`.
 Shared artifact storage is documented in `docs/artifact-store.md`.
+Microsoft authentication boundaries and the proposed RPC are documented in
+`docs/authentication.md`.
+Public account registry and credential ownership are documented in
+`docs/accounts.md`.
+Real approved-client authentication verification is documented in
+`docs/authentication-verification.md`.
+
+## License
+
+JMCL Core is free software licensed under the GNU Lesser General Public License
+version 3 or, at your option, any later version (`LGPL-3.0-or-later`). See
+`LICENSE` and `COPYING` for the complete terms.
