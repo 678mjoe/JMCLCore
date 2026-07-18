@@ -13,6 +13,24 @@ zig-out/bin/jmcl-core.pdb
 The PDB is only needed for crash diagnosis, but should be kept beside the
 executable during testing.
 
+## Automated GC Test
+
+Build the Windows executable, then run the isolated artifact-store GC test from
+PowerShell:
+
+```powershell
+zig build
+powershell -ExecutionPolicy Bypass -File tests\windows-artifact-store-gc.ps1
+```
+
+The script downloads and installs a same-volume Fabric 1.20.4 instance by
+default, runs GC while it exists, deletes the instance, and verifies that GC
+reclaims the resulting orphaned objects. Pass `-MinecraftVersion VERSION` or
+`-FabricLoader VERSION`; pass `-FabricLoader ""` to test vanilla. Pass `-Keep`
+to retain the temporary test tree for investigation. It also checks dry-run
+non-mutation, sharing violations, read-only preservation, and, when symbolic
+links are permitted, lock-file reparse-point safety.
+
 ## 1. Environment
 
 Use a disposable NTFS directory and record the Windows and filesystem versions:

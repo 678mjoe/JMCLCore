@@ -11,6 +11,24 @@ pub const Placement = enum {
     copy,
 };
 
+pub const GcOptions = struct {
+    dry_run: bool = true,
+    min_age_seconds: u64 = 24 * 60 * 60,
+};
+
+pub const GcSummary = struct {
+    objects_scanned: u64 = 0,
+    objects_eligible: u64 = 0,
+    objects_deleted: u64 = 0,
+    bytes_eligible: u64 = 0,
+    bytes_deleted: u64 = 0,
+    objects_linked: u64 = 0,
+    objects_young: u64 = 0,
+    objects_ignored: u64 = 0,
+    objects_busy: u64 = 0,
+    errors: u64 = 0,
+};
+
 pub const ObjectLock = struct {
     file: std.Io.File,
     io: std.Io,
@@ -27,9 +45,20 @@ pub fn openRoot(io: std.Io, path: []const u8) !std.Io.Dir {
     if (path.len == 0) return error.EmptyStoreDirectory;
     const root = try std.Io.Dir.cwd().createDirPathOpen(io, path, .{ .open_options = .{ .follow_symlinks = false } });
     errdefer root.close(io);
-    try root.createDirPath(io, "objects/sha1");
-    try root.createDirPath(io, "locks/sha1");
+    const objects = try openOrCreateDirectory(io, root, "objects");
+    defer objects.close(io);
+    const object_hashes = try openOrCreateDirectory(io, objects, "sha1");
+    object_hashes.close(io);
+    const locks = try openOrCreateDirectory(io, root, "locks");
+    defer locks.close(io);
+    const lock_hashes = try openOrCreateDirectory(io, locks, "sha1");
+    lock_hashes.close(io);
     return root;
+}
+
+pub fn openExistingRoot(io: std.Io, path: []const u8) !std.Io.Dir {
+    if (path.len == 0) return error.EmptyStoreDirectory;
+    return std.Io.Dir.cwd().openDir(io, path, .{ .follow_symlinks = false });
 }
 
 pub fn objectPath(hash: []const u8, buffer: *[64]u8) ![]const u8 {
@@ -41,17 +70,44 @@ pub fn objectPath(hash: []const u8, buffer: *[64]u8) ![]const u8 {
 
 pub fn lockObject(io: std.Io, root: std.Io.Dir, hash: []const u8) !ObjectLock {
     try validateSha1(hash);
-    try root.createDirPath(io, "locks/sha1");
+    const locks = try openOrCreateDirectory(io, root, "locks");
+    defer locks.close(io);
+    const lock_hashes = try openOrCreateDirectory(io, locks, "sha1");
+    defer lock_hashes.close(io);
     var normalized: [Sha1.digest_length * 2]u8 = undefined;
     for (hash, 0..) |byte, index| normalized[index] = std.ascii.toLower(byte);
-    var path_buffer: [64]u8 = undefined;
-    const path = try std.fmt.bufPrint(&path_buffer, "locks/sha1/{s}.lock", .{&normalized});
-    const file = try root.createFile(io, path, .{
+    var name_buffer: [Sha1.digest_length * 2 + 5]u8 = undefined;
+    const name = try std.fmt.bufPrint(&name_buffer, "{s}.lock", .{&normalized});
+    const file = lock_hashes.createFile(io, name, .{
         .read = true,
         .truncate = false,
+        .exclusive = true,
         .lock = .exclusive,
-    });
+        .resolve_beneath = true,
+    }) catch |err| switch (err) {
+        error.PathAlreadyExists => try lock_hashes.openFile(io, name, .{
+            .mode = .read_write,
+            .allow_directory = false,
+            .follow_symlinks = false,
+            .resolve_beneath = true,
+            .lock = .exclusive,
+        }),
+        else => |other| return other,
+    };
     return .{ .file = file, .io = io };
+}
+
+fn openOrCreateDirectory(io: std.Io, parent: std.Io.Dir, name: []const u8) !std.Io.Dir {
+    return parent.openDir(io, name, .{ .follow_symlinks = false }) catch |err| switch (err) {
+        error.FileNotFound => {
+            parent.createDir(io, name, .default_dir) catch |create_err| switch (create_err) {
+                error.PathAlreadyExists => {},
+                else => |other| return other,
+            };
+            return parent.openDir(io, name, .{ .follow_symlinks = false });
+        },
+        else => |other| return other,
+    };
 }
 
 pub fn verify(root: std.Io.Dir, io: std.Io, path: []const u8, expected_hash: []const u8, expected_size: u64) !bool {
@@ -144,6 +200,195 @@ pub fn materialize(
     }
     try destination.rename(temporary_path, destination, destination_path, io);
     return .hard_link;
+}
+
+/// Reclaims unlinked cache objects. This is intentionally cache reclamation,
+/// not instance reachability tracking: copies remain usable after collection.
+pub fn collect(
+    allocator: std.mem.Allocator,
+    io: std.Io,
+    root: std.Io.Dir,
+    options: GcOptions,
+) !GcSummary {
+    var summary: GcSummary = .{};
+    const objects_root = try root.openDir(io, "objects", .{
+        .access_sub_paths = true,
+        .follow_symlinks = false,
+    });
+    defer objects_root.close(io);
+    const objects = try objects_root.openDir(io, "sha1", .{
+        .iterate = true,
+        .follow_symlinks = false,
+    });
+    defer objects.close(io);
+
+    var prefixes = objects.iterate();
+    while (try prefixes.next(io)) |prefix_entry| {
+        if ((prefix_entry.kind != .directory and prefix_entry.kind != .unknown) or
+            !isLowerHexPrefix(prefix_entry.name))
+        {
+            try increment(&summary.objects_ignored);
+            continue;
+        }
+        const prefix = objects.openDir(io, prefix_entry.name, .{
+            .iterate = true,
+            .follow_symlinks = false,
+        }) catch |err| switch (err) {
+            error.NotDir, error.FileNotFound, error.AccessDenied => {
+                try increment(&summary.objects_ignored);
+                continue;
+            },
+            else => return err,
+        };
+        defer prefix.close(io);
+
+        var entries = prefix.iterate();
+        while (try entries.next(io)) |entry| {
+            if ((entry.kind != .file and entry.kind != .unknown) or
+                !isCanonicalObjectName(prefix_entry.name, entry.name))
+            {
+                try increment(&summary.objects_ignored);
+                continue;
+            }
+            try increment(&summary.objects_scanned);
+            try collectObject(allocator, io, root, prefix, entry.name, options, &summary);
+        }
+    }
+    return summary;
+}
+
+fn collectObject(
+    allocator: std.mem.Allocator,
+    io: std.Io,
+    root: std.Io.Dir,
+    prefix: std.Io.Dir,
+    hash: []const u8,
+    options: GcOptions,
+    summary: *GcSummary,
+) !void {
+    const before_lock = statObject(prefix, io, hash) catch |err| {
+        try countCollectionError(summary, err);
+        return;
+    } orelse return;
+    if (before_lock.nlink != 1) {
+        try increment(&summary.objects_linked);
+        return;
+    }
+    if (!isOldEnough(io, before_lock.mtime, options.min_age_seconds)) {
+        try increment(&summary.objects_young);
+        return;
+    }
+    if (options.dry_run) {
+        try increment(&summary.objects_eligible);
+        try addBytes(&summary.bytes_eligible, before_lock.size);
+        return;
+    }
+
+    var lock = lockObject(io, root, hash) catch |err| {
+        try countCollectionError(summary, err);
+        return;
+    };
+    defer lock.deinit();
+    const opened: std.Io.File = if (builtin.os.tag == .windows) windows: {
+        break :windows hard_link.openForDeleteWindows(allocator, prefix, hash) catch |err| {
+            try countCollectionError(summary, err);
+            return;
+        };
+    } else posix: {
+        const object = openObject(prefix, io, hash, false) catch |err| {
+            try countCollectionError(summary, err);
+            return;
+        };
+        break :posix object orelse return;
+    };
+    defer opened.close(io);
+    const stat = opened.stat(io) catch |err| {
+        try countCollectionError(summary, err);
+        return;
+    };
+    if (stat.kind != .file) {
+        try increment(&summary.objects_ignored);
+        return;
+    }
+    if (stat.nlink != 1) {
+        try increment(&summary.objects_linked);
+        return;
+    }
+    if (!isOldEnough(io, stat.mtime, options.min_age_seconds)) {
+        try increment(&summary.objects_young);
+        return;
+    }
+
+    try increment(&summary.objects_eligible);
+    try addBytes(&summary.bytes_eligible, stat.size);
+    if (builtin.os.tag == .windows) {
+        hard_link.deleteReadOnlyWindows(opened) catch |err| {
+            try countCollectionError(summary, err);
+            return;
+        };
+    } else prefix.deleteFile(io, hash) catch |err| {
+        try countCollectionError(summary, err);
+        return;
+    };
+    try increment(&summary.objects_deleted);
+    try addBytes(&summary.bytes_deleted, stat.size);
+}
+
+fn statObject(root: std.Io.Dir, io: std.Io, path: []const u8) !?std.Io.File.Stat {
+    const file = try openObject(root, io, path, false) orelse return null;
+    defer file.close(io);
+    const stat = try file.stat(io);
+    if (stat.kind != .file) return error.InvalidObjectKind;
+    return stat;
+}
+
+fn openObject(root: std.Io.Dir, io: std.Io, path: []const u8, writable: bool) !?std.Io.File {
+    return root.openFile(io, path, .{
+        .mode = if (writable) .read_write else .read_only,
+        .allow_directory = false,
+        .follow_symlinks = false,
+        .resolve_beneath = true,
+    }) catch |err| switch (err) {
+        error.FileNotFound => null,
+        else => |other| return other,
+    };
+}
+
+fn isLowerHexPrefix(value: []const u8) bool {
+    return value.len == 2 and isLowerHex(value[0]) and isLowerHex(value[1]);
+}
+
+fn isCanonicalObjectName(prefix: []const u8, value: []const u8) bool {
+    if (value.len != Sha1.digest_length * 2 or !std.mem.eql(u8, value[0..2], prefix)) return false;
+    for (value) |byte| {
+        if (!isLowerHex(byte)) return false;
+    }
+    return true;
+}
+
+fn isLowerHex(byte: u8) bool {
+    return (byte >= '0' and byte <= '9') or (byte >= 'a' and byte <= 'f');
+}
+
+fn isOldEnough(io: std.Io, modified: std.Io.Timestamp, minimum_seconds: u64) bool {
+    const minimum_nanoseconds: i96 = @as(i96, @intCast(minimum_seconds)) * std.time.ns_per_s;
+    const age = modified.durationTo(std.Io.Clock.real.now(io)).nanoseconds;
+    return age >= minimum_nanoseconds;
+}
+
+fn countCollectionError(summary: *GcSummary, err: anyerror) !void {
+    switch (err) {
+        error.FileNotFound, error.PathBusy => try increment(&summary.objects_busy),
+        else => try increment(&summary.errors),
+    }
+}
+
+fn increment(value: *u64) !void {
+    value.* = std.math.add(u64, value.*, 1) catch return error.CounterOverflow;
+}
+
+fn addBytes(value: *u64, amount: u64) !void {
+    value.* = std.math.add(u64, value.*, amount) catch return error.CounterOverflow;
 }
 
 pub fn setReadOnly(allocator: std.mem.Allocator, root: std.Io.Dir, io: std.Io, path: []const u8) !void {
@@ -248,4 +493,83 @@ test "imports and materializes a shared object" {
     const second_stat = try second.statFile(io, "library.jar", .{});
     try std.testing.expectEqual(store_stat.inode, second_stat.inode);
     try std.testing.expect(store_stat.nlink >= 3);
+}
+
+test "collect dry run reports and preserves an orphaned object" {
+    const io = std.testing.io;
+    var temporary = std.testing.tmpDir(.{});
+    defer temporary.cleanup();
+    try temporary.dir.createDir(io, "store", .default_dir);
+    const store = try temporary.dir.openDir(io, "store", .{});
+    defer store.close(io);
+    const path = try createTestObject(io, store);
+    const malformed = try store.createFile(io, "objects/sha1/a9/not-a-hash", .{});
+    malformed.close(io);
+
+    const summary = try collect(std.testing.allocator, io, store, .{ .min_age_seconds = 0 });
+    try std.testing.expectEqual(@as(u64, 1), summary.objects_scanned);
+    try std.testing.expectEqual(@as(u64, 1), summary.objects_eligible);
+    try std.testing.expectEqual(@as(u64, 0), summary.objects_deleted);
+    try std.testing.expectEqual(@as(u64, 1), summary.objects_ignored);
+    _ = try store.statFile(io, path, .{});
+    try std.testing.expectError(error.FileNotFound, store.statFile(io, "locks/sha1/a9993e364706816aba3e25717850c26c9cd0d89d.lock", .{}));
+}
+
+test "collect deletes only the final object link" {
+    const io = std.testing.io;
+    var temporary = std.testing.tmpDir(.{});
+    defer temporary.cleanup();
+    try temporary.dir.createDir(io, "store", .default_dir);
+    try temporary.dir.createDir(io, "instance", .default_dir);
+    const store = try temporary.dir.openDir(io, "store", .{});
+    defer store.close(io);
+    const instance = try temporary.dir.openDir(io, "instance", .{});
+    defer instance.close(io);
+    const path = try createTestObject(io, store);
+    try hard_link.create(std.testing.allocator, io, store, path, instance, "library.jar");
+
+    const linked = try collect(std.testing.allocator, io, store, .{
+        .dry_run = false,
+        .min_age_seconds = 0,
+    });
+    try std.testing.expectEqual(@as(u64, 1), linked.objects_linked);
+    try std.testing.expectEqual(@as(u64, 0), linked.objects_deleted);
+    _ = try store.statFile(io, path, .{});
+
+    try instance.deleteFile(io, "library.jar");
+    const deleted = try collect(std.testing.allocator, io, store, .{
+        .dry_run = false,
+        .min_age_seconds = 0,
+    });
+    try std.testing.expectEqual(@as(u64, 1), deleted.objects_deleted);
+    try std.testing.expectError(error.FileNotFound, store.statFile(io, path, .{}));
+}
+
+test "collect retains young objects" {
+    const io = std.testing.io;
+    var temporary = std.testing.tmpDir(.{});
+    defer temporary.cleanup();
+    try temporary.dir.createDir(io, "store", .default_dir);
+    const store = try temporary.dir.openDir(io, "store", .{});
+    defer store.close(io);
+    const path = try createTestObject(io, store);
+
+    const summary = try collect(std.testing.allocator, io, store, .{
+        .dry_run = false,
+        .min_age_seconds = 60 * 60 * 24 * 365 * 100,
+    });
+    try std.testing.expectEqual(@as(u64, 1), summary.objects_young);
+    try std.testing.expectEqual(@as(u64, 0), summary.objects_deleted);
+    _ = try store.statFile(io, path, .{});
+}
+
+fn createTestObject(io: std.Io, store: std.Io.Dir) ![]const u8 {
+    const hash = "a9993e364706816aba3e25717850c26c9cd0d89d";
+    var path_buffer: [64]u8 = undefined;
+    const path = try objectPath(hash, &path_buffer);
+    try store.createDirPath(io, "objects/sha1/a9");
+    const file = try store.createFile(io, path, .{});
+    try std.Io.File.writeStreamingAll(file, io, "abc");
+    file.close(io);
+    return "objects/sha1/a9/a9993e364706816aba3e25717850c26c9cd0d89d";
 }

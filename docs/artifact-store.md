@@ -32,15 +32,18 @@ jmcl-core instance install vanilla-26.1 \
 
 Installation uses the following order:
 
-1. Verify the instance destination and store object.
-2. Lock the object digest across processes.
+1. Verify the instance destination.
+2. Lock the object digest across processes, then verify the shared object under
+   that lock.
 3. Import an existing valid instance file when possible.
 4. Otherwise download, hash, and atomically publish the object.
 5. Create a temporary hard link in the instance and atomically replace the
    final destination.
 
 If hard links are unavailable, cross a filesystem boundary, or exceed the
-filesystem link limit, JMCL uses an atomic copy instead. CLI and RPC results
+filesystem link limit, JMCL copies the verified object instead. The copied
+destination is rechecked by later installations, but does not have the atomic
+replacement guarantee of the hard-link path. CLI and RPC results
 report `hardLinked`/`files_hard_linked` and `copied`/`files_copied` counts.
 
 Linux and macOS use the Zig directory hard-link API. Windows uses the native
@@ -54,8 +57,29 @@ a published object in place. Repairs and upgrades publish a new inode and
 atomically replace instance links. Mutable files such as saves, logs, options,
 configuration, and extracted natives never enter the shared store.
 
-Automatic garbage collection is not yet implemented. Removing an instance
-unlinks its paths without affecting the store or other instances.
+## Garbage Collection
+
+`store gc` reclaims cache objects that are no longer hard-linked into an
+instance. It defaults to a dry run and a 24-hour minimum age:
+
+```sh
+jmcl-core store gc --store-directory .jmclcore
+jmcl-core store gc --store-directory .jmclcore --min-age-seconds 3600 --execute
+```
+
+An object is eligible only when its canonical SHA-1 path is a regular file,
+its hard-link count is exactly one, and it remains old enough. Dry-run is
+read-only and reports an unlocked snapshot. `--execute` acquires the digest
+lock and rechecks those conditions immediately before deletion. GC does not
+scan instance manifests, hash object contents, or remove malformed paths and
+temporary files. Copy-based instance files remain usable after collection, but
+no longer retain their cache object.
+
+Busy objects are skipped. Unexpected per-object failures increment `errors`;
+the CLI exits nonzero and RPC returns `STORE_GC_PARTIAL` in that case.
+
+Removing an instance unlinks its paths without affecting other instances. A
+later GC run can reclaim the final remaining store link.
 
 The Windows validation checklist is available in
 `docs/windows-hardlink-testing.md`.

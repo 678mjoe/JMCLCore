@@ -74,6 +74,8 @@ be added separately.
 
 Deletion validates both the instance ID and its manifest before recursively
 removing the instance. The explicit `--force` flag prevents accidental deletion.
+It does not synchronously delete shared objects; `store gc` can reclaim an
+object after the instance held its final hard link.
 
 ```sh
 jmcl-core instance delete vanilla-26.1 --force

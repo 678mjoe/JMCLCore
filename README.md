@@ -41,6 +41,7 @@ zig build run -- install plan 1.21.11
 zig build run -- install plan 1.6.4 --os windows --arch x86_64 --json
 zig build run -- install execute 1.21.11 --directory ./.minecraft --workers 8
 zig build run -- install prepare 1.6.4 --directory ./.minecraft
+zig build run -- store gc --store-directory ./.jmclcore
 zig build run -- java detect
 zig build run -- java select 26.2
 zig build run -- launch execute 26.1 --directory ./.minecraft --offline-name Player
@@ -104,6 +105,8 @@ Java selection is documented in `docs/java.md`.
 Launch argument generation is documented in `docs/launch.md`.
 Instance management is documented in `docs/instances.md`.
 Shared artifact storage is documented in `docs/artifact-store.md`.
+The content-addressed hard-link storage architecture is documented in
+`docs/content-addressed-storage.md`.
 Fabric Loader support is documented in `docs/fabric.md`.
 Microsoft authentication boundaries and the proposed RPC are documented in
 `docs/authentication.md`.

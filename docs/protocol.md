@@ -46,6 +46,7 @@ ID. One invalid request does not terminate the session.
 | `install.plan` | Generate a validated, platform-specific download plan. |
 | `install.execute` | Download and verify every static file in a generated plan. |
 | `install.prepare` | Prepare legacy natives and projected assets from the cache. |
+| `store.gc` | Report or reclaim unlinked shared artifact cache objects. |
 | `java.detect` | Probe locally available Java runtimes. |
 | `java.select` | Select a runtime compatible with a Minecraft version. |
 | `launch.plan` | Generate Java and game argv without starting a process. |
@@ -72,6 +73,21 @@ Minecraft `id`. It pins the Fabric Loader version for that request:
 
 The core resolves and verifies the official Fabric profile before emitting a
 plan. Fabric API and third-party mod downloads are outside this protocol scope.
+
+## `store.gc`
+
+`store.gc` performs conservative cache reclamation. It defaults to dry-run mode
+and a 24-hour minimum age. Dry-run is read-only; an execute request deletes an
+object only after its digest lock is held and its hard-link count remains one.
+
+```json
+{"protocol":1,"id":"gc-1","method":"store.gc","params":{"store_directory":".jmclcore","dry_run":true,"min_age_seconds":86400}}
+```
+
+The result contains `dry_run`, `min_age_seconds`, and a summary with scanned,
+eligible, deleted, linked, young, ignored, busy, `errors`, and byte counters.
+When `errors` is nonzero, `store.gc` returns `STORE_GC_PARTIAL` instead of a
+result event.
 
 ## `version.list`
 

@@ -19,6 +19,18 @@ extern "kernel32" fn SetFileAttributesW(
     attributes: std.os.windows.DWORD,
 ) callconv(.winapi) std.os.windows.BOOL;
 extern "kernel32" fn FlushFileBuffers(file: std.os.windows.HANDLE) callconv(.winapi) std.os.windows.BOOL;
+extern "kernel32" fn GetFileInformationByHandleEx(
+    file: std.os.windows.HANDLE,
+    file_information_class: std.os.windows.DWORD,
+    file_information: *anyopaque,
+    buffer_size: std.os.windows.DWORD,
+) callconv(.winapi) std.os.windows.BOOL;
+extern "kernel32" fn SetFileInformationByHandle(
+    file: std.os.windows.HANDLE,
+    file_information_class: std.os.windows.DWORD,
+    file_information: *const anyopaque,
+    buffer_size: std.os.windows.DWORD,
+) callconv(.winapi) std.os.windows.BOOL;
 extern "kernel32" fn ReadFile(
     file: std.os.windows.HANDLE,
     buffer: [*]u8,
@@ -40,6 +52,21 @@ const WindowsOverlapped = extern struct {
     offset_high: std.os.windows.DWORD,
     event: ?std.os.windows.HANDLE = null,
 };
+
+const WindowsFileBasicInfo = extern struct {
+    creation_time: i64,
+    last_access_time: i64,
+    last_write_time: i64,
+    change_time: i64,
+    file_attributes: std.os.windows.DWORD,
+};
+
+const WindowsFileDispositionInfo = extern struct {
+    delete_file: u8,
+};
+
+const file_basic_information: std.os.windows.DWORD = 0;
+const file_disposition_information: std.os.windows.DWORD = 4;
 
 pub fn create(
     allocator: std.mem.Allocator,
@@ -140,6 +167,109 @@ pub fn syncFile(io: std.Io, file: std.Io.File) !void {
     return switch (std.os.windows.GetLastError()) {
         .ACCESS_DENIED => error.AccessDenied,
         .INVALID_HANDLE => error.InvalidHandle,
+        else => error.Unexpected,
+    };
+}
+
+/// Deletes an already-open Windows file without resolving its pathname again.
+/// This keeps a checked cache object from being swapped for a reparse point.
+pub fn deleteReadOnlyWindows(file: std.Io.File) !void {
+    if (builtin.os.tag != .windows) return error.OperationUnsupported;
+    var basic: WindowsFileBasicInfo = undefined;
+    if (!GetFileInformationByHandleEx(
+        file.handle,
+        file_basic_information,
+        &basic,
+        @sizeOf(WindowsFileBasicInfo),
+    ).toBool()) return mapDeleteError(std.os.windows.GetLastError());
+    const original_attributes = basic.file_attributes;
+    basic.file_attributes &= ~@as(std.os.windows.DWORD, 1);
+    if (!SetFileInformationByHandle(
+        file.handle,
+        file_basic_information,
+        &basic,
+        @sizeOf(WindowsFileBasicInfo),
+    ).toBool()) return mapDeleteError(std.os.windows.GetLastError());
+
+    const disposition: WindowsFileDispositionInfo = .{ .delete_file = 1 };
+    if (SetFileInformationByHandle(
+        file.handle,
+        file_disposition_information,
+        &disposition,
+        @sizeOf(WindowsFileDispositionInfo),
+    ).toBool()) return;
+
+    const delete_error = std.os.windows.GetLastError();
+
+    basic.file_attributes = original_attributes;
+    if (!SetFileInformationByHandle(
+        file.handle,
+        file_basic_information,
+        &basic,
+        @sizeOf(WindowsFileBasicInfo),
+    ).toBool()) return error.Unexpected;
+    return mapDeleteError(delete_error);
+}
+
+/// Opens one basename below an already-open directory with the rights required
+/// for handle-based attribute changes and deletion. Reparse points are opened,
+/// never followed.
+pub fn openForDeleteWindows(
+    allocator: std.mem.Allocator,
+    dir: std.Io.Dir,
+    basename: []const u8,
+) !std.Io.File {
+    if (builtin.os.tag != .windows) return error.OperationUnsupported;
+    if (basename.len == 0 or std.mem.indexOfAny(u8, basename, "/\\") != null) return error.InvalidRelativePath;
+    const windows = std.os.windows;
+    const name = try std.unicode.wtf8ToWtf16LeAllocZ(allocator, basename);
+    defer allocator.free(name);
+    var io_status: windows.IO_STATUS_BLOCK = undefined;
+    var handle: windows.HANDLE = undefined;
+    switch (windows.ntdll.NtCreateFile(
+        &handle,
+        .{
+            .STANDARD = .{
+                .RIGHTS = .{ .DELETE = true },
+                .SYNCHRONIZE = true,
+            },
+            .SPECIFIC = .{ .FILE = .{
+                .READ_ATTRIBUTES = true,
+                .WRITE_ATTRIBUTES = true,
+            } },
+        },
+        &.{
+            .RootDirectory = dir.handle,
+            .ObjectName = @constCast(&windows.UNICODE_STRING.init(name[0..name.len])),
+        },
+        &io_status,
+        null,
+        .{ .NORMAL = true },
+        .VALID_FLAGS,
+        .OPEN,
+        .{
+            .IO = .ASYNCHRONOUS,
+            .NON_DIRECTORY_FILE = true,
+            .OPEN_REPARSE_POINT = true,
+        },
+        null,
+        0,
+    )) {
+        .SUCCESS => return .{ .handle = handle, .flags = .{ .nonblocking = false } },
+        .OBJECT_NAME_NOT_FOUND, .OBJECT_PATH_NOT_FOUND => return error.FileNotFound,
+        .ACCESS_DENIED, .USER_MAPPED_FILE => return error.AccessDenied,
+        .SHARING_VIOLATION, .DELETE_PENDING => return error.PathBusy,
+        .FILE_IS_A_DIRECTORY => return error.IsDir,
+        .NOT_A_DIRECTORY => return error.NotDir,
+        else => return error.Unexpected,
+    }
+}
+
+fn mapDeleteError(last_error: std.os.windows.Win32Error) !void {
+    return switch (last_error) {
+        .FILE_NOT_FOUND, .PATH_NOT_FOUND => error.FileNotFound,
+        .ACCESS_DENIED => error.AccessDenied,
+        .SHARING_VIOLATION, .LOCK_VIOLATION => error.PathBusy,
         else => error.Unexpected,
     };
 }

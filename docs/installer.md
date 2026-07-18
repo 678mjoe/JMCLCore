@@ -32,7 +32,9 @@ files.
 
 The executor accepts 1 through 32 workers and defaults to 8. Every worker owns
 an independent HTTP client, file, hasher, and bounded writer. Object lock files
-coordinate identical artifacts across workers and processes.
+coordinate identical artifacts across workers and processes. `store gc` uses
+the same one-digest-at-a-time lock before removing an unlinked object, so an
+active installer and collector cannot race publication or materialization.
 
 After the first final failure, no new jobs are assigned. Active jobs finish
 their cleanup before the plan and HTTP client are released.
