@@ -115,6 +115,7 @@ pub const Data = struct {
     native_extractions: []const NativeExtraction,
     asset_projections: []const AssetProjection,
     total_download_size: u64,
+    java_major_version: u16 = 0,
 };
 
 pub const Plan = struct {
@@ -233,6 +234,17 @@ pub fn build(
     source: DownloadSource,
     target: Target,
 ) !Plan {
+    return buildWithExtras(allocator, version, assets, source, target, &.{});
+}
+
+pub fn buildWithExtras(
+    allocator: std.mem.Allocator,
+    version: metadata.Metadata,
+    assets: ?asset_index.Index,
+    source: DownloadSource,
+    target: Target,
+    extra_files: []const File,
+) !Plan {
     try validateComponent(version.id);
 
     const arena = try allocator.create(std.heap.ArenaAllocator);
@@ -347,7 +359,15 @@ pub fn build(
         try builder.addClasspath(owned_path);
     }
 
-    try builder.addClasspath(owned_client_path);
+    const client_classpath_path = if (version.patched_client) |override| blk: {
+        try validateRelativePath(override);
+        break :blk try plan_allocator.dupe(u8, override);
+    } else owned_client_path;
+    try builder.addClasspath(client_classpath_path);
+
+    for (extra_files) |file| {
+        _ = try builder.addFile(file.path, file.url, file.sha1, file.size, file.usage);
+    }
 
     return .{
         .arena = arena,
@@ -360,6 +380,7 @@ pub fn build(
             .native_extractions = try builder.extractions.toOwnedSlice(plan_allocator),
             .asset_projections = try builder.projections.toOwnedSlice(plan_allocator),
             .total_download_size = builder.total_download_size,
+            .java_major_version = if (version.javaVersion) |java| java.majorVersion else 0,
         },
     };
 }

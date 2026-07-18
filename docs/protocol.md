@@ -74,6 +74,21 @@ Minecraft `id`. It pins the Fabric Loader version for that request:
 The core resolves and verifies the official Fabric profile before emitting a
 plan. Fabric API and third-party mod downloads are outside this protocol scope.
 
+## NeoForge Selection
+
+The same five methods accept an optional `neoforge_version` string instead of
+`fabric_loader`; the two cannot be combined. `install.execute` with
+`neoforge_version` also accepts optional `java_paths` and runs the NeoForge
+processor chain after the download stage. Its result then includes
+`processors_run` and the `patched_client` SHA-1:
+
+```json
+{"protocol":1,"id":"neoforge-install","method":"install.execute","params":{"id":"1.20.4","neoforge_version":"20.4.251"}}
+```
+
+See `docs/neoforge.md` for the two-stage installation and processor security
+boundaries.
+
 ## `store.gc`
 
 `store.gc` performs conservative cache reclamation. It defaults to dry-run mode

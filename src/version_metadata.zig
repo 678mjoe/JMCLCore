@@ -183,6 +183,7 @@ pub const Metadata = struct {
     releaseTime: ?[]const u8 = null,
     time: ?[]const u8 = null,
     inheritsFrom: ?[]const u8 = null,
+    patched_client: ?[]const u8 = null,
 };
 
 pub fn parse(allocator: std.mem.Allocator, source: []const u8) !std.json.Parsed(Metadata) {

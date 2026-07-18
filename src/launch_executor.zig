@@ -13,6 +13,7 @@ const preparer = @import("preparer.zig");
 pub const Input = struct {
     id: []const u8,
     fabric_loader: ?[]const u8 = null,
+    neoforge_version: ?[]const u8 = null,
     directory: []const u8 = ".minecraft",
     auth: launch_plan.Auth,
     options: launch_plan.Options = .{},
@@ -95,6 +96,7 @@ pub fn execute(service: *Service, input: Input, reporter: Reporter) ExecuteError
     var metadata = service.resolveMetadata(.{
         .id = input.id,
         .fabric_loader = input.fabric_loader,
+        .neoforge_version = input.neoforge_version,
     }, input.source) catch return error.MetadataFailed;
     defer metadata.deinit();
     const metadata_value = metadata.value();

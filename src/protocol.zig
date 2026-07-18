@@ -23,6 +23,7 @@ const VersionGetParams = struct {
 const InstallPlanParams = struct {
     id: []const u8,
     fabric_loader: ?[]const u8 = null,
+    neoforge_version: ?[]const u8 = null,
     source: core.DownloadSource = .official,
     os: ?core.install_plan.OperatingSystem = null,
     arch: ?core.install_plan.Architecture = null,
@@ -31,6 +32,8 @@ const InstallPlanParams = struct {
 const InstallExecuteParams = struct {
     id: []const u8,
     fabric_loader: ?[]const u8 = null,
+    neoforge_version: ?[]const u8 = null,
+    java_paths: []const []const u8 = &.{},
     directory: []const u8 = ".minecraft",
     store_directory: []const u8 = core.artifact_store.default_directory,
     source: core.DownloadSource = .official,
@@ -43,6 +46,7 @@ const InstallExecuteParams = struct {
 const InstallPrepareParams = struct {
     id: []const u8,
     fabric_loader: ?[]const u8 = null,
+    neoforge_version: ?[]const u8 = null,
     directory: []const u8 = ".minecraft",
     source: core.DownloadSource = .official,
     os: ?core.install_plan.OperatingSystem = null,
@@ -69,6 +73,7 @@ const JavaSelectParams = struct {
 const LaunchPlanParams = struct {
     id: []const u8,
     fabric_loader: ?[]const u8 = null,
+    neoforge_version: ?[]const u8 = null,
     directory: []const u8 = ".minecraft",
     natives_directory: []const u8,
     auth: core.launch_plan.Auth,
@@ -81,6 +86,7 @@ const LaunchPlanParams = struct {
 const LaunchExecuteParams = struct {
     id: []const u8,
     fabric_loader: ?[]const u8 = null,
+    neoforge_version: ?[]const u8 = null,
     directory: []const u8 = ".minecraft",
     auth: core.launch_plan.Auth,
     options: core.launch_plan.Options = .{},
@@ -898,6 +904,7 @@ fn writeLaunchExecuteResult(
         .{
             .id = input.id,
             .fabric_loader = input.fabric_loader,
+            .neoforge_version = input.neoforge_version,
             .directory = input.directory,
             .auth = input.auth,
             .options = input.options,
@@ -980,6 +987,7 @@ fn writeLaunchPlanResult(
     var metadata = service.resolveMetadata(.{
         .id = input.id,
         .fabric_loader = input.fabric_loader,
+        .neoforge_version = input.neoforge_version,
     }, input.source) catch |err| {
         switch (err) {
             error.VersionNotFound => try writeError(writer, request_id, "VERSION_NOT_FOUND", "The requested version is not in the selected manifest"),
@@ -1242,6 +1250,7 @@ fn writeInstallPrepareResult(
     var plan = service.createInstallPlanForSelection(.{
         .id = params.value.id,
         .fabric_loader = params.value.fabric_loader,
+        .neoforge_version = params.value.neoforge_version,
     }, params.value.source, target) catch |err| {
         try writeInstallPlanningError(writer, request_id, err);
         return;
@@ -1351,6 +1360,7 @@ fn writeInstallExecuteResult(
     var plan = service.createInstallPlanForSelection(.{
         .id = params.value.id,
         .fabric_loader = params.value.fabric_loader,
+        .neoforge_version = params.value.neoforge_version,
     }, params.value.source, target) catch |err| {
         try writeInstallPlanningError(writer, request_id, err);
         return;
@@ -1393,6 +1403,35 @@ fn writeInstallExecuteResult(
     };
     if (reporter_context.output_failed) return error.WriteFailed;
 
+    var processors_run: usize = 0;
+    var patched_client: ?[]const u8 = null;
+    if (params.value.neoforge_version) |loader_version| {
+        const patched = core.neoforge_executor.run(
+            service.allocator,
+            service.io,
+            service.environ_map,
+            root,
+            store,
+            loader_version,
+            plan.value.version_id,
+            .{
+                .java_paths = params.value.java_paths,
+                .required_major = plan.value.java_major_version,
+            },
+            null,
+        ) catch |err| {
+            switch (err) {
+                error.NoCompatibleJava => try writeError(writer, request_id, "JAVA_INCOMPATIBLE", "No Java runtime is available for the NeoForge processor chain"),
+                error.EnvironmentUnavailable => try writeError(writer, request_id, "ENVIRONMENT_UNAVAILABLE", "Process environment is unavailable"),
+                else => try writeError(writer, request_id, "PROCESSOR_FAILED", "The NeoForge processor chain failed"),
+            }
+            return;
+        };
+        defer service.allocator.free(patched.patched_sha1);
+        processors_run = patched.processors_run;
+        patched_client = patched.patched_sha1;
+    }
+
     var json: std.json.Stringify = .{ .writer = writer };
     try writeEventHeader(&json, request_id, "result");
     try writeSourceField(&json, params.value.source);
@@ -1416,6 +1455,12 @@ fn writeInstallExecuteResult(
     try json.write(summary.bytes_verified);
     try json.objectField("bytes_transferred");
     try json.write(summary.bytes_transferred);
+    if (patched_client) |sha1| {
+        try json.objectField("processors_run");
+        try json.write(processors_run);
+        try json.objectField("patched_client");
+        try json.write(sha1);
+    }
     try json.endObject();
     try json.endObject();
     try writer.writeByte('\n');
@@ -1544,6 +1589,7 @@ fn writeInstallPlanResult(
     var plan = service.createInstallPlanForSelection(.{
         .id = params.value.id,
         .fabric_loader = params.value.fabric_loader,
+        .neoforge_version = params.value.neoforge_version,
     }, params.value.source, target) catch |err| {
         switch (err) {
             error.VersionNotFound => try writeError(writer, request_id, "VERSION_NOT_FOUND", "The requested version is not in the selected manifest"),

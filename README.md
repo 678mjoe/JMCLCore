@@ -108,6 +108,7 @@ Shared artifact storage is documented in `docs/artifact-store.md`.
 The content-addressed hard-link storage architecture is documented in
 `docs/content-addressed-storage.md`.
 Fabric Loader support is documented in `docs/fabric.md`.
+NeoForge support is documented in `docs/neoforge.md`.
 Microsoft authentication boundaries and the proposed RPC are documented in
 `docs/authentication.md`.
 Public account registry and credential ownership are documented in
