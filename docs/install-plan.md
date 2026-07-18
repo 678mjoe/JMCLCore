@@ -19,6 +19,10 @@ The current plan uses the standard launcher cache layout:
 Plan generation downloads the selected asset index, verifies its SHA-1, and
 deduplicates resource objects by their content-addressed destination.
 
+For a Fabric selection, the core resolves the official Fabric profile over its
+Minecraft parent before planning. Fabric libraries are normalized to ordinary
+verified library artifacts and precede inherited Minecraft libraries.
+
 ## Files
 
 Each file contains:

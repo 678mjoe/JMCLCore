@@ -19,6 +19,10 @@ runtime itself. Authenticated secrets are not accepted as ordinary CLI flags to
 avoid exposing them through the operating-system process list. The CLI supports
 a non-secret `--offline-name` for local testing.
 
+An optional Fabric Loader version selects a resolved Fabric profile instead of
+plain Minecraft metadata. The resulting `KnotClient` main class and Fabric
+libraries are handled by the same argument and redaction rules as vanilla.
+
 ## Directory Layout
 
 Installation, preparation, and execution default to `./.minecraft`. A custom

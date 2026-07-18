@@ -11,6 +11,7 @@ pub const Manifest = struct {
     id: []const u8,
     name: []const u8,
     version_id: []const u8,
+    fabric_loader: ?[]const u8 = null,
     source: DownloadSource = .official,
 };
 
@@ -145,6 +146,9 @@ fn validateManifest(manifest: Manifest) !void {
     if (manifest.schema_version != schema_version) return error.UnsupportedInstanceSchema;
     if (manifest.name.len == 0 or manifest.name.len > 256) return error.InvalidInstanceName;
     if (manifest.version_id.len == 0 or manifest.version_id.len > 256) return error.InvalidVersionId;
+    if (manifest.fabric_loader) |loader| {
+        if (loader.len == 0 or loader.len > 256) return error.InvalidFabricLoaderVersion;
+    }
 }
 
 fn isLowerAlphaNumeric(byte: u8) bool {
@@ -184,11 +188,13 @@ test "creates lists loads and deletes isolated instances" {
         .id = "test-instance",
         .name = "Test Instance",
         .version_id = "26.1",
+        .fabric_loader = "0.16.10",
         .source = .bmclapi,
     });
     var document = try load(std.testing.allocator, io, root, "test-instance");
     defer document.deinit();
     try std.testing.expectEqualStrings("26.1", document.value.version_id);
+    try std.testing.expectEqualStrings("0.16.10", document.value.fabric_loader.?);
     try std.testing.expectEqual(DownloadSource.bmclapi, document.value.source);
     const minecraft = try root.openDir(io, "test-instance/.minecraft", .{});
     minecraft.close(io);

@@ -45,6 +45,7 @@ zig build run -- java detect
 zig build run -- java select 26.2
 zig build run -- launch execute 26.1 --directory ./.minecraft --offline-name Player
 zig build run -- instance create vanilla-26.1 --version 26.1 --name "Vanilla 26.1"
+zig build run -- instance create fabric-1.21.1 --version 1.21.1 --fabric-loader 0.16.10 --name "Fabric 1.21.1"
 zig build run -- instance list
 zig build run -- instance install vanilla-26.1
 zig build run -- instance install vanilla-26.1 --source bmclapi
@@ -103,6 +104,7 @@ Java selection is documented in `docs/java.md`.
 Launch argument generation is documented in `docs/launch.md`.
 Instance management is documented in `docs/instances.md`.
 Shared artifact storage is documented in `docs/artifact-store.md`.
+Fabric Loader support is documented in `docs/fabric.md`.
 Microsoft authentication boundaries and the proposed RPC are documented in
 `docs/authentication.md`.
 Public account registry and credential ownership are documented in

@@ -20,11 +20,12 @@ protocol suitable for a separate GUI process.
 - Launch plan generation and game process supervision.
 - Structured progress, result, and error events.
 - Windows, Linux, and macOS support.
+- Empty Fabric Loader instances with pinned Loader versions.
 
 ## Excluded
 
 - Third-party account systems.
-- Fabric, Forge, NeoForge, and Quilt.
+- Forge, NeoForge, and Quilt.
 - Modrinth, CurseForge, and modpack installation.
 - Skin management and other social features.
 - A graphical interface.

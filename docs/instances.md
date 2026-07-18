@@ -60,6 +60,12 @@ When BMCLAPI is preferred, planning retries the complete metadata and asset
 index pipeline through Mojang if the mirror is unavailable. The resulting file
 plan still uses BMCLAPI URLs first and Mojang URLs as verified fallback.
 
+An instance can additionally pin a Fabric Loader version in its optional
+`fabric_loader` field. The field is set by `instance create --fabric-loader
+VERSION`; installation and launch then resolve the official Fabric profile over
+the instance's selected Minecraft version. Fabric API and third-party mods are
+not installed automatically.
+
 Instance launch currently supports the CLI offline identity and optional
 `--arch` and repeatable `--java PATH` candidates. Microsoft authentication will
 be added separately.

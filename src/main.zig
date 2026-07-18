@@ -112,6 +112,7 @@ fn run(
 
 const LaunchExecuteCliOptions = struct {
     id: []const u8,
+    fabric_loader: ?[]const u8 = null,
     directory: []const u8 = ".minecraft",
     offline_name: ?[]const u8 = null,
     source: jmcl.DownloadSource = .official,
@@ -166,13 +167,14 @@ fn runLaunchExecute(
     stderr: *std.Io.Writer,
 ) !u8 {
     var options = parseLaunchExecuteOptions(service.allocator, args) catch {
-        try stderr.writeAll("usage: jmcl-core launch execute ID [--directory PATH] --offline-name NAME [--source SOURCE] [--arch ARCH] [--java PATH]\n");
+        try stderr.writeAll("usage: jmcl-core launch execute ID [--fabric-loader VERSION] [--directory PATH] --offline-name NAME [--source SOURCE] [--arch ARCH] [--java PATH]\n");
         return 2;
     };
     defer options.deinit(service.allocator);
     return executeLaunch(
         service,
         options.id,
+        options.fabric_loader,
         options.directory,
         options.offline_name.?,
         options.source,
@@ -186,6 +188,7 @@ fn runLaunchExecute(
 fn executeLaunch(
     service: *jmcl.Service,
     id: []const u8,
+    fabric_loader: ?[]const u8,
     directory: []const u8,
     offline_name: []const u8,
     source: jmcl.DownloadSource,
@@ -200,6 +203,7 @@ fn executeLaunch(
         service,
         .{
             .id = id,
+            .fabric_loader = fabric_loader,
             .directory = directory,
             .auth = .{
                 .player_name = offline_name,
@@ -236,6 +240,8 @@ fn parseLaunchExecuteOptions(allocator: std.mem.Allocator, args: []const []const
         if (value.len == 0) return error.InvalidArguments;
         if (std.mem.eql(u8, argument, "--directory")) {
             options.directory = value;
+        } else if (std.mem.eql(u8, argument, "--fabric-loader")) {
+            options.fabric_loader = value;
         } else if (std.mem.eql(u8, argument, "--offline-name")) {
             options.offline_name = value;
         } else if (std.mem.eql(u8, argument, "--source")) {
@@ -267,6 +273,7 @@ fn offlineUuid(name: []const u8) [32]u8 {
 const InstanceCreateOptions = struct {
     id: []const u8,
     version_id: ?[]const u8 = null,
+    fabric_loader: ?[]const u8 = null,
     name: ?[]const u8 = null,
     instances_directory: []const u8 = jmcl.instance_store.default_root,
     source: jmcl.DownloadSource = .official,
@@ -279,10 +286,13 @@ fn runInstanceCreate(
     stderr: *std.Io.Writer,
 ) !u8 {
     const options = parseInstanceCreateOptions(args) catch {
-        try stderr.writeAll("usage: jmcl-core instance create ID --version VERSION [--name NAME] [--instances-directory PATH] [--source SOURCE]\n");
+        try stderr.writeAll("usage: jmcl-core instance create ID --version VERSION [--fabric-loader VERSION] [--name NAME] [--instances-directory PATH] [--source SOURCE]\n");
         return 2;
     };
-    var metadata = service.fetchVersionMetadataPreferred(options.version_id.?, options.source) catch |err| {
+    var metadata = service.resolveMetadataPreferred(.{
+        .id = options.version_id.?,
+        .fabric_loader = options.fabric_loader,
+    }, options.source) catch |err| {
         try stderr.print("failed to resolve Minecraft version: {s}\n", .{@errorName(err)});
         return 1;
     };
@@ -296,6 +306,7 @@ fn runInstanceCreate(
         .id = options.id,
         .name = options.name orelse options.id,
         .version_id = options.version_id.?,
+        .fabric_loader = options.fabric_loader,
         .source = options.source,
     }) catch |err| {
         try stderr.print("failed to create instance: {s}\n", .{@errorName(err)});
@@ -318,6 +329,8 @@ fn parseInstanceCreateOptions(args: []const []const u8) !InstanceCreateOptions {
         const value = args[index + 1];
         if (std.mem.eql(u8, argument, "--version")) {
             options.version_id = value;
+        } else if (std.mem.eql(u8, argument, "--fabric-loader")) {
+            options.fabric_loader = value;
         } else if (std.mem.eql(u8, argument, "--name")) {
             options.name = value;
         } else if (std.mem.eql(u8, argument, "--instances-directory")) {
@@ -528,6 +541,7 @@ fn runInstanceInstall(
     return executeInstall(
         service,
         document.value.version_id,
+        document.value.fabric_loader,
         path,
         options.source orelse document.value.source,
         options.store_directory,
@@ -609,6 +623,7 @@ fn runInstanceLaunch(
     return executeLaunch(
         service,
         document.value.version_id,
+        document.value.fabric_loader,
         path,
         options.offline_name.?,
         document.value.source,
@@ -833,6 +848,7 @@ fn parseJavaSelectOptions(allocator: std.mem.Allocator, args: []const []const u8
 
 const InstallPrepareCliOptions = struct {
     id: []const u8,
+    fabric_loader: ?[]const u8 = null,
     directory: []const u8 = ".minecraft",
     source: jmcl.DownloadSource = .official,
     os: ?jmcl.install_plan.OperatingSystem = null,
@@ -846,7 +862,7 @@ fn runInstallPrepare(
     stderr: *std.Io.Writer,
 ) !u8 {
     const options = parseInstallPrepareOptions(args) catch {
-        try stderr.writeAll("usage: jmcl-core install prepare ID [--directory PATH] [--source SOURCE] [--os OS] [--arch ARCH]\n");
+        try stderr.writeAll("usage: jmcl-core install prepare ID [--fabric-loader VERSION] [--directory PATH] [--source SOURCE] [--os OS] [--arch ARCH]\n");
         return 2;
     };
     const host = jmcl.install_plan.Target.host() catch |err| {
@@ -858,7 +874,10 @@ fn runInstallPrepare(
         .arch = options.arch orelse host.arch,
     };
 
-    var plan = service.createInstallPlan(options.id, options.source, target) catch |err| {
+    var plan = service.createInstallPlanForSelection(.{
+        .id = options.id,
+        .fabric_loader = options.fabric_loader,
+    }, options.source, target) catch |err| {
         try stderr.print("failed to create install plan from {s}: {s}\n", .{
             options.source.displayName(),
             @errorName(err),
@@ -898,6 +917,9 @@ fn parseInstallPrepareOptions(args: []const []const u8) !InstallPrepareCliOption
         if (std.mem.eql(u8, argument, "--directory")) {
             if (value.len == 0) return error.InvalidArguments;
             options.directory = value;
+        } else if (std.mem.eql(u8, argument, "--fabric-loader")) {
+            if (value.len == 0) return error.InvalidArguments;
+            options.fabric_loader = value;
         } else if (std.mem.eql(u8, argument, "--source")) {
             options.source = jmcl.DownloadSource.parse(value) orelse return error.InvalidArguments;
         } else if (std.mem.eql(u8, argument, "--os")) {
@@ -914,6 +936,7 @@ fn parseInstallPrepareOptions(args: []const []const u8) !InstallPrepareCliOption
 
 const InstallExecuteCliOptions = struct {
     id: []const u8,
+    fabric_loader: ?[]const u8 = null,
     directory: []const u8 = ".minecraft",
     store_directory: []const u8 = jmcl.artifact_store.default_directory,
     source: jmcl.DownloadSource = .official,
@@ -976,12 +999,13 @@ fn runInstallExecute(
     stderr: *std.Io.Writer,
 ) !u8 {
     const options = parseInstallExecuteOptions(args) catch {
-        try stderr.writeAll("usage: jmcl-core install execute ID [--directory PATH] [--store-directory PATH] [--source SOURCE] [--os OS] [--arch ARCH] [--workers N] [--retries N]\n");
+        try stderr.writeAll("usage: jmcl-core install execute ID [--fabric-loader VERSION] [--directory PATH] [--store-directory PATH] [--source SOURCE] [--os OS] [--arch ARCH] [--workers N] [--retries N]\n");
         return 2;
     };
     return executeInstall(
         service,
         options.id,
+        options.fabric_loader,
         options.directory,
         options.source,
         options.store_directory,
@@ -997,6 +1021,7 @@ fn runInstallExecute(
 fn executeInstall(
     service: *jmcl.Service,
     id: []const u8,
+    fabric_loader: ?[]const u8,
     directory: []const u8,
     source: jmcl.DownloadSource,
     store_directory: []const u8,
@@ -1016,7 +1041,10 @@ fn executeInstall(
         .arch = arch orelse host.arch,
     };
 
-    var plan = service.createInstallPlan(id, source, target) catch |err| {
+    var plan = service.createInstallPlanForSelection(.{
+        .id = id,
+        .fabric_loader = fabric_loader,
+    }, source, target) catch |err| {
         try stderr.print("failed to create install plan from {s}: {s}\n", .{
             source.displayName(),
             @errorName(err),
@@ -1078,6 +1106,9 @@ fn parseInstallExecuteOptions(args: []const []const u8) !InstallExecuteCliOption
         if (std.mem.eql(u8, argument, "--directory")) {
             if (value.len == 0) return error.InvalidArguments;
             options.directory = value;
+        } else if (std.mem.eql(u8, argument, "--fabric-loader")) {
+            if (value.len == 0) return error.InvalidArguments;
+            options.fabric_loader = value;
         } else if (std.mem.eql(u8, argument, "--store-directory")) {
             if (value.len == 0) return error.InvalidArguments;
             options.store_directory = value;
@@ -1103,6 +1134,7 @@ fn parseInstallExecuteOptions(args: []const []const u8) !InstallExecuteCliOption
 
 const InstallPlanCliOptions = struct {
     id: []const u8,
+    fabric_loader: ?[]const u8 = null,
     source: jmcl.DownloadSource = .official,
     os: ?jmcl.install_plan.OperatingSystem = null,
     arch: ?jmcl.install_plan.Architecture = null,
@@ -1116,7 +1148,7 @@ fn runInstallPlan(
     stderr: *std.Io.Writer,
 ) !u8 {
     const options = parseInstallPlanOptions(args) catch {
-        try stderr.writeAll("usage: jmcl-core install plan ID [--source SOURCE] [--os OS] [--arch ARCH] [--json]\n");
+        try stderr.writeAll("usage: jmcl-core install plan ID [--fabric-loader VERSION] [--source SOURCE] [--os OS] [--arch ARCH] [--json]\n");
         return 2;
     };
     const host = jmcl.install_plan.Target.host() catch |err| {
@@ -1128,7 +1160,10 @@ fn runInstallPlan(
         .arch = options.arch orelse host.arch,
     };
 
-    var plan = service.createInstallPlan(options.id, options.source, target) catch |err| {
+    var plan = service.createInstallPlanForSelection(.{
+        .id = options.id,
+        .fabric_loader = options.fabric_loader,
+    }, options.source, target) catch |err| {
         try stderr.print("failed to create install plan from {s}: {s}\n", .{
             options.source.displayName(),
             @errorName(err),
@@ -1172,6 +1207,10 @@ fn parseInstallPlanOptions(args: []const []const u8) !InstallPlanCliOptions {
         if (std.mem.eql(u8, argument, "--json")) {
             options.json = true;
             index += 1;
+        } else if (std.mem.eql(u8, argument, "--fabric-loader")) {
+            if (index + 1 >= args.len or args[index + 1].len == 0) return error.InvalidArguments;
+            options.fabric_loader = args[index + 1];
+            index += 2;
         } else if (std.mem.eql(u8, argument, "--source")) {
             if (index + 1 >= args.len) return error.InvalidArguments;
             options.source = jmcl.DownloadSource.parse(args[index + 1]) orelse return error.InvalidArguments;
@@ -1540,11 +1579,14 @@ test "instance create options pin version and source" {
         "26.1",
         "--name",
         "Vanilla 26.1",
+        "--fabric-loader",
+        "0.16.10",
         "--source",
         "bmclapi",
     });
     try std.testing.expectEqualStrings("26.1", options.version_id.?);
     try std.testing.expectEqualStrings("Vanilla 26.1", options.name.?);
+    try std.testing.expectEqualStrings("0.16.10", options.fabric_loader.?);
     try std.testing.expectEqual(jmcl.DownloadSource.bmclapi, options.source);
 }
 

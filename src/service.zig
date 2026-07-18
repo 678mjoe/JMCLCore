@@ -4,6 +4,7 @@ const authentication_http = @import("authentication_http.zig");
 const account_store = @import("account_store.zig");
 const asset_index = @import("asset_index.zig");
 const core = @import("root.zig");
+const fabric = @import("fabric.zig");
 const install_plan = @import("install_plan.zig");
 const version_manifest = @import("version_manifest.zig");
 const version_metadata = @import("version_metadata.zig");
@@ -11,6 +12,54 @@ const version_metadata = @import("version_metadata.zig");
 const max_manifest_bytes = 2 * 1024 * 1024;
 const max_metadata_bytes = 4 * 1024 * 1024;
 const max_asset_index_bytes = 16 * 1024 * 1024;
+const max_sha1_sidecar_bytes = 4 * 1024;
+
+pub const VersionSelection = struct {
+    id: []const u8,
+    fabric_loader: ?[]const u8 = null,
+};
+
+const FabricResolvedMetadata = struct {
+    parent: std.json.Parsed(version_metadata.Metadata),
+    profile: std.json.Parsed(fabric.Profile),
+    overlay: fabric.Overlay,
+};
+
+pub const ResolvedMetadata = union(enum) {
+    vanilla: std.json.Parsed(version_metadata.Metadata),
+    fabric: FabricResolvedMetadata,
+
+    pub fn deinit(resolved: *ResolvedMetadata) void {
+        switch (resolved.*) {
+            .vanilla => |*document| document.deinit(),
+            .fabric => |*document| {
+                document.overlay.deinit();
+                document.profile.deinit();
+                document.parent.deinit();
+            },
+        }
+        resolved.* = undefined;
+    }
+
+    pub fn value(resolved: *const ResolvedMetadata) *const version_metadata.Metadata {
+        return switch (resolved.*) {
+            .vanilla => |*document| &document.value,
+            .fabric => |*document| &document.overlay.value,
+        };
+    }
+};
+
+const FabricIntegrities = struct {
+    allocator: std.mem.Allocator,
+    hashes: []u8,
+    values: []fabric.LibraryIntegrity,
+
+    fn deinit(integrities: *FabricIntegrities) void {
+        integrities.allocator.free(integrities.hashes);
+        integrities.allocator.free(integrities.values);
+        integrities.* = undefined;
+    }
+};
 
 const ResponseBody = struct {
     allocator: std.mem.Allocator,
@@ -180,15 +229,78 @@ pub const Service = struct {
         return metadata;
     }
 
+    pub fn resolveMetadata(
+        self: Service,
+        selection: VersionSelection,
+        source: core.DownloadSource,
+    ) !ResolvedMetadata {
+        if (selection.fabric_loader == null) return .{ .vanilla = try self.fetchVersionMetadata(selection.id, source) };
+
+        var parent = try self.fetchVersionMetadata(selection.id, source);
+        errdefer parent.deinit();
+        var profile = try self.fetchFabricProfile(selection.id, selection.fabric_loader.?);
+        errdefer profile.deinit();
+        if (!std.mem.eql(u8, profile.value.inheritsFrom, selection.id)) return error.FabricParentMismatch;
+
+        const expected_id = try std.fmt.allocPrint(
+            self.allocator,
+            "fabric-loader-{s}-{s}",
+            .{ selection.fabric_loader.?, selection.id },
+        );
+        defer self.allocator.free(expected_id);
+        if (!std.mem.eql(u8, profile.value.id, expected_id)) return error.FabricProfileIdMismatch;
+
+        var integrities = try self.fetchFabricLibraryIntegrities(profile.value.libraries);
+        defer integrities.deinit();
+        const overlay = try fabric.merge(self.allocator, parent.value, profile.value, integrities.values);
+        return .{ .fabric = .{
+            .parent = parent,
+            .profile = profile,
+            .overlay = overlay,
+        } };
+    }
+
+    pub fn resolveMetadataPreferred(
+        self: Service,
+        selection: VersionSelection,
+        source: core.DownloadSource,
+    ) !ResolvedMetadata {
+        return self.resolveMetadata(selection, source) catch |primary_error| {
+            if (source != .bmclapi) return primary_error;
+            return self.resolveMetadata(selection, .official);
+        };
+    }
+
+    pub fn fetchFabricProfile(
+        self: Service,
+        minecraft_version: []const u8,
+        loader_version: []const u8,
+    ) !std.json.Parsed(fabric.Profile) {
+        const url = try fabric.profileUrlAlloc(self.allocator, minecraft_version, loader_version);
+        defer self.allocator.free(url);
+        var body = try self.fetchBody(url, fabric.max_profile_bytes);
+        defer body.deinit();
+        return fabric.parse(self.allocator, body.content);
+    }
+
     pub fn createInstallPlan(
         self: Service,
         version_id: []const u8,
         source: core.DownloadSource,
         target: install_plan.Target,
     ) !install_plan.Plan {
-        return self.createInstallPlanFromSource(version_id, source, source, target) catch |primary_error| {
+        return self.createInstallPlanForSelection(.{ .id = version_id }, source, target);
+    }
+
+    pub fn createInstallPlanForSelection(
+        self: Service,
+        selection: VersionSelection,
+        source: core.DownloadSource,
+        target: install_plan.Target,
+    ) !install_plan.Plan {
+        return self.createInstallPlanFromSource(selection, source, source, target) catch |primary_error| {
             if (source != .bmclapi) return primary_error;
-            return self.createInstallPlanFromSource(version_id, .official, source, target);
+            return self.createInstallPlanFromSource(selection, .official, source, target);
         };
     }
 
@@ -205,15 +317,16 @@ pub const Service = struct {
 
     fn createInstallPlanFromSource(
         self: Service,
-        version_id: []const u8,
+        selection: VersionSelection,
         metadata_source: core.DownloadSource,
         download_source: core.DownloadSource,
         target: install_plan.Target,
     ) !install_plan.Plan {
-        var metadata_document = try self.fetchVersionMetadata(version_id, metadata_source);
+        var metadata_document = try self.resolveMetadata(selection, metadata_source);
         defer metadata_document.deinit();
 
-        const asset_document: ?std.json.Parsed(asset_index.Index) = if (metadata_document.value.assetIndex) |descriptor|
+        const metadata = metadata_document.value();
+        const asset_document: ?std.json.Parsed(asset_index.Index) = if (metadata.assetIndex) |descriptor|
             try self.fetchAssetIndex(descriptor, metadata_source)
         else
             null;
@@ -221,11 +334,73 @@ pub const Service = struct {
 
         return install_plan.build(
             self.allocator,
-            metadata_document.value,
+            metadata.*,
             if (asset_document) |document| document.value else null,
             download_source,
             target,
         );
+    }
+
+    fn fetchFabricLibraryIntegrities(self: Service, libraries: []const fabric.Library) !FabricIntegrities {
+        const hashes = try self.allocator.alloc(u8, try std.math.mul(usize, libraries.len, 40));
+        errdefer self.allocator.free(hashes);
+        const values = try self.allocator.alloc(fabric.LibraryIntegrity, libraries.len);
+        errdefer self.allocator.free(values);
+
+        for (libraries, 0..) |library, index| {
+            const artifact_url = try fabric.artifactUrlAlloc(self.allocator, library.url, library.name);
+            defer self.allocator.free(artifact_url);
+            const sha1 = hashes[index * 40 ..][0..40];
+            if (library.sha1) |provided| {
+                try fabric.validateSha1(provided);
+                @memcpy(sha1, provided);
+            } else {
+                try self.fetchFabricSha1(artifact_url, sha1);
+            }
+            const size = if (library.size) |provided| provided else try self.fetchContentLength(artifact_url);
+            if (size == 0 or size > fabric.max_library_size) return error.InvalidFabricLibrarySize;
+            values[index] = .{ .sha1 = sha1, .size = size };
+        }
+        return .{
+            .allocator = self.allocator,
+            .hashes = hashes,
+            .values = values,
+        };
+    }
+
+    fn fetchFabricSha1(self: Service, artifact_url: []const u8, output: []u8) !void {
+        if (output.len != 40) return error.InvalidFabricSha1Destination;
+        const sidecar_url = try std.fmt.allocPrint(self.allocator, "{s}.sha1", .{artifact_url});
+        defer self.allocator.free(sidecar_url);
+        var body = try self.fetchBody(sidecar_url, max_sha1_sidecar_bytes);
+        defer body.deinit();
+        const token_end = std.mem.indexOfAny(u8, body.content, " \t\r\n") orelse body.content.len;
+        const token = body.content[0..token_end];
+        try fabric.validateSha1(token);
+        @memcpy(output, token);
+    }
+
+    fn fetchContentLength(self: Service, url: []const u8) !u64 {
+        var proxy_arena = std.heap.ArenaAllocator.init(self.allocator);
+        defer proxy_arena.deinit();
+        var client: std.http.Client = .{
+            .allocator = self.allocator,
+            .io = self.io,
+        };
+        defer client.deinit();
+        if (self.environ_map) |environ_map| try client.initDefaultProxies(proxy_arena.allocator(), environ_map);
+
+        const uri = try std.Uri.parse(url);
+        var request = try client.request(.HEAD, uri, .{
+            .redirect_behavior = .unhandled,
+            .headers = .{ .user_agent = .{ .override = core.name ++ "/" ++ core.version } },
+        });
+        defer request.deinit();
+        try request.sendBodiless();
+        var header_buffer: [8 * 1024]u8 = undefined;
+        const response = try request.receiveHead(&header_buffer);
+        if (response.head.status.class() != .success) return error.UnsuccessfulHttpStatus;
+        return response.head.content_length orelse error.MissingContentLength;
     }
 
     pub fn fetchAssetIndex(

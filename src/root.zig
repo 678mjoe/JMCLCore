@@ -7,6 +7,7 @@ pub const authentication = @import("authentication.zig");
 pub const authentication_http = @import("authentication_http.zig");
 pub const account_store = @import("account_store.zig");
 pub const asset_index = @import("asset_index.zig");
+pub const fabric = @import("fabric.zig");
 pub const DownloadSource = @import("download_source.zig").DownloadSource;
 pub const install_plan = @import("install_plan.zig");
 pub const installer = @import("installer.zig");
@@ -28,6 +29,7 @@ test {
     _ = authentication_http;
     _ = account_store;
     _ = asset_index;
+    _ = fabric;
     _ = DownloadSource;
     _ = install_plan;
     _ = installer;

@@ -12,6 +12,7 @@ const preparer = @import("preparer.zig");
 
 pub const Input = struct {
     id: []const u8,
+    fabric_loader: ?[]const u8 = null,
     directory: []const u8 = ".minecraft",
     auth: launch_plan.Auth,
     options: launch_plan.Options = .{},
@@ -91,16 +92,20 @@ pub fn execute(service: *Service, input: Input, reporter: Reporter) ExecuteError
 
     const host = install_plan.Target.host() catch return error.UnsupportedPlatform;
     const target: install_plan.Target = .{ .os = host.os, .arch = input.arch orelse host.arch };
-    var metadata = service.fetchVersionMetadata(input.id, input.source) catch return error.MetadataFailed;
+    var metadata = service.resolveMetadata(.{
+        .id = input.id,
+        .fabric_loader = input.fabric_loader,
+    }, input.source) catch return error.MetadataFailed;
     defer metadata.deinit();
-    const asset_document: ?std.json.Parsed(asset_index.Index) = if (metadata.value.assetIndex) |descriptor|
+    const metadata_value = metadata.value();
+    const asset_document: ?std.json.Parsed(asset_index.Index) = if (metadata_value.assetIndex) |descriptor|
         service.fetchAssetIndex(descriptor, input.source) catch return error.AssetIndexFailed
     else
         null;
     defer if (asset_document) |document| document.deinit();
     var install = install_plan.build(
         service.allocator,
-        metadata.value,
+        metadata_value.*,
         if (asset_document) |document| document.value else null,
         input.source,
         target,
@@ -120,7 +125,7 @@ pub fn execute(service: *Service, input: Input, reporter: Reporter) ExecuteError
     const native_absolute = hard_link.absolutePathAlloc(service.allocator, service.io, root, native_relative) catch return error.PrepareFailed;
     defer service.allocator.free(native_absolute);
 
-    const required_major = java_runtime.requiredMajor(metadata.value) catch return error.InvalidMetadata;
+    const required_major = java_runtime.requiredMajor(metadata_value.*) catch return error.InvalidMetadata;
     const environment = service.environ_map orelse return error.EnvironmentUnavailable;
     var detection = java_runtime.detect(
         service.allocator,
@@ -131,7 +136,7 @@ pub fn execute(service: *Service, input: Input, reporter: Reporter) ExecuteError
     defer detection.deinit();
     const runtime = java_runtime.selectCompatible(detection, required_major, target.arch) catch return error.JavaIncompatible;
     var launch = launch_plan.build(service.allocator, .{
-        .metadata = metadata.value,
+        .metadata = metadata_value.*,
         .install = install.value,
         .runtime = runtime,
         .root_directory = directory_absolute,

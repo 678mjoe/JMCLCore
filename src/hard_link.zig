@@ -124,14 +124,14 @@ pub fn absolutePathAlloc(
     io: std.Io,
     dir: std.Io.Dir,
     relative_path: []const u8,
-) ![]u8 {
+) ![:0]u8 {
     if (builtin.os.tag != .windows) return dir.realPathFileAlloc(io, relative_path, allocator);
     const wide = if (std.mem.eql(u8, relative_path, "."))
         try directoryPathWindows(allocator, dir)
     else
         try pathFromDirWindows(allocator, dir, relative_path);
     defer allocator.free(wide);
-    return std.unicode.wtf16LeToWtf8Alloc(allocator, wide);
+    return std.unicode.wtf16LeToWtf8AllocZ(allocator, wide);
 }
 
 pub fn syncFile(io: std.Io, file: std.Io.File) !void {
@@ -217,4 +217,14 @@ test "creates a hard link" {
     const destination_stat = try temporary.dir.statFile(io, "destination", .{});
     try std.testing.expectEqual(source_stat.inode, destination_stat.inode);
     try std.testing.expect(source_stat.nlink >= 2);
+}
+
+test "absolute path allocation retains its sentinel" {
+    const io = std.testing.io;
+    var temporary = std.testing.tmpDir(.{});
+    defer temporary.cleanup();
+    const path = try absolutePathAlloc(std.testing.allocator, io, temporary.dir, ".");
+    defer std.testing.allocator.free(path);
+    try std.testing.expect(path.len != 0);
+    try std.testing.expectEqual(@as(u8, 0), path[path.len]);
 }

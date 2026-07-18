@@ -22,6 +22,7 @@ const VersionGetParams = struct {
 
 const InstallPlanParams = struct {
     id: []const u8,
+    fabric_loader: ?[]const u8 = null,
     source: core.DownloadSource = .official,
     os: ?core.install_plan.OperatingSystem = null,
     arch: ?core.install_plan.Architecture = null,
@@ -29,6 +30,7 @@ const InstallPlanParams = struct {
 
 const InstallExecuteParams = struct {
     id: []const u8,
+    fabric_loader: ?[]const u8 = null,
     directory: []const u8 = ".minecraft",
     store_directory: []const u8 = core.artifact_store.default_directory,
     source: core.DownloadSource = .official,
@@ -40,6 +42,7 @@ const InstallExecuteParams = struct {
 
 const InstallPrepareParams = struct {
     id: []const u8,
+    fabric_loader: ?[]const u8 = null,
     directory: []const u8 = ".minecraft",
     source: core.DownloadSource = .official,
     os: ?core.install_plan.OperatingSystem = null,
@@ -59,6 +62,7 @@ const JavaSelectParams = struct {
 
 const LaunchPlanParams = struct {
     id: []const u8,
+    fabric_loader: ?[]const u8 = null,
     directory: []const u8 = ".minecraft",
     natives_directory: []const u8,
     auth: core.launch_plan.Auth,
@@ -70,6 +74,7 @@ const LaunchPlanParams = struct {
 
 const LaunchExecuteParams = struct {
     id: []const u8,
+    fabric_loader: ?[]const u8 = null,
     directory: []const u8 = ".minecraft",
     auth: core.launch_plan.Auth,
     options: core.launch_plan.Options = .{},
@@ -831,6 +836,7 @@ fn writeLaunchExecuteResult(
         service,
         .{
             .id = input.id,
+            .fabric_loader = input.fabric_loader,
             .directory = input.directory,
             .auth = input.auth,
             .options = input.options,
@@ -910,7 +916,10 @@ fn writeLaunchPlanResult(
         .arch = input.arch orelse host.arch,
     };
 
-    var metadata = service.fetchVersionMetadata(input.id, input.source) catch |err| {
+    var metadata = service.resolveMetadata(.{
+        .id = input.id,
+        .fabric_loader = input.fabric_loader,
+    }, input.source) catch |err| {
         switch (err) {
             error.VersionNotFound => try writeError(writer, request_id, "VERSION_NOT_FOUND", "The requested version is not in the selected manifest"),
             else => try writeError(writer, request_id, "METADATA_ERROR", "Failed to resolve version metadata"),
@@ -919,7 +928,8 @@ fn writeLaunchPlanResult(
     };
     defer metadata.deinit();
 
-    const asset_document: ?std.json.Parsed(core.asset_index.Index) = if (metadata.value.assetIndex) |descriptor|
+    const metadata_value = metadata.value();
+    const asset_document: ?std.json.Parsed(core.asset_index.Index) = if (metadata_value.assetIndex) |descriptor|
         service.fetchAssetIndex(descriptor, input.source) catch {
             try writeError(writer, request_id, "ASSET_INDEX_ERROR", "Failed to resolve the asset index");
             return;
@@ -929,7 +939,7 @@ fn writeLaunchPlanResult(
     defer if (asset_document) |document| document.deinit();
     var install = core.install_plan.build(
         service.allocator,
-        metadata.value,
+        metadata_value.*,
         if (asset_document) |document| document.value else null,
         input.source,
         target,
@@ -939,7 +949,7 @@ fn writeLaunchPlanResult(
     };
     defer install.deinit();
 
-    const required_major = core.java_runtime.requiredMajor(metadata.value) catch {
+    const required_major = core.java_runtime.requiredMajor(metadata_value.*) catch {
         try writeError(writer, request_id, "INVALID_METADATA", "Version metadata contains an invalid Java requirement");
         return;
     };
@@ -962,7 +972,7 @@ fn writeLaunchPlanResult(
     };
 
     var launch = core.launch_plan.build(service.allocator, .{
-        .metadata = metadata.value,
+        .metadata = metadata_value.*,
         .install = install.value,
         .runtime = runtime,
         .root_directory = input.directory,
@@ -1168,7 +1178,10 @@ fn writeInstallPrepareResult(
         .os = params.value.os orelse host.os,
         .arch = params.value.arch orelse host.arch,
     };
-    var plan = service.createInstallPlan(params.value.id, params.value.source, target) catch |err| {
+    var plan = service.createInstallPlanForSelection(.{
+        .id = params.value.id,
+        .fabric_loader = params.value.fabric_loader,
+    }, params.value.source, target) catch |err| {
         try writeInstallPlanningError(writer, request_id, err);
         return;
     };
@@ -1274,7 +1287,10 @@ fn writeInstallExecuteResult(
         .arch = params.value.arch orelse host.arch,
     };
 
-    var plan = service.createInstallPlan(params.value.id, params.value.source, target) catch |err| {
+    var plan = service.createInstallPlanForSelection(.{
+        .id = params.value.id,
+        .fabric_loader = params.value.fabric_loader,
+    }, params.value.source, target) catch |err| {
         try writeInstallPlanningError(writer, request_id, err);
         return;
     };
@@ -1464,7 +1480,10 @@ fn writeInstallPlanResult(
         .arch = params.value.arch orelse host.arch,
     };
 
-    var plan = service.createInstallPlan(params.value.id, params.value.source, target) catch |err| {
+    var plan = service.createInstallPlanForSelection(.{
+        .id = params.value.id,
+        .fabric_loader = params.value.fabric_loader,
+    }, params.value.source, target) catch |err| {
         switch (err) {
             error.VersionNotFound => try writeError(writer, request_id, "VERSION_NOT_FOUND", "The requested version is not in the selected manifest"),
             error.MetadataHashMismatch, error.AssetIndexHashMismatch => try writeError(writer, request_id, "INTEGRITY_ERROR", "Downloaded metadata failed SHA-1 verification"),

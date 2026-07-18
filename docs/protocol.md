@@ -60,6 +60,19 @@ ID. One invalid request does not terminate the session.
 | `account.microsoft.get` | Read one public Microsoft account record. |
 | `account.microsoft.delete` | Remove one public Microsoft account record. |
 
+## Fabric Selection
+
+`install.plan`, `install.execute`, `install.prepare`, `launch.plan`, and
+`launch.execute` accept an optional `fabric_loader` string alongside the
+Minecraft `id`. It pins the Fabric Loader version for that request:
+
+```json
+{"protocol":1,"id":"fabric-plan","method":"install.plan","params":{"id":"1.21.1","fabric_loader":"0.16.10"}}
+```
+
+The core resolves and verifies the official Fabric profile before emitting a
+plan. Fabric API and third-party mod downloads are outside this protocol scope.
+
 ## `version.list`
 
 All parameters are optional. `type` accepts `release`, `snapshot`, `old_beta`,
