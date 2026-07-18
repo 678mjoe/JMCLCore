@@ -10,6 +10,8 @@ pub const asset_index = @import("asset_index.zig");
 pub const fabric = @import("fabric.zig");
 pub const neoforge = @import("neoforge.zig");
 pub const neoforge_executor = @import("neoforge_executor.zig");
+pub const forge = @import("forge.zig");
+pub const forge_executor = @import("forge_executor.zig");
 pub const zip_reader = @import("zip_reader.zig");
 pub const DownloadSource = @import("download_source.zig").DownloadSource;
 pub const install_plan = @import("install_plan.zig");
@@ -35,6 +37,8 @@ test {
     _ = fabric;
     _ = neoforge;
     _ = neoforge_executor;
+    _ = forge;
+    _ = forge_executor;
     _ = zip_reader;
     _ = DownloadSource;
     _ = install_plan;

@@ -4,9 +4,9 @@ JMCL Core supports installing and launching an empty NeoForge client. A NeoForge
 instance pins both its Minecraft version and its exact NeoForge version. It does
 not include any third-party mods.
 
-NeoForge cannot be combined with Fabric on the same instance. The instance
-manifest records `neoforge_version` when selected; existing manifests without
-that optional field are unaffected.
+NeoForge cannot be combined with Fabric or Forge on the same instance. The
+instance manifest records `neoforge_version` when selected; existing manifests
+without that optional field are unaffected.
 
 ## Create An Instance
 

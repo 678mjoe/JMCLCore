@@ -77,10 +77,10 @@ plan. Fabric API and third-party mod downloads are outside this protocol scope.
 ## NeoForge Selection
 
 The same five methods accept an optional `neoforge_version` string instead of
-`fabric_loader`; the two cannot be combined. `install.execute` with
-`neoforge_version` also accepts optional `java_paths` and runs the NeoForge
-processor chain after the download stage. Its result then includes
-`processors_run` and the `patched_client` SHA-1:
+`fabric_loader`; at most one loader field may be set per request.
+`install.execute` with `neoforge_version` also accepts optional `java_paths`
+and runs the NeoForge processor chain after the download stage. Its result then
+includes `processors_run` and the `patched_client` SHA-1:
 
 ```json
 {"protocol":1,"id":"neoforge-install","method":"install.execute","params":{"id":"1.20.4","neoforge_version":"20.4.251"}}
@@ -88,6 +88,21 @@ processor chain after the download stage. Its result then includes
 
 See `docs/neoforge.md` for the two-stage installation and processor security
 boundaries.
+
+## Forge Selection
+
+The same five methods accept an optional `forge_version` string alongside the
+Minecraft `id`, mutually exclusive with `fabric_loader` and `neoforge_version`.
+`install.execute` with `forge_version` runs the Forge processor chain after the
+download stage, verifies the patched client against the install profile's
+declared checksum, and reports `processors_run` and the `patched_client`
+SHA-1:
+
+```json
+{"protocol":1,"id":"forge-install","method":"install.execute","params":{"id":"1.20.4","forge_version":"49.2.8"}}
+```
+
+See `docs/forge.md` for details.
 
 ## `store.gc`
 

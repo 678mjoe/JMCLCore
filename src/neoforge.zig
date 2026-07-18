@@ -256,13 +256,17 @@ pub fn processorApplies(processor: Processor, side: Side) bool {
     return false;
 }
 
-pub fn patchedClientPathAlloc(allocator: std.mem.Allocator, profile: InstallProfile) ![]u8 {
+pub fn patchedClientCoordinate(profile: InstallProfile) ![]const u8 {
     const entry = profile.data.map.get("PATCHED") orelse return error.MissingPatchedData;
     const value = dataValueForSide(entry, .client);
-    const coordinate = switch (classifyDataValue(value)) {
+    return switch (classifyDataValue(value)) {
         .coordinate => |coordinate| coordinate,
-        else => return error.MissingPatchedData,
+        else => error.MissingPatchedData,
     };
+}
+
+pub fn patchedClientPathAlloc(allocator: std.mem.Allocator, profile: InstallProfile) ![]u8 {
+    const coordinate = try patchedClientCoordinate(profile);
     const path = try artifactPathAlloc(allocator, coordinate);
     defer allocator.free(path);
     return std.fmt.allocPrint(allocator, "libraries/{s}", .{path});

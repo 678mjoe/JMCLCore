@@ -16,6 +16,7 @@ pub const max_process_output_bytes: usize = 16 * 1024 * 1024;
 pub const Options = struct {
     java_paths: []const []const u8 = &.{},
     required_major: u16 = 0,
+    expected_patched_sha1: ?[]const u8 = null,
 };
 
 pub const Status = enum { patched, cached };
@@ -81,13 +82,43 @@ pub fn run(
     reporter: ?Reporter,
 ) !Summary {
     try neoforge.validateVersionId(neoforge_version);
+    const support_relative = try std.fmt.allocPrint(allocator, ".jmcl/neoforge/{s}", .{neoforge_version});
+    defer allocator.free(support_relative);
+    return runLayout(
+        allocator,
+        io,
+        environ_map,
+        minecraft_dir,
+        store,
+        support_relative,
+        version_id,
+        options,
+        reporter,
+        "neoforge",
+    );
+}
+
+/// Runs a mod-loader installer processor chain whose installer archive and
+/// state live under `support_relative` inside the Minecraft directory.
+pub fn runLayout(
+    allocator: std.mem.Allocator,
+    io: std.Io,
+    environ_map: ?*const std.process.Environ.Map,
+    minecraft_dir: std.Io.Dir,
+    store: std.Io.Dir,
+    support_relative: []const u8,
+    version_id: []const u8,
+    options: Options,
+    reporter: ?Reporter,
+    loader_name: []const u8,
+) !Summary {
+    try neoforge.validateRelativePath(support_relative);
     try neoforge.validateVersionId(version_id);
 
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
     const scratch = arena.allocator();
 
-    const support_relative = try std.fmt.allocPrint(scratch, ".jmcl/neoforge/{s}", .{neoforge_version});
     const installer_relative = try std.fmt.allocPrint(scratch, "{s}/installer.jar", .{support_relative});
     const installer_bytes = minecraft_dir.readFileAlloc(io, installer_relative, allocator, .limited(neoforge.max_installer_bytes + 1)) catch |err| switch (err) {
         error.FileNotFound => return error.InstallerArchiveMissing,
@@ -109,7 +140,7 @@ pub fn run(
 
     const patched_relative = try neoforge.patchedClientPathAlloc(scratch, profile);
 
-    if (try readState(allocator, io, minecraft_dir, neoforge_version)) |state| {
+    if (try readState(allocator, io, minecraft_dir, support_relative)) |state| {
         if (artifact_store.verify(minecraft_dir, io, patched_relative, state.patched_sha1, state.patched_size) catch false) {
             return .{
                 .status = .cached,
@@ -200,6 +231,7 @@ pub fn run(
             java.executable,
             processor,
             resolver,
+            loader_name,
         );
     }
 
@@ -212,12 +244,16 @@ pub fn run(
     const patched_stat = try patched_file.stat(io);
     const patched_sha1 = try std.fmt.allocPrint(allocator, "{s}", .{std.fmt.bytesToHex(patched_digest, .lower)});
     defer allocator.free(patched_sha1);
+    if (options.expected_patched_sha1) |expected| {
+        try neoforge.validateSha1(expected);
+        if (!std.ascii.eqlIgnoreCase(patched_sha1, expected)) return error.PatchedHashMismatch;
+    }
 
     var object_path_buffer: [64]u8 = undefined;
     const object_path = try artifact_store.objectPath(patched_sha1, &object_path_buffer);
     _ = try artifact_store.importObject(allocator, io, store, object_path, minecraft_dir, patched_relative);
     _ = try artifact_store.materialize(allocator, io, store, object_path, minecraft_dir, patched_relative, true);
-    try writeState(io, minecraft_dir, neoforge_version, patched_sha1, patched_stat.size);
+    try writeState(io, minecraft_dir, support_relative, patched_sha1, patched_stat.size);
 
     return .{
         .status = .patched,
@@ -275,6 +311,7 @@ fn runProcessor(
     java_executable: []const u8,
     processor: neoforge.Processor,
     resolver: neoforge.PlaceholderResolver,
+    loader_name: []const u8,
 ) !void {
     const separator: []const u8 = if (@import("builtin").os.tag == .windows) ";" else ":";
     var classpath: std.ArrayList([]const u8) = .empty;
@@ -325,7 +362,7 @@ fn runProcessor(
     switch (result.term) {
         .exited => |code| {
             if (code != 0) {
-                std.debug.print("neoforge processor {s} exited {d}\n{s}\n", .{ processor.jar, code, result.stderr });
+                std.debug.print("{s} processor {s} exited {d}\n{s}\n", .{ loader_name, processor.jar, code, result.stderr });
                 return error.ProcessorFailed;
             }
         },
@@ -364,17 +401,17 @@ fn readMainClass(allocator: std.mem.Allocator, jar_bytes: []const u8) ![]const u
     return logical.toOwnedSlice();
 }
 
-fn statePathAlloc(allocator: std.mem.Allocator, neoforge_version: []const u8) ![]u8 {
-    return std.fmt.allocPrint(allocator, ".jmcl/neoforge/{s}/state.json", .{neoforge_version});
+fn statePathAlloc(allocator: std.mem.Allocator, support_relative: []const u8) ![]u8 {
+    return std.fmt.allocPrint(allocator, "{s}/state.json", .{support_relative});
 }
 
 fn readState(
     allocator: std.mem.Allocator,
     io: std.Io,
     minecraft_dir: std.Io.Dir,
-    neoforge_version: []const u8,
+    support_relative: []const u8,
 ) !?State {
-    const path = try statePathAlloc(allocator, neoforge_version);
+    const path = try statePathAlloc(allocator, support_relative);
     defer allocator.free(path);
     const bytes = minecraft_dir.readFileAlloc(io, path, allocator, .limited(4096)) catch |err| switch (err) {
         error.FileNotFound => return null,
@@ -398,12 +435,12 @@ fn readState(
 fn writeState(
     io: std.Io,
     minecraft_dir: std.Io.Dir,
-    neoforge_version: []const u8,
+    support_relative: []const u8,
     patched_sha1: []const u8,
     patched_size: u64,
 ) !void {
     var path_buffer: [512]u8 = undefined;
-    const path = try std.fmt.bufPrint(&path_buffer, ".jmcl/neoforge/{s}/state.json", .{neoforge_version});
+    const path = try std.fmt.bufPrint(&path_buffer, "{s}/state.json", .{support_relative});
     var atomic = try minecraft_dir.createFileAtomic(io, path, .{ .make_path = true, .replace = true });
     defer atomic.deinit(io);
     var buffer: [256]u8 = undefined;

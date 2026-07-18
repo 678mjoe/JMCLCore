@@ -13,6 +13,7 @@ pub const Manifest = struct {
     version_id: []const u8,
     fabric_loader: ?[]const u8 = null,
     neoforge_version: ?[]const u8 = null,
+    forge_version: ?[]const u8 = null,
     source: DownloadSource = .official,
 };
 
@@ -153,7 +154,14 @@ fn validateManifest(manifest: Manifest) !void {
     if (manifest.neoforge_version) |version| {
         if (version.len == 0 or version.len > 256) return error.InvalidNeoForgeVersion;
     }
-    if (manifest.fabric_loader != null and manifest.neoforge_version != null) return error.LoaderConflict;
+    if (manifest.forge_version) |version| {
+        if (version.len == 0 or version.len > 256) return error.InvalidForgeVersion;
+    }
+    var loaders: u8 = 0;
+    if (manifest.fabric_loader != null) loaders += 1;
+    if (manifest.neoforge_version != null) loaders += 1;
+    if (manifest.forge_version != null) loaders += 1;
+    if (loaders > 1) return error.LoaderConflict;
 }
 
 fn isLowerAlphaNumeric(byte: u8) bool {

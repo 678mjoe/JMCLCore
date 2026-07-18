@@ -14,6 +14,7 @@ pub const Input = struct {
     id: []const u8,
     fabric_loader: ?[]const u8 = null,
     neoforge_version: ?[]const u8 = null,
+    forge_version: ?[]const u8 = null,
     directory: []const u8 = ".minecraft",
     auth: launch_plan.Auth,
     options: launch_plan.Options = .{},
@@ -97,6 +98,7 @@ pub fn execute(service: *Service, input: Input, reporter: Reporter) ExecuteError
         .id = input.id,
         .fabric_loader = input.fabric_loader,
         .neoforge_version = input.neoforge_version,
+        .forge_version = input.forge_version,
     }, input.source) catch return error.MetadataFailed;
     defer metadata.deinit();
     const metadata_value = metadata.value();

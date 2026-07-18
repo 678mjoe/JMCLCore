@@ -67,10 +67,12 @@ the instance's selected Minecraft version. Fabric API and third-party mods are
 not installed automatically.
 
 Alternatively, an instance can pin an exact NeoForge version in its optional
-`neoforge_version` field via `instance create --neoforge-version VERSION`. The
-two loader fields cannot be combined. NeoForge installation downloads the
-official installer and runs its client-side processor chain locally to produce
-the patched client JAR; see `docs/neoforge.md`.
+`neoforge_version` field via `instance create --neoforge-version VERSION`, or an
+exact Forge version in its optional `forge_version` field via
+`instance create --forge-version VERSION`. At most one loader field may be set.
+NeoForge and Forge installation download the official installer and run its
+client-side processor chain locally to produce the patched client JAR; see
+`docs/neoforge.md` and `docs/forge.md`.
 
 Instance launch currently supports the CLI offline identity and optional
 `--arch` and repeatable `--java PATH` candidates. Microsoft authentication will

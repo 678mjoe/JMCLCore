@@ -211,6 +211,7 @@ const LaunchExecuteCliOptions = struct {
     id: []const u8,
     fabric_loader: ?[]const u8 = null,
     neoforge_version: ?[]const u8 = null,
+    forge_version: ?[]const u8 = null,
     directory: []const u8 = ".minecraft",
     offline_name: ?[]const u8 = null,
     source: jmcl.DownloadSource = .official,
@@ -265,7 +266,7 @@ fn runLaunchExecute(
     stderr: *std.Io.Writer,
 ) !u8 {
     var options = parseLaunchExecuteOptions(service.allocator, args) catch {
-        try stderr.writeAll("usage: jmcl-core launch execute ID [--fabric-loader VERSION | --neoforge-version VERSION] [--directory PATH] --offline-name NAME [--source SOURCE] [--arch ARCH] [--java PATH]\n");
+        try stderr.writeAll("usage: jmcl-core launch execute ID [--fabric-loader VERSION | --neoforge-version VERSION | --forge-version VERSION] [--directory PATH] --offline-name NAME [--source SOURCE] [--arch ARCH] [--java PATH]\n");
         return 2;
     };
     defer options.deinit(service.allocator);
@@ -274,6 +275,7 @@ fn runLaunchExecute(
         options.id,
         options.fabric_loader,
         options.neoforge_version,
+        options.forge_version,
         options.directory,
         options.offline_name.?,
         options.source,
@@ -289,6 +291,7 @@ fn executeLaunch(
     id: []const u8,
     fabric_loader: ?[]const u8,
     neoforge_version: ?[]const u8,
+    forge_version: ?[]const u8,
     directory: []const u8,
     offline_name: []const u8,
     source: jmcl.DownloadSource,
@@ -305,6 +308,7 @@ fn executeLaunch(
             .id = id,
             .fabric_loader = fabric_loader,
             .neoforge_version = neoforge_version,
+            .forge_version = forge_version,
             .directory = directory,
             .auth = .{
                 .player_name = offline_name,
@@ -345,6 +349,8 @@ fn parseLaunchExecuteOptions(allocator: std.mem.Allocator, args: []const []const
             options.fabric_loader = value;
         } else if (std.mem.eql(u8, argument, "--neoforge-version")) {
             options.neoforge_version = value;
+        } else if (std.mem.eql(u8, argument, "--forge-version")) {
+            options.forge_version = value;
         } else if (std.mem.eql(u8, argument, "--offline-name")) {
             options.offline_name = value;
         } else if (std.mem.eql(u8, argument, "--source")) {
@@ -378,6 +384,7 @@ const InstanceCreateOptions = struct {
     version_id: ?[]const u8 = null,
     fabric_loader: ?[]const u8 = null,
     neoforge_version: ?[]const u8 = null,
+    forge_version: ?[]const u8 = null,
     name: ?[]const u8 = null,
     instances_directory: []const u8 = jmcl.instance_store.default_root,
     source: jmcl.DownloadSource = .official,
@@ -390,17 +397,21 @@ fn runInstanceCreate(
     stderr: *std.Io.Writer,
 ) !u8 {
     const options = parseInstanceCreateOptions(args) catch {
-        try stderr.writeAll("usage: jmcl-core instance create ID --version VERSION [--fabric-loader VERSION | --neoforge-version VERSION] [--name NAME] [--instances-directory PATH] [--source SOURCE]\n");
+        try stderr.writeAll("usage: jmcl-core instance create ID --version VERSION [--fabric-loader VERSION | --neoforge-version VERSION | --forge-version VERSION] [--name NAME] [--instances-directory PATH] [--source SOURCE]\n");
         return 2;
     };
-    if (options.fabric_loader != null and options.neoforge_version != null) {
-        try stderr.writeAll("--fabric-loader and --neoforge-version cannot be combined\n");
+    const loader_count: u8 = @as(u8, @intFromBool(options.fabric_loader != null)) +
+        @intFromBool(options.neoforge_version != null) +
+        @intFromBool(options.forge_version != null);
+    if (loader_count > 1) {
+        try stderr.writeAll("only one of --fabric-loader, --neoforge-version, or --forge-version may be given\n");
         return 2;
     }
     var metadata = service.resolveMetadataPreferred(.{
         .id = options.version_id.?,
         .fabric_loader = options.fabric_loader,
         .neoforge_version = options.neoforge_version,
+        .forge_version = options.forge_version,
     }, options.source) catch |err| {
         try stderr.print("failed to resolve Minecraft version: {s}\n", .{@errorName(err)});
         return 1;
@@ -417,6 +428,7 @@ fn runInstanceCreate(
         .version_id = options.version_id.?,
         .fabric_loader = options.fabric_loader,
         .neoforge_version = options.neoforge_version,
+        .forge_version = options.forge_version,
         .source = options.source,
     }) catch |err| {
         try stderr.print("failed to create instance: {s}\n", .{@errorName(err)});
@@ -443,6 +455,8 @@ fn parseInstanceCreateOptions(args: []const []const u8) !InstanceCreateOptions {
             options.fabric_loader = value;
         } else if (std.mem.eql(u8, argument, "--neoforge-version")) {
             options.neoforge_version = value;
+        } else if (std.mem.eql(u8, argument, "--forge-version")) {
+            options.forge_version = value;
         } else if (std.mem.eql(u8, argument, "--name")) {
             options.name = value;
         } else if (std.mem.eql(u8, argument, "--instances-directory")) {
@@ -661,6 +675,7 @@ fn runInstanceInstall(
         document.value.version_id,
         document.value.fabric_loader,
         document.value.neoforge_version,
+        document.value.forge_version,
         path,
         options.source orelse document.value.source,
         options.store_directory,
@@ -748,6 +763,7 @@ fn runInstanceLaunch(
         document.value.version_id,
         document.value.fabric_loader,
         document.value.neoforge_version,
+        document.value.forge_version,
         path,
         options.offline_name.?,
         document.value.source,
@@ -974,6 +990,7 @@ const InstallPrepareCliOptions = struct {
     id: []const u8,
     fabric_loader: ?[]const u8 = null,
     neoforge_version: ?[]const u8 = null,
+    forge_version: ?[]const u8 = null,
     directory: []const u8 = ".minecraft",
     source: jmcl.DownloadSource = .official,
     os: ?jmcl.install_plan.OperatingSystem = null,
@@ -987,7 +1004,7 @@ fn runInstallPrepare(
     stderr: *std.Io.Writer,
 ) !u8 {
     const options = parseInstallPrepareOptions(args) catch {
-        try stderr.writeAll("usage: jmcl-core install prepare ID [--fabric-loader VERSION | --neoforge-version VERSION] [--directory PATH] [--source SOURCE] [--os OS] [--arch ARCH]\n");
+        try stderr.writeAll("usage: jmcl-core install prepare ID [--fabric-loader VERSION | --neoforge-version VERSION | --forge-version VERSION] [--directory PATH] [--source SOURCE] [--os OS] [--arch ARCH]\n");
         return 2;
     };
     const host = jmcl.install_plan.Target.host() catch |err| {
@@ -1049,6 +1066,9 @@ fn parseInstallPrepareOptions(args: []const []const u8) !InstallPrepareCliOption
         } else if (std.mem.eql(u8, argument, "--neoforge-version")) {
             if (value.len == 0) return error.InvalidArguments;
             options.neoforge_version = value;
+        } else if (std.mem.eql(u8, argument, "--forge-version")) {
+            if (value.len == 0) return error.InvalidArguments;
+            options.forge_version = value;
         } else if (std.mem.eql(u8, argument, "--source")) {
             options.source = jmcl.DownloadSource.parse(value) orelse return error.InvalidArguments;
         } else if (std.mem.eql(u8, argument, "--os")) {
@@ -1067,6 +1087,7 @@ const InstallExecuteCliOptions = struct {
     id: []const u8,
     fabric_loader: ?[]const u8 = null,
     neoforge_version: ?[]const u8 = null,
+    forge_version: ?[]const u8 = null,
     directory: []const u8 = ".minecraft",
     store_directory: []const u8 = jmcl.artifact_store.default_directory,
     source: jmcl.DownloadSource = .official,
@@ -1154,7 +1175,7 @@ fn runInstallExecute(
     stderr: *std.Io.Writer,
 ) !u8 {
     const options = parseInstallExecuteOptions(args) catch {
-        try stderr.writeAll("usage: jmcl-core install execute ID [--fabric-loader VERSION | --neoforge-version VERSION] [--directory PATH] [--store-directory PATH] [--source SOURCE] [--os OS] [--arch ARCH] [--workers N] [--retries N]\n");
+        try stderr.writeAll("usage: jmcl-core install execute ID [--fabric-loader VERSION | --neoforge-version VERSION | --forge-version VERSION] [--directory PATH] [--store-directory PATH] [--source SOURCE] [--os OS] [--arch ARCH] [--workers N] [--retries N]\n");
         return 2;
     };
     return executeInstall(
@@ -1162,6 +1183,7 @@ fn runInstallExecute(
         options.id,
         options.fabric_loader,
         options.neoforge_version,
+        options.forge_version,
         options.directory,
         options.source,
         options.store_directory,
@@ -1180,6 +1202,7 @@ fn executeInstall(
     id: []const u8,
     fabric_loader: ?[]const u8,
     neoforge_version: ?[]const u8,
+    forge_version: ?[]const u8,
     directory: []const u8,
     source: jmcl.DownloadSource,
     store_directory: []const u8,
@@ -1204,6 +1227,7 @@ fn executeInstall(
         .id = id,
         .fabric_loader = fabric_loader,
         .neoforge_version = neoforge_version,
+        .forge_version = forge_version,
     }, source, target) catch |err| {
         try stderr.print("failed to create install plan from {s}: {s}\n", .{
             source.displayName(),
@@ -1266,6 +1290,30 @@ fn executeInstall(
         try stdout.print("processors\t{d}\n", .{patched.processors_run});
         try stdout.print("patchedClient\t{s}\n", .{patched.patched_sha1});
     }
+    if (forge_version) |loader_version| {
+        var processor_reporter: CliProcessorReporter = .{ .writer = stderr };
+        const patched = jmcl.forge_executor.run(
+            service.allocator,
+            service.io,
+            service.environ_map,
+            root,
+            store,
+            id,
+            loader_version,
+            plan.value.version_id,
+            .{
+                .java_paths = java_paths,
+                .required_major = plan.value.java_major_version,
+            },
+            .{ .context = &processor_reporter, .callback = CliProcessorReporter.callback },
+        ) catch |err| {
+            try stderr.print("Forge processor chain failed: {s}\n", .{@errorName(err)});
+            return 1;
+        };
+        defer service.allocator.free(patched.patched_sha1);
+        try stdout.print("processors\t{d}\n", .{patched.processors_run});
+        try stdout.print("patchedClient\t{s}\n", .{patched.patched_sha1});
+    }
 
     try writeSourceNotice(stdout, source);
     try stdout.print("version\t{s}\n", .{id});
@@ -1296,6 +1344,9 @@ fn parseInstallExecuteOptions(args: []const []const u8) !InstallExecuteCliOption
         } else if (std.mem.eql(u8, argument, "--neoforge-version")) {
             if (value.len == 0) return error.InvalidArguments;
             options.neoforge_version = value;
+        } else if (std.mem.eql(u8, argument, "--forge-version")) {
+            if (value.len == 0) return error.InvalidArguments;
+            options.forge_version = value;
         } else if (std.mem.eql(u8, argument, "--store-directory")) {
             if (value.len == 0) return error.InvalidArguments;
             options.store_directory = value;
@@ -1323,6 +1374,7 @@ const InstallPlanCliOptions = struct {
     id: []const u8,
     fabric_loader: ?[]const u8 = null,
     neoforge_version: ?[]const u8 = null,
+    forge_version: ?[]const u8 = null,
     source: jmcl.DownloadSource = .official,
     os: ?jmcl.install_plan.OperatingSystem = null,
     arch: ?jmcl.install_plan.Architecture = null,
@@ -1336,7 +1388,7 @@ fn runInstallPlan(
     stderr: *std.Io.Writer,
 ) !u8 {
     const options = parseInstallPlanOptions(args) catch {
-        try stderr.writeAll("usage: jmcl-core install plan ID [--fabric-loader VERSION | --neoforge-version VERSION] [--source SOURCE] [--os OS] [--arch ARCH] [--json]\n");
+        try stderr.writeAll("usage: jmcl-core install plan ID [--fabric-loader VERSION | --neoforge-version VERSION | --forge-version VERSION] [--source SOURCE] [--os OS] [--arch ARCH] [--json]\n");
         return 2;
     };
     const host = jmcl.install_plan.Target.host() catch |err| {
@@ -1352,6 +1404,7 @@ fn runInstallPlan(
         .id = options.id,
         .fabric_loader = options.fabric_loader,
         .neoforge_version = options.neoforge_version,
+        .forge_version = options.forge_version,
     }, options.source, target) catch |err| {
         try stderr.print("failed to create install plan from {s}: {s}\n", .{
             options.source.displayName(),
@@ -1403,6 +1456,10 @@ fn parseInstallPlanOptions(args: []const []const u8) !InstallPlanCliOptions {
         } else if (std.mem.eql(u8, argument, "--neoforge-version")) {
             if (index + 1 >= args.len or args[index + 1].len == 0) return error.InvalidArguments;
             options.neoforge_version = args[index + 1];
+            index += 2;
+        } else if (std.mem.eql(u8, argument, "--forge-version")) {
+            if (index + 1 >= args.len or args[index + 1].len == 0) return error.InvalidArguments;
+            options.forge_version = args[index + 1];
             index += 2;
         } else if (std.mem.eql(u8, argument, "--source")) {
             if (index + 1 >= args.len) return error.InvalidArguments;

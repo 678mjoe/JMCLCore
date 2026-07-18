@@ -5,6 +5,7 @@ const account_store = @import("account_store.zig");
 const asset_index = @import("asset_index.zig");
 const core = @import("root.zig");
 const fabric = @import("fabric.zig");
+const forge = @import("forge.zig");
 const install_plan = @import("install_plan.zig");
 const neoforge = @import("neoforge.zig");
 const version_manifest = @import("version_manifest.zig");
@@ -20,6 +21,7 @@ pub const VersionSelection = struct {
     id: []const u8,
     fabric_loader: ?[]const u8 = null,
     neoforge_version: ?[]const u8 = null,
+    forge_version: ?[]const u8 = null,
 };
 
 
@@ -39,10 +41,21 @@ pub const NeoForgeResolvedMetadata = struct {
     allocator: std.mem.Allocator,
 };
 
+pub const ForgeResolvedMetadata = struct {
+    parent: std.json.Parsed(version_metadata.Metadata),
+    version_profile: std.json.Parsed(forge.VersionProfile),
+    install_profile: std.json.Parsed(forge.InstallProfile),
+    overlay: forge.Overlay,
+    installer_sha1: []const u8,
+    installer_size: u64,
+    allocator: std.mem.Allocator,
+};
+
 pub const ResolvedMetadata = union(enum) {
     vanilla: std.json.Parsed(version_metadata.Metadata),
     fabric: FabricResolvedMetadata,
     neoforge: NeoForgeResolvedMetadata,
+    forge: ForgeResolvedMetadata,
 
     pub fn deinit(resolved: *ResolvedMetadata) void {
         switch (resolved.*) {
@@ -59,6 +72,13 @@ pub const ResolvedMetadata = union(enum) {
                 document.parent.deinit();
                 document.allocator.free(document.installer_sha1);
             },
+            .forge => |*document| {
+                document.overlay.deinit();
+                document.install_profile.deinit();
+                document.version_profile.deinit();
+                document.parent.deinit();
+                document.allocator.free(document.installer_sha1);
+            },
         }
         resolved.* = undefined;
     }
@@ -68,6 +88,7 @@ pub const ResolvedMetadata = union(enum) {
             .vanilla => |*document| &document.value,
             .fabric => |*document| &document.overlay.value,
             .neoforge => |*document| &document.overlay.value,
+            .forge => |*document| &document.overlay.value,
         };
     }
 };
@@ -257,11 +278,16 @@ pub const Service = struct {
         selection: VersionSelection,
         source: core.DownloadSource,
     ) !ResolvedMetadata {
-        if (selection.fabric_loader != null and selection.neoforge_version != null) return error.LoaderConflict;
-        if (selection.fabric_loader == null and selection.neoforge_version == null) {
+        var loaders: u8 = 0;
+        if (selection.fabric_loader != null) loaders += 1;
+        if (selection.neoforge_version != null) loaders += 1;
+        if (selection.forge_version != null) loaders += 1;
+        if (loaders > 1) return error.LoaderConflict;
+        if (loaders == 0) {
             return .{ .vanilla = try self.fetchVersionMetadata(selection.id, source) };
         }
         if (selection.neoforge_version) |neoforge_version| return self.resolveNeoForgeMetadata(selection.id, neoforge_version, source);
+        if (selection.forge_version) |forge_version| return self.resolveForgeMetadata(selection.id, forge_version, source);
 
         var parent = try self.fetchVersionMetadata(selection.id, source);
         errdefer parent.deinit();
@@ -374,6 +400,77 @@ pub const Service = struct {
         } };
     }
 
+    fn resolveForgeMetadata(
+        self: Service,
+        minecraft_version: []const u8,
+        forge_version: []const u8,
+        source: core.DownloadSource,
+    ) !ResolvedMetadata {
+        try forge.validateForgeVersion(forge_version);
+        var parent = try self.fetchVersionMetadata(minecraft_version, source);
+        errdefer parent.deinit();
+
+        const installer_url = try forge.installerUrlAlloc(self.allocator, minecraft_version, forge_version);
+        defer self.allocator.free(installer_url);
+        var installer = try self.fetchBody(installer_url, neoforge.max_installer_bytes);
+        defer installer.deinit();
+
+        const version_source = (try zip_reader.readEntryAlloc(
+            self.allocator,
+            installer.content,
+            "version.json",
+            neoforge.max_version_profile_bytes,
+        )) orelse return error.ForgeVersionProfileMissing;
+        defer self.allocator.free(version_source);
+        const install_source = (try zip_reader.readEntryAlloc(
+            self.allocator,
+            installer.content,
+            "install_profile.json",
+            neoforge.max_install_profile_bytes,
+        )) orelse return error.ForgeInstallProfileMissing;
+        defer self.allocator.free(install_source);
+
+        var install_profile = try forge.parseInstallProfile(self.allocator, install_source);
+        errdefer install_profile.deinit();
+        const patched_coordinate = try neoforge.patchedClientCoordinate(install_profile.value);
+        var version_profile = try forge.parseVersionProfile(self.allocator, version_source, patched_coordinate);
+        errdefer version_profile.deinit();
+
+        if (!std.mem.eql(u8, install_profile.value.minecraft, minecraft_version)) return error.ForgeParentMismatch;
+        if (!std.mem.eql(u8, version_profile.value.inheritsFrom, minecraft_version)) return error.ForgeParentMismatch;
+        const expected_id = try forge.profileIdAlloc(self.allocator, minecraft_version, forge_version);
+        defer self.allocator.free(expected_id);
+        if (!std.mem.eql(u8, version_profile.value.id, expected_id)) return error.ForgeProfileIdMismatch;
+        if (!std.mem.eql(u8, install_profile.value.version, expected_id)) return error.ForgeProfileIdMismatch;
+
+        const patched_path = try neoforge.patchedClientPathAlloc(self.allocator, install_profile.value);
+        defer self.allocator.free(patched_path);
+        const overlay = try forge.merge(
+            self.allocator,
+            parent.value,
+            version_profile.value,
+            patched_coordinate,
+            patched_path,
+        );
+
+        var installer_digest: [std.crypto.hash.Sha1.digest_length]u8 = undefined;
+        std.crypto.hash.Sha1.hash(installer.content, &installer_digest, .{});
+        const installer_sha1 = try std.fmt.allocPrint(self.allocator, "{s}", .{
+            std.fmt.bytesToHex(installer_digest, .lower),
+        });
+        errdefer self.allocator.free(installer_sha1);
+
+        return .{ .forge = .{
+            .parent = parent,
+            .version_profile = version_profile,
+            .install_profile = install_profile,
+            .overlay = overlay,
+            .installer_sha1 = installer_sha1,
+            .installer_size = installer.content.len,
+            .allocator = self.allocator,
+        } };
+    }
+
     pub fn createInstallPlan(
         self: Service,
         version_id: []const u8,
@@ -436,6 +533,18 @@ pub const Service = struct {
                     extras.files,
                 );
             },
+            .forge => |*document| {
+                var extras = try self.buildForgeExtras(selection.id, selection.forge_version.?, document);
+                defer extras.deinit();
+                return install_plan.buildWithExtras(
+                    self.allocator,
+                    metadata.*,
+                    if (asset_document) |document_value| document_value.value else null,
+                    download_source,
+                    target,
+                    extras.files,
+                );
+            },
             else => return install_plan.build(
                 self.allocator,
                 metadata.*,
@@ -446,12 +555,12 @@ pub const Service = struct {
         }
     }
 
-    const NeoForgeExtras = struct {
+    const InstallerExtras = struct {
         allocator: std.mem.Allocator,
         arena: *std.heap.ArenaAllocator,
         files: []install_plan.File,
 
-        fn deinit(extras: *NeoForgeExtras) void {
+        fn deinit(extras: *InstallerExtras) void {
             const allocator = extras.arena.child_allocator;
             extras.arena.deinit();
             allocator.destroy(extras.arena);
@@ -463,7 +572,7 @@ pub const Service = struct {
         self: Service,
         neoforge_version: []const u8,
         document: *const NeoForgeResolvedMetadata,
-    ) !NeoForgeExtras {
+    ) !InstallerExtras {
         const arena = try self.allocator.create(std.heap.ArenaAllocator);
         errdefer self.allocator.destroy(arena);
         arena.* = std.heap.ArenaAllocator.init(self.allocator);
@@ -475,6 +584,49 @@ pub const Service = struct {
         const installer_url = try neoforge.installerUrlAlloc(scratch, neoforge_version);
         files[0] = .{
             .path = try std.fmt.allocPrint(scratch, ".jmcl/neoforge/{s}/installer.jar", .{neoforge_version}),
+            .url = installer_url,
+            .fallback_url = null,
+            .sha1 = document.installer_sha1,
+            .size = document.installer_size,
+            .usage = .{ .library = true },
+        };
+        for (profile_libraries, 1..) |library, index| {
+            const artifact = library.downloads.?.artifact.?;
+            const artifact_path = try neoforge.artifactPathAlloc(scratch, library.name);
+            files[index] = .{
+                .path = try std.fmt.allocPrint(scratch, "libraries/{s}", .{artifact_path}),
+                .url = artifact.url,
+                .fallback_url = null,
+                .sha1 = artifact.sha1,
+                .size = artifact.size,
+                .usage = .{ .library = true },
+            };
+        }
+        return .{
+            .allocator = self.allocator,
+            .arena = arena,
+            .files = files,
+        };
+    }
+
+    fn buildForgeExtras(
+        self: Service,
+        minecraft_version: []const u8,
+        forge_version: []const u8,
+        document: *const ForgeResolvedMetadata,
+    ) !InstallerExtras {
+        const arena = try self.allocator.create(std.heap.ArenaAllocator);
+        errdefer self.allocator.destroy(arena);
+        arena.* = std.heap.ArenaAllocator.init(self.allocator);
+        errdefer arena.deinit();
+        const scratch = arena.allocator();
+
+        const profile_libraries = document.install_profile.value.libraries;
+        const files = try scratch.alloc(install_plan.File, profile_libraries.len + 1);
+        const installer_url = try forge.installerUrlAlloc(scratch, minecraft_version, forge_version);
+        const support_dir = try forge.supportDirAlloc(scratch, minecraft_version, forge_version);
+        files[0] = .{
+            .path = try std.fmt.allocPrint(scratch, "{s}/installer.jar", .{support_dir}),
             .url = installer_url,
             .fallback_url = null,
             .sha1 = document.installer_sha1,
