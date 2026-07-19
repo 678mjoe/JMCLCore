@@ -104,6 +104,23 @@ SHA-1:
 
 See `docs/forge.md` for details.
 
+## Mod Management
+
+`mods.list`, `mods.install`, `mods.remove`, and `mods.adopt` manage Modrinth
+mods inside a `.minecraft` directory. `mods.install` resolves the newest
+compatible release (or an exact `version_id`) plus its required dependencies
+against the given `minecraft_version` and `loader`, downloads through the
+verified content-addressed pipeline, and reports the installed entries:
+
+```json
+{"protocol":1,"id":"mods-install","method":"mods.install","params":{"directory":"/path/to/.minecraft","minecraft_version":"1.20.4","loader":"fabric","project":"sodium"}}
+```
+
+`loader` is one of `fabric`, `neoforge`, or `forge`. `mods.remove` takes
+exactly one of `project` or `file`. `mods.adopt` imports unmanaged `mods/`
+jars into the artifact store and registers them with the `manual` provider.
+See `docs/mods.md`.
+
 ## `store.gc`
 
 `store.gc` performs conservative cache reclamation. It defaults to dry-run mode

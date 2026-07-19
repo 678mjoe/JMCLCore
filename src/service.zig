@@ -1,12 +1,16 @@
 const std = @import("std");
+const artifact_store = @import("artifact_store.zig");
 const authentication = @import("authentication.zig");
 const authentication_http = @import("authentication_http.zig");
 const account_store = @import("account_store.zig");
 const asset_index = @import("asset_index.zig");
+const content_registry = @import("content_registry.zig");
 const core = @import("root.zig");
 const fabric = @import("fabric.zig");
 const forge = @import("forge.zig");
 const install_plan = @import("install_plan.zig");
+const install_executor = @import("installer.zig");
+const modrinth = @import("modrinth.zig");
 const neoforge = @import("neoforge.zig");
 const version_manifest = @import("version_manifest.zig");
 const version_metadata = @import("version_metadata.zig");
@@ -649,6 +653,502 @@ pub const Service = struct {
             .allocator = self.allocator,
             .arena = arena,
             .files = files,
+        };
+    }
+
+    pub const ModInstallOptions = struct {
+        workers: u8 = 8,
+        retries: u8 = 2,
+    };
+
+    pub const InstalledContent = struct {
+        file: []const u8,
+        sha1: []const u8,
+        size: u64,
+        slug: ?[]const u8,
+        as_dependency: bool,
+    };
+
+    pub const ContentInstallSummary = struct {
+        arena: *std.heap.ArenaAllocator,
+        installed: []InstalledContent,
+        skipped: usize,
+
+        pub fn deinit(summary: *ContentInstallSummary) void {
+            const allocator = summary.arena.child_allocator;
+            summary.arena.deinit();
+            allocator.destroy(summary.arena);
+            summary.* = undefined;
+        }
+    };
+
+    const ResolvedMod = struct {
+        project_id: []const u8,
+        slug: ?[]const u8,
+        version: modrinth.Version,
+        file: modrinth.VersionFile,
+        as_dependency: bool,
+    };
+
+    /// Resolves a Modrinth project and its required dependencies against the
+    /// instance's Minecraft version and loader, downloads every file through
+    /// the verified content-addressed pipeline, and registers the results in
+    /// the instance content registry.
+    pub fn installModrinthProject(
+        self: Service,
+        minecraft_dir: std.Io.Dir,
+        store: std.Io.Dir,
+        game_version: []const u8,
+        loader: modrinth.Loader,
+        project: []const u8,
+        version_id: ?[]const u8,
+        options: ModInstallOptions,
+        reporter: ?install_executor.Reporter,
+    ) !ContentInstallSummary {
+        try modrinth.validateProjectRef(project);
+        try modrinth.validateGameVersion(game_version);
+        if (version_id) |id| try modrinth.validateVersionId(id);
+
+        const arena = try self.allocator.create(std.heap.ArenaAllocator);
+        errdefer self.allocator.destroy(arena);
+        arena.* = std.heap.ArenaAllocator.init(self.allocator);
+        errdefer arena.deinit();
+        const scratch = arena.allocator();
+
+        var registry_document = try content_registry.load(self.allocator, self.io, minecraft_dir);
+        defer registry_document.deinit();
+
+        var resolved: std.ArrayList(ResolvedMod) = .empty;
+        var visited: std.StringHashMap(void) = .init(scratch);
+        var skipped: usize = 0;
+        try self.resolveModrinthMod(
+            scratch,
+            game_version,
+            loader,
+            project,
+            version_id,
+            false,
+            registry_document.value,
+            &resolved,
+            &visited,
+            &skipped,
+            0,
+        );
+
+        const files = try scratch.alloc(install_plan.File, resolved.items.len);
+        var total_size: u64 = 0;
+        for (resolved.items, 0..) |mod, index| {
+            const path = try std.fmt.allocPrint(scratch, "mods/{s}", .{mod.file.filename});
+            if (content_registry.findByFile(registry_document.value, path)) |existing| {
+                if (!std.ascii.eqlIgnoreCase(existing.sha1, mod.file.hashes.sha1)) {
+                    return error.ContentFileConflict;
+                }
+            }
+            files[index] = .{
+                .path = path,
+                .url = mod.file.url,
+                .fallback_url = null,
+                .sha1 = mod.file.hashes.sha1,
+                .size = mod.file.size,
+                .usage = .{ .mod = true },
+            };
+            total_size = std.math.add(u64, total_size, mod.file.size) catch return error.DownloadSizeOverflow;
+        }
+
+        const host = try install_plan.Target.host();
+        _ = try install_executor.execute(
+            self.allocator,
+            self.io,
+            self.environ_map,
+            minecraft_dir,
+            store,
+            .{
+                .version_id = game_version,
+                .source = .official,
+                .target = host,
+                .files = files,
+                .classpath = &.{},
+                .native_extractions = &.{},
+                .asset_projections = &.{},
+                .total_download_size = total_size,
+            },
+            .{ .workers = options.workers, .retries = options.retries },
+            reporter,
+        );
+
+        const old_entries = registry_document.value.entries;
+        const merged = try scratch.alloc(content_registry.Entry, old_entries.len + resolved.items.len);
+        @memcpy(merged[0..old_entries.len], old_entries);
+        const installed = try scratch.alloc(InstalledContent, resolved.items.len);
+        for (resolved.items, 0..) |mod, index| {
+            const file_path = files[index].path;
+            merged[old_entries.len + index] = .{
+                .kind = .mod,
+                .file = file_path,
+                .sha1 = mod.file.hashes.sha1,
+                .size = mod.file.size,
+                .source = .{
+                    .provider = .modrinth,
+                    .project_id = try scratch.dupe(u8, mod.project_id),
+                    .version_id = try scratch.dupe(u8, mod.version.id),
+                    .slug = if (mod.slug) |slug| try scratch.dupe(u8, slug) else null,
+                },
+                .enabled = true,
+                .as_dependency = mod.as_dependency,
+            };
+            installed[index] = .{
+                .file = file_path,
+                .sha1 = mod.file.hashes.sha1,
+                .size = mod.file.size,
+                .slug = mod.slug,
+                .as_dependency = mod.as_dependency,
+            };
+        }
+        try content_registry.save(self.io, minecraft_dir, .{ .entries = merged });
+
+        return .{
+            .arena = arena,
+            .installed = installed,
+            .skipped = skipped,
+        };
+    }
+
+    fn resolveModrinthMod(
+        self: Service,
+        scratch: std.mem.Allocator,
+        game_version: []const u8,
+        loader: modrinth.Loader,
+        project: []const u8,
+        version_id: ?[]const u8,
+        as_dependency: bool,
+        registry: content_registry.Registry,
+        resolved: *std.ArrayList(ResolvedMod),
+        visited: *std.StringHashMap(void),
+        skipped: *usize,
+        depth: u8,
+    ) anyerror!void {
+        if (depth > 32) return error.ModDependencyTooDeep;
+        if (resolved.items.len >= 256) return error.TooManyModDependencies;
+
+        const project_document = try self.fetchModrinthProject(scratch, project);
+        const project_value = project_document.value;
+
+        if (visited.contains(project_value.id)) return;
+        try visited.put(try scratch.dupe(u8, project_value.id), {});
+        if (content_registry.findByProject(registry, .modrinth, project_value.id) != null) {
+            skipped.* += 1;
+            return;
+        }
+
+        const version = if (version_id) |id| blk: {
+            const document = try self.fetchModrinthVersion(scratch, id);
+            if (!std.mem.eql(u8, document.value.project_id, project_value.id)) {
+                return error.ModrinthVersionProjectMismatch;
+            }
+            if (!modrinth.versionSupports(document.value, game_version, loader)) {
+                return error.IncompatibleModVersion;
+            }
+            break :blk document.value;
+        } else blk: {
+            const document = try self.fetchModrinthVersions(scratch, project_value.id, game_version, loader);
+            break :blk modrinth.selectVersion(document.value, game_version, loader) orelse
+                return error.NoCompatibleModVersion;
+        };
+
+        const file = modrinth.selectFile(version) orelse return error.ModFileSelectionFailed;
+        try resolved.append(scratch, .{
+            .project_id = try scratch.dupe(u8, project_value.id),
+            .slug = try scratch.dupe(u8, project_value.slug),
+            .version = version,
+            .file = file,
+            .as_dependency = as_dependency,
+        });
+
+        for (version.dependencies) |dependency| {
+            if (dependency.dependency_type != .required) continue;
+            if (dependency.project_id) |dependency_project| {
+                try self.resolveModrinthMod(
+                    scratch,
+                    game_version,
+                    loader,
+                    dependency_project,
+                    null,
+                    true,
+                    registry,
+                    resolved,
+                    visited,
+                    skipped,
+                    depth + 1,
+                );
+                continue;
+            }
+            if (dependency.version_id) |dependency_version| {
+                const document = try self.fetchModrinthVersion(scratch, dependency_version);
+                try self.resolveModrinthMod(
+                    scratch,
+                    game_version,
+                    loader,
+                    document.value.project_id,
+                    dependency_version,
+                    true,
+                    registry,
+                    resolved,
+                    visited,
+                    skipped,
+                    depth + 1,
+                );
+            }
+        }
+    }
+
+    fn fetchModrinthProject(self: Service, scratch: std.mem.Allocator, project: []const u8) !std.json.Parsed(modrinth.Project) {
+        const url = try modrinth.projectUrlAlloc(scratch, project);
+        var body = try self.fetchBody(url, modrinth.max_project_bytes);
+        defer body.deinit();
+        return modrinth.parseProject(scratch, body.content);
+    }
+
+    fn fetchModrinthVersion(self: Service, scratch: std.mem.Allocator, version_id: []const u8) !std.json.Parsed(modrinth.Version) {
+        const url = try modrinth.versionUrlAlloc(scratch, version_id);
+        var body = try self.fetchBody(url, modrinth.max_version_bytes);
+        defer body.deinit();
+        return modrinth.parseVersion(scratch, body.content);
+    }
+
+    fn fetchModrinthVersions(
+        self: Service,
+        scratch: std.mem.Allocator,
+        project: []const u8,
+        game_version: []const u8,
+        loader: modrinth.Loader,
+    ) !std.json.Parsed([]modrinth.Version) {
+        const url = try modrinth.projectVersionsUrlAlloc(scratch, project, game_version, loader);
+        var body = try self.fetchBody(url, modrinth.max_versions_list_bytes);
+        defer body.deinit();
+        return modrinth.parseVersions(scratch, body.content);
+    }
+
+    pub const ContentList = struct {
+        arena: *std.heap.ArenaAllocator,
+        document: content_registry.Document,
+        unmanaged: []const []const u8,
+
+        pub fn deinit(list: *ContentList) void {
+            const allocator = list.arena.child_allocator;
+            list.document.deinit();
+            list.arena.deinit();
+            allocator.destroy(list.arena);
+            list.* = undefined;
+        }
+    };
+
+    /// Lists registered content and unmanaged files inside the instance mods
+    /// directory. Unmanaged files are candidates for `adoptInstanceContent`.
+    pub fn listInstanceContent(self: Service, minecraft_dir: std.Io.Dir) !ContentList {
+        const arena = try self.allocator.create(std.heap.ArenaAllocator);
+        errdefer self.allocator.destroy(arena);
+        arena.* = std.heap.ArenaAllocator.init(self.allocator);
+        errdefer arena.deinit();
+        const scratch = arena.allocator();
+
+        var document = try content_registry.load(self.allocator, self.io, minecraft_dir);
+        errdefer document.deinit();
+
+        const unmanaged = try self.scanUnmanagedMods(scratch, minecraft_dir, document.value);
+        return .{
+            .arena = arena,
+            .document = document,
+            .unmanaged = unmanaged,
+        };
+    }
+
+    fn scanUnmanagedMods(
+        self: Service,
+        scratch: std.mem.Allocator,
+        minecraft_dir: std.Io.Dir,
+        registry: content_registry.Registry,
+    ) ![]const []const u8 {
+        var unmanaged: std.ArrayList([]const u8) = .empty;
+        const mods_dir = minecraft_dir.openDir(self.io, "mods", .{ .iterate = true }) catch |err| switch (err) {
+            error.FileNotFound => return unmanaged.toOwnedSlice(scratch),
+            else => |other| return other,
+        };
+        defer mods_dir.close(self.io);
+        var iterator = mods_dir.iterate();
+        while (try iterator.next(self.io)) |entry| {
+            if (entry.kind != .file) continue;
+            if (!std.mem.endsWith(u8, entry.name, ".jar")) continue;
+            const path = try std.fmt.allocPrint(scratch, "mods/{s}", .{entry.name});
+            if (content_registry.findByFile(registry, path) != null) continue;
+            try unmanaged.append(scratch, path);
+        }
+        return unmanaged.toOwnedSlice(scratch);
+    }
+
+    pub const ContentRemoval = struct {
+        arena: *std.heap.ArenaAllocator,
+        entry: content_registry.Entry,
+
+        pub fn deinit(removal: *ContentRemoval) void {
+            const allocator = removal.arena.child_allocator;
+            removal.arena.deinit();
+            allocator.destroy(removal.arena);
+            removal.* = undefined;
+        }
+    };
+
+    /// Removes a registered content entry by Modrinth project reference (id or
+    /// slug) or by registry file path, deleting the instance hard link. The
+    /// shared store object remains until garbage collection reclaims it.
+    pub fn removeInstanceContent(
+        self: Service,
+        minecraft_dir: std.Io.Dir,
+        project: ?[]const u8,
+        file: ?[]const u8,
+    ) !ContentRemoval {
+        if ((project == null) == (file == null)) return error.ContentSelectorRequired;
+        if (project) |reference| try modrinth.validateProjectRef(reference);
+        if (file) |path| {
+            try install_plan.validateRelativePath(path);
+            if (path.len > 512) return error.InvalidContentFile;
+        }
+
+        var document = try content_registry.load(self.allocator, self.io, minecraft_dir);
+        defer document.deinit();
+
+        var match_index: ?usize = null;
+        for (document.value.entries, 0..) |entry, index| {
+            if (project) |reference| {
+                if (entry.source.provider != .modrinth) continue;
+                if (entry.source.project_id) |id| {
+                    if (std.mem.eql(u8, id, reference)) {
+                        match_index = index;
+                        break;
+                    }
+                }
+                if (entry.source.slug) |slug| {
+                    if (std.mem.eql(u8, slug, reference)) {
+                        match_index = index;
+                        break;
+                    }
+                }
+            } else if (std.mem.eql(u8, entry.file, file.?)) {
+                match_index = index;
+                break;
+            }
+        }
+        const index = match_index orelse return error.ContentNotFound;
+        const removed = document.value.entries[index];
+
+        minecraft_dir.deleteFile(self.io, removed.file) catch |err| switch (err) {
+            error.FileNotFound => {},
+            else => |other| return other,
+        };
+
+        const arena = try self.allocator.create(std.heap.ArenaAllocator);
+        errdefer self.allocator.destroy(arena);
+        arena.* = std.heap.ArenaAllocator.init(self.allocator);
+        errdefer arena.deinit();
+        const scratch = arena.allocator();
+
+        const kept = try scratch.alloc(content_registry.Entry, document.value.entries.len - 1);
+        @memcpy(kept[0..index], document.value.entries[0..index]);
+        @memcpy(kept[index..], document.value.entries[index + 1 ..]);
+        try content_registry.save(self.io, minecraft_dir, .{ .entries = kept });
+
+        const owned_entry: content_registry.Entry = .{
+            .kind = removed.kind,
+            .file = try scratch.dupe(u8, removed.file),
+            .sha1 = try scratch.dupe(u8, removed.sha1),
+            .size = removed.size,
+            .source = .{
+                .provider = removed.source.provider,
+                .project_id = if (removed.source.project_id) |id| try scratch.dupe(u8, id) else null,
+                .version_id = if (removed.source.version_id) |id| try scratch.dupe(u8, id) else null,
+                .slug = if (removed.source.slug) |slug| try scratch.dupe(u8, slug) else null,
+            },
+            .enabled = removed.enabled,
+            .as_dependency = removed.as_dependency,
+        };
+        return .{ .arena = arena, .entry = owned_entry };
+    }
+
+    pub const ContentAdoption = struct {
+        arena: *std.heap.ArenaAllocator,
+        adopted: []InstalledContent,
+
+        pub fn deinit(adoption: *ContentAdoption) void {
+            const allocator = adoption.arena.child_allocator;
+            adoption.arena.deinit();
+            allocator.destroy(adoption.arena);
+            adoption.* = undefined;
+        }
+    };
+
+    /// Adopts unmanaged mod files into the content-addressed store: each file
+    /// is hashed, imported into the store, re-linked as a hard link, and
+    /// registered with the manual provider.
+    pub fn adoptInstanceContent(
+        self: Service,
+        minecraft_dir: std.Io.Dir,
+        store: std.Io.Dir,
+    ) !ContentAdoption {
+        const arena = try self.allocator.create(std.heap.ArenaAllocator);
+        errdefer self.allocator.destroy(arena);
+        arena.* = std.heap.ArenaAllocator.init(self.allocator);
+        errdefer arena.deinit();
+        const scratch = arena.allocator();
+
+        var document = try content_registry.load(self.allocator, self.io, minecraft_dir);
+        defer document.deinit();
+
+        const unmanaged = try self.scanUnmanagedMods(scratch, minecraft_dir, document.value);
+        const adopted = try scratch.alloc(InstalledContent, unmanaged.len);
+        var adopted_count: usize = 0;
+        const merged = try scratch.alloc(content_registry.Entry, document.value.entries.len + unmanaged.len);
+        @memcpy(merged[0..document.value.entries.len], document.value.entries);
+
+        for (unmanaged) |path| {
+            const file = minecraft_dir.openFile(self.io, path, .{}) catch |err| switch (err) {
+                error.FileNotFound => continue,
+                else => |other| return other,
+            };
+            defer file.close(self.io);
+            const digest = try artifact_store.hashFile(file, self.io);
+            const stat_size = (try file.stat(self.io)).size;
+            if (stat_size == 0 or stat_size > content_registry.max_entry_size) return error.InvalidContentSize;
+            const sha1 = try std.fmt.allocPrint(scratch, "{s}", .{std.fmt.bytesToHex(digest, .lower)});
+
+            var object_path_buffer: [64]u8 = undefined;
+            const object_path = try artifact_store.objectPath(sha1, &object_path_buffer);
+            _ = try artifact_store.importObject(self.allocator, self.io, store, object_path, minecraft_dir, path);
+            _ = try artifact_store.materialize(self.allocator, self.io, store, object_path, minecraft_dir, path, true);
+
+            merged[document.value.entries.len + adopted_count] = .{
+                .kind = .mod,
+                .file = path,
+                .sha1 = sha1,
+                .size = stat_size,
+                .source = .{ .provider = .manual },
+                .enabled = true,
+                .as_dependency = false,
+            };
+            adopted[adopted_count] = .{
+                .file = path,
+                .sha1 = sha1,
+                .size = stat_size,
+                .slug = null,
+                .as_dependency = false,
+            };
+            adopted_count += 1;
+        }
+        try content_registry.save(self.io, minecraft_dir, .{
+            .entries = merged[0 .. document.value.entries.len + adopted_count],
+        });
+
+        return .{
+            .arena = arena,
+            .adopted = adopted[0..adopted_count],
         };
     }
 

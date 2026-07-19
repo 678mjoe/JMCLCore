@@ -74,6 +74,12 @@ NeoForge and Forge installation download the official installer and run its
 client-side processor chain locally to produce the patched client JAR; see
 `docs/neoforge.md` and `docs/forge.md`.
 
+Instances with a mod loader can install and manage Modrinth mods. Mods are
+verified against their published SHA-1, held in the shared artifact store,
+and hard-linked into the instance `mods/` directory. The instance records its
+managed content in `.minecraft/.jmcl/content.json`; manually dropped jars are
+brought under the same scheme with `instance mods adopt`. See `docs/mods.md`.
+
 Instance launch currently supports the CLI offline identity and optional
 `--arch` and repeatable `--java PATH` candidates. Microsoft authentication will
 be added separately.

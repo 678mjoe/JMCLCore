@@ -12,6 +12,8 @@ pub const neoforge = @import("neoforge.zig");
 pub const neoforge_executor = @import("neoforge_executor.zig");
 pub const forge = @import("forge.zig");
 pub const forge_executor = @import("forge_executor.zig");
+pub const modrinth = @import("modrinth.zig");
+pub const content_registry = @import("content_registry.zig");
 pub const zip_reader = @import("zip_reader.zig");
 pub const DownloadSource = @import("download_source.zig").DownloadSource;
 pub const install_plan = @import("install_plan.zig");
@@ -39,6 +41,8 @@ test {
     _ = neoforge_executor;
     _ = forge;
     _ = forge_executor;
+    _ = modrinth;
+    _ = content_registry;
     _ = zip_reader;
     _ = DownloadSource;
     _ = install_plan;

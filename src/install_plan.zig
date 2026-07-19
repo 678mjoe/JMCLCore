@@ -70,6 +70,7 @@ pub const Usage = struct {
     native: bool = false,
     logging_config: bool = false,
     asset_object: bool = false,
+    mod: bool = false,
 
     fn merge(usage: *Usage, other: Usage) void {
         usage.client = usage.client or other.client;
@@ -78,6 +79,7 @@ pub const Usage = struct {
         usage.native = usage.native or other.native;
         usage.logging_config = usage.logging_config or other.logging_config;
         usage.asset_object = usage.asset_object or other.asset_object;
+        usage.mod = usage.mod or other.mod;
     }
 };
 
