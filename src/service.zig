@@ -1257,6 +1257,22 @@ pub const Service = struct {
             if (err == error.WriteFailed and body.end > max_bytes) {
                 return error.ResponseBodyTooLarge;
             }
+            if (err == error.TlsInitializationFailed) {
+                body = std.Io.Writer.fixed(storage);
+                const fallback_status: std.http.Status = @enumFromInt(try @import("https_fallback.zig").fetch(
+                    self.allocator,
+                    self.io,
+                    url,
+                    &body,
+                ));
+                if (body.end > max_bytes) return error.ResponseBodyTooLarge;
+                if (fallback_status.class() != .success) return error.UnsuccessfulHttpStatus;
+                return .{
+                    .allocator = self.allocator,
+                    .storage = storage,
+                    .content = storage[0..body.end],
+                };
+            }
             return err;
         };
 

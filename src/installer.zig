@@ -1,6 +1,7 @@
 const std = @import("std");
 const artifact_store = @import("artifact_store.zig");
 const hard_link = @import("hard_link.zig");
+const https_fallback = @import("https_fallback.zig");
 const install_plan = @import("install_plan.zig");
 
 const Sha1 = std.crypto.hash.Sha1;
@@ -422,18 +423,30 @@ fn downloadOnce(
     const maximum = std.math.cast(usize, expected.size) orelse return error.FileTooLarge;
     var limited = LimitedWriter.init(&hashed.writer, &limit_buffer, maximum);
 
-    const result = client.fetch(.{
-        .location = .{ .url = url },
-        .response_writer = &limited.interface,
-        .redirect_behavior = std.http.Client.Request.RedirectBehavior.init(5),
-    }) catch |err| switch (err) {
-        error.WriteFailed => return diagnosedWriteError(&limited, &file_writer),
-        else => |other| return other,
+    const status: std.http.Status = blk: {
+        const result = client.fetch(.{
+            .location = .{ .url = url },
+            .response_writer = &limited.interface,
+            .redirect_behavior = std.http.Client.Request.RedirectBehavior.init(5),
+        }) catch |err| switch (err) {
+            error.WriteFailed => return diagnosedWriteError(&limited, &file_writer),
+            error.TlsInitializationFailed => {
+                const fallback_status = try https_fallback.fetch(
+                    client.allocator,
+                    client.io,
+                    url,
+                    &limited.interface,
+                );
+                break :blk @enumFromInt(fallback_status);
+            },
+            else => |other| return other,
+        };
+        break :blk result.status;
     };
     limited.interface.flush() catch return diagnosedWriteError(&limited, &file_writer);
     file_writer.flush() catch return file_writer.err orelse error.FileWriteFailed;
 
-    if (result.status.class() != .success) return error.UnsuccessfulHttpStatus;
+    if (status.class() != .success) return error.UnsuccessfulHttpStatus;
     const written = maximum - limited.remaining;
     if (written != maximum) return error.DownloadSizeMismatch;
     if (!digestMatches(hashed.hasher.finalResult(), expected.sha1)) return error.DownloadHashMismatch;

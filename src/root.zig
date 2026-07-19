@@ -14,6 +14,7 @@ pub const forge = @import("forge.zig");
 pub const forge_executor = @import("forge_executor.zig");
 pub const modrinth = @import("modrinth.zig");
 pub const content_registry = @import("content_registry.zig");
+pub const https_fallback = @import("https_fallback.zig");
 pub const zip_reader = @import("zip_reader.zig");
 pub const DownloadSource = @import("download_source.zig").DownloadSource;
 pub const install_plan = @import("install_plan.zig");
@@ -43,6 +44,7 @@ test {
     _ = forge_executor;
     _ = modrinth;
     _ = content_registry;
+    _ = https_fallback;
     _ = zip_reader;
     _ = DownloadSource;
     _ = install_plan;
