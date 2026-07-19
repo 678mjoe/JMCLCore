@@ -136,6 +136,13 @@ pub fn writeInstallResultWithKind(
             }
             break :blk null;
         },
+        .shaderpack => blk: {
+            if (input.loader != null) {
+                try writeError(writer, request_id, "INVALID_PARAMS", "shaderpacks.install does not accept a loader");
+                return;
+            }
+            break :blk null;
+        },
     };
 
     const minecraft = core.installer.openRoot(service.io, input.directory) catch {

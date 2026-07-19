@@ -18,7 +18,8 @@ pub fn run(
     if (args.len >= 1 and std.mem.eql(u8, args[0], "launch")) return runInstanceLaunch(service, args[1..], stdout, stderr);
     if (args.len >= 1 and std.mem.eql(u8, args[0], "mods")) return cli_content.runWithKind(.mod, service, args[1..], stdout, stderr);
     if (args.len >= 1 and std.mem.eql(u8, args[0], "resourcepacks")) return cli_content.runWithKind(.resourcepack, service, args[1..], stdout, stderr);
-    try stderr.writeAll("usage: jmcl-core instance <create|list|show|delete|install|launch|mods|resourcepacks> [options]\n");
+    if (args.len >= 1 and std.mem.eql(u8, args[0], "shaderpacks")) return cli_content.runWithKind(.shaderpack, service, args[1..], stdout, stderr);
+    try stderr.writeAll("usage: jmcl-core instance <create|list|show|delete|install|launch|mods|resourcepacks|shaderpacks> [options]\n");
     return 2;
 }
 

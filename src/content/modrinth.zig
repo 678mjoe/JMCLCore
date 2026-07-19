@@ -30,6 +30,7 @@ pub const Loader = enum {
 pub const ProjectType = enum {
     mod,
     resourcepack,
+    shader,
 
     pub fn parse(value: []const u8) ?ProjectType {
         inline for (std.meta.fields(ProjectType)) |field| {
@@ -170,14 +171,21 @@ pub fn projectVersionsUrlAlloc(
     allocator: std.mem.Allocator,
     project: []const u8,
     game_version: []const u8,
-    loader: Loader,
+    loader: ?Loader,
 ) ![]u8 {
     try validateProjectRef(project);
     try validateGameVersion(game_version);
+    if (loader) |value| {
+        return std.fmt.allocPrint(
+            allocator,
+            api_root ++ "/v2/project/{s}/version?game_versions=%5B%22{s}%22%5D&loaders=%5B%22{s}%22%5D",
+            .{ project, game_version, value.name() },
+        );
+    }
     return std.fmt.allocPrint(
         allocator,
-        api_root ++ "/v2/project/{s}/version?game_versions=%5B%22{s}%22%5D&loaders=%5B%22{s}%22%5D",
-        .{ project, game_version, loader.name() },
+        api_root ++ "/v2/project/{s}/version?game_versions=%5B%22{s}%22%5D",
+        .{ project, game_version },
     );
 }
 
@@ -247,7 +255,7 @@ pub fn parseVersions(allocator: std.mem.Allocator, source: []const u8) !std.json
     return document;
 }
 
-pub fn versionSupports(version: Version, game_version: []const u8, loader: Loader) bool {
+pub fn versionSupports(version: Version, game_version: []const u8, loader: ?Loader) bool {
     var game_match = false;
     for (version.game_versions) |candidate| {
         if (std.mem.eql(u8, candidate, game_version)) {
@@ -256,8 +264,9 @@ pub fn versionSupports(version: Version, game_version: []const u8, loader: Loade
         }
     }
     if (!game_match) return false;
+    const wanted = loader orelse return true;
     for (version.loaders) |candidate| {
-        if (std.mem.eql(u8, candidate, loader.name())) return true;
+        if (std.mem.eql(u8, candidate, wanted.name())) return true;
     }
     return false;
 }
@@ -265,7 +274,7 @@ pub fn versionSupports(version: Version, game_version: []const u8, loader: Loade
 /// Selects the most suitable version from a compatibility-filtered listing.
 /// The Modrinth API returns versions newest first; stable releases win over
 /// beta and alpha builds.
-pub fn selectVersion(versions: []const Version, game_version: []const u8, loader: Loader) ?Version {
+pub fn selectVersion(versions: []const Version, game_version: []const u8, loader: ?Loader) ?Version {
     var best: ?Version = null;
     var best_rank: u8 = 255;
     for (versions) |version| {
@@ -301,6 +310,13 @@ test "builds validated API URLs" {
     try std.testing.expectEqualStrings(
         "https://api.modrinth.com/v2/project/AANobbMI/version?game_versions=%5B%221.20.4%22%5D&loaders=%5B%22fabric%22%5D",
         versions,
+    );
+
+    const unfiltered = try projectVersionsUrlAlloc(allocator, "Q1R2n3Bx", "1.21.4", null);
+    defer allocator.free(unfiltered);
+    try std.testing.expectEqualStrings(
+        "https://api.modrinth.com/v2/project/Q1R2n3Bx/version?game_versions=%5B%221.21.4%22%5D",
+        unfiltered,
     );
 
     try std.testing.expectError(error.InvalidModrinthProject, projectUrlAlloc(allocator, "bad/slug"));
@@ -358,9 +374,12 @@ test "rejects unsafe version documents" {
     defer resourcepack_project.deinit();
     try std.testing.expectEqual(ProjectType.resourcepack, ProjectType.parse(resourcepack_project.value.project_type).?);
 
-    try std.testing.expectError(error.UnsupportedProjectType, parseProject(std.testing.allocator,
-        \\{"id":"AANobbMI","slug":"pack","title":"Pack","project_type":"shader"}
-    ));
+    var shader_project = try parseProject(std.testing.allocator,
+        \\{"id":"Q1R2n3Bx","slug":"bsl-shaders","title":"BSL","project_type":"shader"}
+    );
+    defer shader_project.deinit();
+    try std.testing.expectEqual(ProjectType.shader, ProjectType.parse(shader_project.value.project_type).?);
+
     try std.testing.expectError(error.UnsupportedProjectType, parseProject(std.testing.allocator,
         \\{"id":"AANobbMI","slug":"pack","title":"Pack","project_type":"modpack"}
     ));
@@ -382,6 +401,19 @@ test "selects a resourcepack version through the minecraft pseudo-loader" {
     const selected = selectVersion(versions.value, "1.21.1", .minecraft).?;
     try std.testing.expectEqualStrings("QwErTyUi", selected.id);
     try std.testing.expect(selectVersion(versions.value, "1.21.1", .fabric) == null);
+}
+
+test "selects a shader version without a loader filter" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\[{"id":"Zx9QwErT","project_id":"Q1R2n3Bx","version_number":"8.2","version_type":"release","game_versions":["1.21.4"],"loaders":["iris","optifine"],"files":[{"url":"https://cdn.modrinth.com/data/Q1R2n3Bx/versions/Zx9QwErT/shaders.zip","filename":"shaders.zip","primary":true,"hashes":{"sha1":"4444444444444444444444444444444444444444"},"size":400}],"dependencies":[]}]
+    ;
+    var versions = try parseVersions(allocator, source);
+    defer versions.deinit();
+    const selected = selectVersion(versions.value, "1.21.4", null).?;
+    try std.testing.expectEqualStrings("Zx9QwErT", selected.id);
+    try std.testing.expect(versionSupports(versions.value[0], "1.21.4", null));
+    try std.testing.expect(!versionSupports(versions.value[0], "1.21.3", null));
 }
 
 test "selects the newest stable compatible version" {

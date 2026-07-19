@@ -818,7 +818,8 @@ pub const Service = struct {
     /// instance's Minecraft version and loader, downloads every file through
     /// the verified content-addressed pipeline, and registers the results in
     /// the instance content registry. Mods require the instance loader;
-    /// resourcepacks resolve through the `minecraft` pseudo-loader.
+    /// resourcepacks resolve through the `minecraft` pseudo-loader;
+    /// shaderpacks filter by game version only.
     pub fn installModrinthContent(
         self: Service,
         minecraft_dir: std.Io.Dir,
@@ -834,7 +835,7 @@ pub const Service = struct {
         try modrinth.validateProjectRef(project);
         try modrinth.validateGameVersion(game_version);
         if (version_id) |id| try modrinth.validateVersionId(id);
-        const effective_loader: modrinth.Loader = switch (kind) {
+        const effective_loader: ?modrinth.Loader = switch (kind) {
             .mod => blk: {
                 const value = loader orelse return error.ModLoaderRequired;
                 if (value == .minecraft) return error.ModLoaderRequired;
@@ -843,6 +844,10 @@ pub const Service = struct {
             .resourcepack => blk: {
                 if (loader != null and loader.? != .minecraft) return error.InvalidContentLoader;
                 break :blk .minecraft;
+            },
+            .shaderpack => blk: {
+                if (loader != null) return error.InvalidContentLoader;
+                break :blk null;
             },
         };
         const directory = kind.directory();
@@ -890,7 +895,7 @@ pub const Service = struct {
                 .fallback_url = null,
                 .sha1 = content.file.hashes.sha1,
                 .size = content.file.size,
-                .usage = .{ .mod = kind == .mod, .resourcepack = kind == .resourcepack },
+                .usage = .{ .mod = kind == .mod, .resourcepack = kind == .resourcepack, .shaderpack = kind == .shaderpack },
             };
             total_size = std.math.add(u64, total_size, content.file.size) catch return error.DownloadSizeOverflow;
         }
@@ -958,7 +963,7 @@ pub const Service = struct {
         scratch: std.mem.Allocator,
         kind: content_registry.Kind,
         game_version: []const u8,
-        loader: modrinth.Loader,
+        loader: ?modrinth.Loader,
         project: []const u8,
         version_id: ?[]const u8,
         as_dependency: bool,
@@ -979,6 +984,7 @@ pub const Service = struct {
         const project_kind: content_registry.Kind = switch (project_type) {
             .mod => .mod,
             .resourcepack => .resourcepack,
+            .shader => .shaderpack,
         };
         if (project_kind != kind) return error.ContentKindMismatch;
 
@@ -1074,7 +1080,7 @@ pub const Service = struct {
         scratch: std.mem.Allocator,
         project: []const u8,
         game_version: []const u8,
-        loader: modrinth.Loader,
+        loader: ?modrinth.Loader,
     ) !std.json.Parsed([]modrinth.Version) {
         const url = try modrinth.projectVersionsUrlAlloc(scratch, project, game_version, loader);
         var body = try self.fetchBody(url, modrinth.max_versions_list_bytes);

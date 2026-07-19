@@ -23,11 +23,13 @@ pub const Source = struct {
 pub const Kind = enum {
     mod,
     resourcepack,
+    shaderpack,
 
     pub fn directory(kind: Kind) []const u8 {
         return switch (kind) {
             .mod => "mods",
             .resourcepack => "resourcepacks",
+            .shaderpack => "shaderpacks",
         };
     }
 
@@ -35,6 +37,7 @@ pub const Kind = enum {
         return switch (kind) {
             .mod => ".jar",
             .resourcepack => ".zip",
+            .shaderpack => ".zip",
         };
     }
 };
@@ -230,8 +233,10 @@ test "round-trips an empty and a populated registry" {
 test "kind directory and extension mappings" {
     try std.testing.expectEqualStrings("mods", Kind.mod.directory());
     try std.testing.expectEqualStrings("resourcepacks", Kind.resourcepack.directory());
+    try std.testing.expectEqualStrings("shaderpacks", Kind.shaderpack.directory());
     try std.testing.expectEqualStrings(".jar", Kind.mod.extension());
     try std.testing.expectEqualStrings(".zip", Kind.resourcepack.extension());
+    try std.testing.expectEqualStrings(".zip", Kind.shaderpack.extension());
 }
 
 test "rejects invalid registry documents" {

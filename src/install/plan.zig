@@ -72,6 +72,7 @@ pub const Usage = struct {
     asset_object: bool = false,
     mod: bool = false,
     resourcepack: bool = false,
+    shaderpack: bool = false,
 
     fn merge(usage: *Usage, other: Usage) void {
         usage.client = usage.client or other.client;
@@ -82,6 +83,7 @@ pub const Usage = struct {
         usage.asset_object = usage.asset_object or other.asset_object;
         usage.mod = usage.mod or other.mod;
         usage.resourcepack = usage.resourcepack or other.resourcepack;
+        usage.shaderpack = usage.shaderpack or other.shaderpack;
     }
 };
 

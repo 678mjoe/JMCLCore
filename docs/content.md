@@ -1,12 +1,13 @@
-# Modrinth Content: Mods And Resource Packs
+# Modrinth Content: Mods, Resource Packs, And Shader Packs
 
 JMCL Core installs and manages Modrinth content for instances. Mods target
-instances with a mod loader (Fabric, NeoForge, or Forge); resource packs work
-on any instance, including vanilla. Content is content-addressed like every
-other artifact: downloads are verified against the Modrinth-published SHA-1,
-stored in the shared artifact store, and hard-linked into the instance
-directory (`mods/` for mods, `resourcepacks/` for resource packs). Manually
-dropped files can be adopted into the same scheme.
+instances with a mod loader (Fabric, NeoForge, or Forge); resource packs and
+shader packs work on any instance, including vanilla. Content is
+content-addressed like every other artifact: downloads are verified against
+the Modrinth-published SHA-1, stored in the shared artifact store, and
+hard-linked into the instance directory (`mods/` for mods, `resourcepacks/`
+for resource packs, `shaderpacks/` for shader packs). Manually dropped files
+can be adopted into the same scheme.
 
 This document covers installation and lifecycle management only. Searching and
 browsing the Modrinth catalog is left to the embedding application.
@@ -26,9 +27,10 @@ Each instance records its managed content in `.minecraft/.jmcl/content.json`:
 ]}
 ```
 
-- `kind` is `"mod"` or `"resourcepack"`. The kind fixes the target directory
-  (`mods/`, `resourcepacks/`) and the managed file extension (`.jar`, `.zip`);
-  entries whose file does not live under their kind's directory are rejected.
+- `kind` is `"mod"`, `"resourcepack"`, or `"shaderpack"`. The kind fixes the
+  target directory (`mods/`, `resourcepacks/`, `shaderpacks/`) and the
+  managed file extension (`.jar`, `.zip`); entries whose file does not live
+  under their kind's directory are rejected.
 - `source.provider` is `modrinth` or `manual`. Manually adopted files carry no
   project identifiers.
 - `as_dependency` marks content installed only to satisfy another project's
@@ -93,15 +95,40 @@ jmcl-core instance resourcepacks remove vanilla-demo --project default-dark-mode
 - Activating packs in `options.txt` is the embedding application's job; JMCL
   manages files only.
 
+## Shader Pack Commands
+
+```sh
+jmcl-core instance shaderpacks install vanilla-demo --project bsl-shaders
+jmcl-core instance shaderpacks list vanilla-demo
+jmcl-core instance shaderpacks adopt vanilla-demo
+jmcl-core instance shaderpacks remove vanilla-demo --project bsl-shaders
+```
+
+- Shader packs install into `shaderpacks/` and require no mod loader; vanilla
+  instances are fully supported.
+- Modrinth shader versions declare shader runtimes (`iris`, `optifine`, …)
+  rather than the `minecraft` pseudo-loader, and JMCL does not track which
+  shader runtime an instance runs. Compatibility therefore resolves by
+  Minecraft version only, with no loader filter; newest stable release first.
+  Installing a project whose Modrinth type is not `shader` fails with a kind
+  mismatch.
+- Required dependencies recurse by default (same-type only), as with the
+  other kinds; `--no-dependencies` installs only the requested project.
+- `list`, `adopt` (unmanaged `.zip` files), and `remove` behave exactly like
+  their mod counterparts, scoped to the shader pack kind.
+- Installing a shader runtime (Iris, Oculus, OptiFine) and activating packs
+  is the embedding application's job; JMCL manages files only.
+
 ## RPC
 
 The same operations are available over RPC as `mods.list`, `mods.install`,
-`mods.remove`, `mods.adopt` and `resourcepacks.list`, `resourcepacks.install`,
-`resourcepacks.remove`, `resourcepacks.adopt`. The RPC forms take an explicit
-`directory` and `minecraft_version` instead of reading an instance manifest.
+`mods.remove`, `mods.adopt`, the matching `resourcepacks.*` methods, and the
+matching `shaderpacks.*` methods. The RPC forms take an explicit `directory`
+and `minecraft_version` instead of reading an instance manifest.
 `mods.install` additionally requires `loader` (`fabric` | `neoforge` |
-`forge`); `resourcepacks.install` takes no loader. Both install methods accept
-`with_dependencies` (default `true`) to control dependency recursion.
+`forge`); `resourcepacks.install` and `shaderpacks.install` take no loader.
+All install methods accept `with_dependencies` (default `true`) to control
+dependency recursion.
 
 ## Network And Mirrors
 
@@ -141,6 +168,5 @@ still passes the exact size and SHA-1 checks of the install pipeline.
 - CurseForge (requires a host-supplied API key; planned separately).
 - Content updates (`upgrade`), optional dependencies, and enable/disable
   toggles.
-- Shader pack management (the kind/directory mapping already leaves room for
-  a `shaderpacks/` kind).
-- Resource pack activation in `options.txt` and `pack.mcmeta` format checks.
+- Shader runtime selection and shader pack activation; `pack.mcmeta` and
+  shader config format checks.

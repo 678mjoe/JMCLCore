@@ -117,6 +117,14 @@ pub fn handleLine(
         try content.writeRemoveResultWithKind(.resourcepack, service, writer, request.id, request.params);
     } else if (std.mem.eql(u8, request.method, "resourcepacks.adopt")) {
         try content.writeAdoptResultWithKind(.resourcepack, service, writer, request.id, request.params);
+    } else if (std.mem.eql(u8, request.method, "shaderpacks.list")) {
+        try content.writeListResultWithKind(.shaderpack, service, writer, request.id, request.params);
+    } else if (std.mem.eql(u8, request.method, "shaderpacks.install")) {
+        try content.writeInstallResultWithKind(.shaderpack, service, writer, request.id, request.params);
+    } else if (std.mem.eql(u8, request.method, "shaderpacks.remove")) {
+        try content.writeRemoveResultWithKind(.shaderpack, service, writer, request.id, request.params);
+    } else if (std.mem.eql(u8, request.method, "shaderpacks.adopt")) {
+        try content.writeAdoptResultWithKind(.shaderpack, service, writer, request.id, request.params);
     } else if (std.mem.eql(u8, request.method, "java.detect")) {
         try java.writeDetectResult(service, writer, request.id, request.params);
     } else if (std.mem.eql(u8, request.method, "java.select")) {

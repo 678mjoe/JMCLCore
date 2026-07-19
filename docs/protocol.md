@@ -130,7 +130,19 @@ are supported:
 {"protocol":1,"id":"rp-install","method":"resourcepacks.install","params":{"directory":"/path/to/.minecraft","minecraft_version":"1.21.1","project":"default-dark-mode"}}
 ```
 
-Both install methods default to recursing required dependencies; pass
+`shaderpacks.list`, `shaderpacks.install`, `shaderpacks.remove`, and
+`shaderpacks.adopt` mirror them again for shader packs, managing
+`shaderpacks/*.zip` files. Shader versions carry shader-loader tags
+(`iris`, `optifine`, …) rather than the `minecraft` pseudo-loader, so
+`shaderpacks.install` takes no `loader` at all and filters by
+`minecraft_version` only; picking a shader runtime is the embedding
+application's job.
+
+```json
+{"protocol":1,"id":"sp-install","method":"shaderpacks.install","params":{"directory":"/path/to/.minecraft","minecraft_version":"1.21.4","project":"bsl-shaders"}}
+```
+
+All install methods default to recursing required dependencies; pass
 `"with_dependencies":false` to install only the requested project. See
 `docs/content.md`.
 
