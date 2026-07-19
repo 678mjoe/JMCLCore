@@ -2,7 +2,7 @@ pub const name = "jmcl-core";
 pub const version = "0.1.0-dev";
 pub const protocol_version: u32 = 1;
 
-pub const protocol = @import("protocol.zig");
+pub const protocol = @import("protocol/protocol.zig");
 pub const authentication = @import("auth/authentication.zig");
 pub const authentication_http = @import("auth/http.zig");
 pub const account_store = @import("auth/account_store.zig");
