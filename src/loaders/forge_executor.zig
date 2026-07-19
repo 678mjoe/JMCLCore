@@ -2,7 +2,7 @@ const std = @import("std");
 const forge = @import("forge.zig");
 const neoforge = @import("neoforge.zig");
 const neoforge_executor = @import("neoforge_executor.zig");
-const zip_reader = @import("zip_reader.zig");
+const zip_reader = @import("../install/zip_reader.zig");
 
 pub const Options = neoforge_executor.Options;
 pub const Summary = neoforge_executor.Summary;

@@ -1,14 +1,14 @@
 const std = @import("std");
-const DownloadSource = @import("download_source.zig").DownloadSource;
-const Service = @import("service.zig").Service;
-const asset_index = @import("asset_index.zig");
-const game_process = @import("game_process.zig");
-const hard_link = @import("hard_link.zig");
-const install_plan = @import("install_plan.zig");
-const installer = @import("installer.zig");
-const java_runtime = @import("java_runtime.zig");
-const launch_plan = @import("launch_plan.zig");
-const preparer = @import("preparer.zig");
+const DownloadSource = @import("../install/download_source.zig").DownloadSource;
+const Service = @import("../service.zig").Service;
+const asset_index = @import("../install/asset_index.zig");
+const game_process = @import("process.zig");
+const hard_link = @import("../install/hard_link.zig");
+const install_plan = @import("../install/plan.zig");
+const installer = @import("../install/installer.zig");
+const java_runtime = @import("../install/java_runtime.zig");
+const launch_plan = @import("plan.zig");
+const preparer = @import("../install/preparer.zig");
 
 pub const Input = struct {
     id: []const u8,

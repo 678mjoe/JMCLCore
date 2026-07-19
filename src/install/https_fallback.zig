@@ -8,7 +8,7 @@
 //! Callers remain responsible for response size and integrity checks.
 
 const std = @import("std");
-const vendor_tls = @import("vendor/tls.zig");
+const vendor_tls = @import("../vendor/tls.zig");
 
 pub const max_redirects: u8 = 5;
 pub const max_header_bytes: usize = 32 * 1024;

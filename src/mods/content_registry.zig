@@ -1,5 +1,5 @@
 const std = @import("std");
-const install_plan = @import("install_plan.zig");
+const install_plan = @import("../install/plan.zig");
 const modrinth = @import("modrinth.zig");
 
 pub const schema_version: u32 = 1;

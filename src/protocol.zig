@@ -1,6 +1,6 @@
 const std = @import("std");
 const core = @import("root.zig");
-const version_manifest = @import("version_manifest.zig");
+const version_manifest = @import("install/version_manifest.zig");
 
 const Request = struct {
     protocol: u32,

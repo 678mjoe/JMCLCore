@@ -1,5 +1,5 @@
 const std = @import("std");
-const version_metadata = @import("version_metadata.zig");
+const version_metadata = @import("../install/version_metadata.zig");
 
 pub const max_profile_bytes: usize = 4 * 1024 * 1024;
 pub const max_profile_libraries: usize = 1_024;

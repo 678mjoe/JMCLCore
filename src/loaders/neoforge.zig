@@ -1,5 +1,5 @@
 const std = @import("std");
-const version_metadata = @import("version_metadata.zig");
+const version_metadata = @import("../install/version_metadata.zig");
 
 pub const maven_root = "https://maven.neoforged.net/releases/";
 pub const max_installer_bytes: usize = 64 * 1024 * 1024;

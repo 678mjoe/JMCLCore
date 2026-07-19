@@ -1,7 +1,7 @@
 const std = @import("std");
-const install_plan = @import("install_plan.zig");
-const java_runtime = @import("java_runtime.zig");
-const metadata = @import("version_metadata.zig");
+const install_plan = @import("../install/plan.zig");
+const java_runtime = @import("../install/java_runtime.zig");
+const metadata = @import("../install/version_metadata.zig");
 
 pub const Auth = struct {
     player_name: []const u8,

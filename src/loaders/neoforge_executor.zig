@@ -1,10 +1,10 @@
 const std = @import("std");
-const artifact_store = @import("artifact_store.zig");
-const hard_link = @import("hard_link.zig");
-const install_plan = @import("install_plan.zig");
-const java_runtime = @import("java_runtime.zig");
+const artifact_store = @import("../install/artifact_store.zig");
+const hard_link = @import("../install/hard_link.zig");
+const install_plan = @import("../install/plan.zig");
+const java_runtime = @import("../install/java_runtime.zig");
 const neoforge = @import("neoforge.zig");
-const zip_reader = @import("zip_reader.zig");
+const zip_reader = @import("../install/zip_reader.zig");
 
 const Sha1 = std.crypto.hash.Sha1;
 

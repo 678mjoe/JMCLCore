@@ -1,6 +1,6 @@
 const std = @import("std");
 const artifact_store = @import("artifact_store.zig");
-const install_plan = @import("install_plan.zig");
+const install_plan = @import("plan.zig");
 
 const Sha1 = std.crypto.hash.Sha1;
 const max_archive_entries = 4096;

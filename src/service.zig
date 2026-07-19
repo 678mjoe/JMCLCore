@@ -1,20 +1,20 @@
 const std = @import("std");
-const artifact_store = @import("artifact_store.zig");
-const authentication = @import("authentication.zig");
-const authentication_http = @import("authentication_http.zig");
-const account_store = @import("account_store.zig");
-const asset_index = @import("asset_index.zig");
-const content_registry = @import("content_registry.zig");
+const artifact_store = @import("install/artifact_store.zig");
+const authentication = @import("auth/authentication.zig");
+const authentication_http = @import("auth/http.zig");
+const account_store = @import("auth/account_store.zig");
+const asset_index = @import("install/asset_index.zig");
+const content_registry = @import("mods/content_registry.zig");
 const core = @import("root.zig");
-const fabric = @import("fabric.zig");
-const forge = @import("forge.zig");
-const install_plan = @import("install_plan.zig");
-const install_executor = @import("installer.zig");
-const modrinth = @import("modrinth.zig");
-const neoforge = @import("neoforge.zig");
-const version_manifest = @import("version_manifest.zig");
-const version_metadata = @import("version_metadata.zig");
-const zip_reader = @import("zip_reader.zig");
+const fabric = @import("loaders/fabric.zig");
+const forge = @import("loaders/forge.zig");
+const install_plan = @import("install/plan.zig");
+const install_executor = @import("install/installer.zig");
+const modrinth = @import("mods/modrinth.zig");
+const neoforge = @import("loaders/neoforge.zig");
+const version_manifest = @import("install/version_manifest.zig");
+const version_metadata = @import("install/version_metadata.zig");
+const zip_reader = @import("install/zip_reader.zig");
 
 const max_manifest_bytes = 2 * 1024 * 1024;
 const max_metadata_bytes = 4 * 1024 * 1024;
@@ -1259,7 +1259,7 @@ pub const Service = struct {
             }
             if (err == error.TlsInitializationFailed) {
                 body = std.Io.Writer.fixed(storage);
-                const fallback_status: std.http.Status = @enumFromInt(try @import("https_fallback.zig").fetch(
+                const fallback_status: std.http.Status = @enumFromInt(try @import("install/https_fallback.zig").fetch(
                     self.allocator,
                     self.io,
                     url,

@@ -1,5 +1,5 @@
 const std = @import("std");
-const DownloadSource = @import("download_source.zig").DownloadSource;
+const DownloadSource = @import("install/download_source.zig").DownloadSource;
 
 pub const schema_version: u32 = 1;
 pub const default_root = "instances";

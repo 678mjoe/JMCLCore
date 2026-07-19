@@ -31,7 +31,7 @@ The following values are intentionally fixed:
 - Xbox sandbox: `RETAIL`.
 - Minecraft relying party: `rp://api.minecraftservices.com/`.
 - Production endpoints: Microsoft, Xbox Live, and Minecraft Services HTTPS
-  endpoints exported by `src/authentication.zig`.
+  endpoints exported by `src/auth/authentication.zig`.
 
 An optional locale is allowed for Microsoft's device-code instructions. The
 RPC API will not expose endpoint overrides. Library-level implementations may

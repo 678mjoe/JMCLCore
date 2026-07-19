@@ -1,6 +1,6 @@
 const std = @import("std");
 const neoforge = @import("neoforge.zig");
-const version_metadata = @import("version_metadata.zig");
+const version_metadata = @import("../install/version_metadata.zig");
 
 pub const maven_root = "https://maven.minecraftforge.net/";
 

@@ -2,7 +2,7 @@ const std = @import("std");
 const artifact_store = @import("artifact_store.zig");
 const hard_link = @import("hard_link.zig");
 const https_fallback = @import("https_fallback.zig");
-const install_plan = @import("install_plan.zig");
+const install_plan = @import("plan.zig");
 
 const Sha1 = std.crypto.hash.Sha1;
 

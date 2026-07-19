@@ -1,5 +1,5 @@
 const std = @import("std");
-const launch_plan = @import("launch_plan.zig");
+const launch_plan = @import("../launch/plan.zig");
 
 pub const microsoft_scope = "XboxLive.signin offline_access";
 pub const microsoft_tenant = "consumers";
