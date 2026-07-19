@@ -11,6 +11,7 @@ pub const fabric = @import("loaders/fabric.zig");
 pub const neoforge = @import("loaders/neoforge.zig");
 pub const neoforge_executor = @import("loaders/neoforge_executor.zig");
 pub const forge = @import("loaders/forge.zig");
+pub const forge_legacy = @import("loaders/forge_legacy.zig");
 pub const forge_executor = @import("loaders/forge_executor.zig");
 pub const modrinth = @import("mods/modrinth.zig");
 pub const content_registry = @import("mods/content_registry.zig");
@@ -41,6 +42,7 @@ test {
     _ = neoforge;
     _ = neoforge_executor;
     _ = forge;
+    _ = forge_legacy;
     _ = forge_executor;
     _ = modrinth;
     _ = content_registry;

@@ -212,7 +212,8 @@ pub fn writeExecuteResult(
 
     var processors_run: usize = 0;
     var patched_client: ?[]const u8 = null;
-    if (params.value.neoforge_version) |loader_version| {
+    if (plan.value.loader == .neoforge) {
+        const loader_version = params.value.neoforge_version.?;
         const patched = core.neoforge_executor.run(
             service.allocator,
             service.io,
@@ -238,7 +239,8 @@ pub fn writeExecuteResult(
         processors_run = patched.processors_run;
         patched_client = patched.patched_sha1;
     }
-    if (params.value.forge_version) |loader_version| {
+    if (plan.value.loader == .forge) {
+        const loader_version = params.value.forge_version.?;
         const patched = core.forge_executor.run(
             service.allocator,
             service.io,

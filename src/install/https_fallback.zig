@@ -28,7 +28,7 @@ pub fn fetch(
 
     var redirects: u8 = 0;
     while (true) {
-        const outcome = try fetchOnce(allocator, io, current, writer);
+        const outcome = try fetchOnce(allocator, io, .get, current, writer, null);
         switch (outcome) {
             .status => |code| return code,
             .location => |next| {
@@ -44,6 +44,45 @@ pub fn fetch(
     }
 }
 
+pub const HeadResult = struct {
+    status: u16,
+    content_length: ?u64,
+};
+
+/// Performs an HTTPS HEAD of `url`, following up to `max_redirects`
+/// absolute-URL redirects, and returns the final status code along with
+/// the Content-Length header when the server sends one.
+pub fn fetchHead(allocator: std.mem.Allocator, io: std.Io, url: []const u8) !HeadResult {
+    var current = try std.fmt.allocPrint(allocator, "{s}", .{url});
+    defer allocator.free(current);
+
+    var redirects: u8 = 0;
+    while (true) {
+        var discard_buffer: [4096]u8 = undefined;
+        var discard: std.Io.Writer.Discarding = .init(&discard_buffer);
+        var headers: Headers = .{};
+        const outcome = try fetchOnce(allocator, io, .head, current, &discard.writer, &headers);
+        switch (outcome) {
+            .status => |code| return .{ .status = code, .content_length = headers.content_length },
+            .location => |next| {
+                redirects += 1;
+                if (redirects > max_redirects) {
+                    allocator.free(next);
+                    return error.TooManyRedirects;
+                }
+                allocator.free(current);
+                current = next;
+            },
+        }
+    }
+}
+
+const Method = enum { get, head };
+
+const Headers = struct {
+    content_length: ?u64 = null,
+};
+
 const Outcome = union(enum) {
     status: u16,
     /// Owned by the caller; free with the allocator passed to `fetch`.
@@ -53,8 +92,10 @@ const Outcome = union(enum) {
 fn fetchOnce(
     allocator: std.mem.Allocator,
     io: std.Io,
+    method: Method,
     url: []const u8,
     writer: *std.Io.Writer,
+    out_headers: ?*Headers,
 ) !Outcome {
     const uri = std.Uri.parse(url) catch return error.InvalidFallbackUrl;
     if (!std.mem.eql(u8, uri.scheme, "https")) return error.InvalidFallbackUrl;
@@ -119,8 +160,8 @@ fn fetchOnce(
     defer allocator.free(target);
     const request = std.fmt.bufPrint(
         &request_buffer,
-        "GET {s} HTTP/1.1\r\nHost: {s}\r\nUser-Agent: jmcl-core/0.1.0-dev\r\nAccept: */*\r\nConnection: close\r\n\r\n",
-        .{ target, host },
+        "{s} {s} HTTP/1.1\r\nHost: {s}\r\nUser-Agent: jmcl-core/0.1.0-dev\r\nAccept: */*\r\nConnection: close\r\n\r\n",
+        .{ if (method == .head) "HEAD" else "GET", target, host },
     ) catch return error.InvalidFallbackUrl;
     try client.writer.writeAll(request);
     try client.writer.flush();
@@ -144,6 +185,10 @@ fn fetchOnce(
             if (value.len == 0 or value.len > 2048) return error.InvalidFallbackRedirect;
             if (location) |previous| allocator.free(previous);
             location = try allocator.dupe(u8, value);
+        } else if (std.ascii.eqlIgnoreCase(name, "content-length")) {
+            if (out_headers) |headers| {
+                headers.content_length = std.fmt.parseInt(u64, value, 10) catch null;
+            }
         }
     }
 
@@ -153,14 +198,16 @@ fn fetchOnce(
         const redirect_uri = std.Uri.parse(redirect_target) catch return error.InvalidFallbackRedirect;
         if (!std.mem.eql(u8, redirect_uri.scheme, "https")) return error.InvalidFallbackRedirect;
         if (redirect_uri.host == null) return error.InvalidFallbackRedirect;
-        var discard_buffer: [4096]u8 = undefined;
-        var discard: std.Io.Writer.Discarding = .init(&discard_buffer);
-        try drainBody(&client.reader, &discard.writer, chunked);
+        if (method == .get) {
+            var discard_buffer: [4096]u8 = undefined;
+            var discard: std.Io.Writer.Discarding = .init(&discard_buffer);
+            try drainBody(&client.reader, &discard.writer, chunked);
+        }
         return .{ .location = try allocator.dupe(u8, redirect_target) };
     }
     if (location) |owned| allocator.free(owned);
 
-    try drainBody(&client.reader, writer, chunked);
+    if (method == .get) try drainBody(&client.reader, writer, chunked);
     return .{ .status = status };
 }
 

@@ -8,6 +8,8 @@ const content_registry = @import("mods/content_registry.zig");
 const core = @import("root.zig");
 const fabric = @import("loaders/fabric.zig");
 const forge = @import("loaders/forge.zig");
+const forge_legacy = @import("loaders/forge_legacy.zig");
+const https_fallback = @import("install/https_fallback.zig");
 const install_plan = @import("install/plan.zig");
 const install_executor = @import("install/installer.zig");
 const modrinth = @import("mods/modrinth.zig");
@@ -55,11 +57,18 @@ pub const ForgeResolvedMetadata = struct {
     allocator: std.mem.Allocator,
 };
 
+pub const ForgeLegacyResolvedMetadata = struct {
+    parent: std.json.Parsed(version_metadata.Metadata),
+    profile: std.json.Parsed(forge_legacy.Profile),
+    overlay: forge.Overlay,
+};
+
 pub const ResolvedMetadata = union(enum) {
     vanilla: std.json.Parsed(version_metadata.Metadata),
     fabric: FabricResolvedMetadata,
     neoforge: NeoForgeResolvedMetadata,
     forge: ForgeResolvedMetadata,
+    forge_legacy: ForgeLegacyResolvedMetadata,
 
     pub fn deinit(resolved: *ResolvedMetadata) void {
         switch (resolved.*) {
@@ -83,6 +92,11 @@ pub const ResolvedMetadata = union(enum) {
                 document.parent.deinit();
                 document.allocator.free(document.installer_sha1);
             },
+            .forge_legacy => |*document| {
+                document.overlay.deinit();
+                document.profile.deinit();
+                document.parent.deinit();
+            },
         }
         resolved.* = undefined;
     }
@@ -93,6 +107,7 @@ pub const ResolvedMetadata = union(enum) {
             .fabric => |*document| &document.overlay.value,
             .neoforge => |*document| &document.overlay.value,
             .forge => |*document| &document.overlay.value,
+            .forge_legacy => |*document| &document.overlay.value,
         };
     }
 };
@@ -416,8 +431,25 @@ pub const Service = struct {
 
         const installer_url = try forge.installerUrlAlloc(self.allocator, minecraft_version, forge_version);
         defer self.allocator.free(installer_url);
-        var installer = try self.fetchBody(installer_url, neoforge.max_installer_bytes);
+        var installer = self.fetchBody(installer_url, neoforge.max_installer_bytes) catch |err| blk: {
+            if (err != error.UnsuccessfulHttpStatus) return err;
+            const legacy_url = try forge.legacyInstallerUrlAlloc(self.allocator, minecraft_version, forge_version);
+            defer self.allocator.free(legacy_url);
+            break :blk try self.fetchBody(legacy_url, neoforge.max_installer_bytes);
+        };
         defer installer.deinit();
+
+        const install_source = (try zip_reader.readEntryAlloc(
+            self.allocator,
+            installer.content,
+            "install_profile.json",
+            neoforge.max_install_profile_bytes,
+        )) orelse return error.ForgeInstallProfileMissing;
+        defer self.allocator.free(install_source);
+
+        if (try forge_legacy.isLegacyProfile(self.allocator, install_source)) {
+            return self.resolveForgeLegacyMetadata(minecraft_version, parent, install_source);
+        }
 
         const version_source = (try zip_reader.readEntryAlloc(
             self.allocator,
@@ -426,13 +458,6 @@ pub const Service = struct {
             neoforge.max_version_profile_bytes,
         )) orelse return error.ForgeVersionProfileMissing;
         defer self.allocator.free(version_source);
-        const install_source = (try zip_reader.readEntryAlloc(
-            self.allocator,
-            installer.content,
-            "install_profile.json",
-            neoforge.max_install_profile_bytes,
-        )) orelse return error.ForgeInstallProfileMissing;
-        defer self.allocator.free(install_source);
 
         var install_profile = try forge.parseInstallProfile(self.allocator, install_source);
         errdefer install_profile.deinit();
@@ -473,6 +498,92 @@ pub const Service = struct {
             .installer_size = installer.content.len,
             .allocator = self.allocator,
         } };
+    }
+
+    /// Resolves a legacy Forge installer profile (Minecraft 1.7.10 through
+    /// the 1.12.2-era installer format): no processor chain, the universal
+    /// jar and its libraries are plain Maven artifacts. Every library gets
+    /// its integrity from the profile checksums or the repository SHA-1
+    /// sidecar, exactly like the Fabric library flow.
+    fn resolveForgeLegacyMetadata(
+        self: Service,
+        minecraft_version: []const u8,
+        parent: std.json.Parsed(version_metadata.Metadata),
+        install_source: []const u8,
+    ) !ResolvedMetadata {
+        var profile = try forge_legacy.parseProfile(self.allocator, install_source);
+        errdefer profile.deinit();
+        if (!std.mem.eql(u8, profile.value.install.minecraft, minecraft_version)) return error.ForgeParentMismatch;
+        if (profile.value.versionInfo.inheritsFrom) |parent_id| {
+            if (!std.mem.eql(u8, parent_id, minecraft_version)) return error.ForgeParentMismatch;
+        }
+
+        const libraries = profile.value.versionInfo.libraries;
+        const resolved = try self.allocator.alloc(forge_legacy.ResolvedLibrary, libraries.len);
+        defer self.allocator.free(resolved);
+        var initialized: usize = 0;
+        defer for (resolved[0..initialized]) |library| {
+            self.allocator.free(library.path);
+            self.allocator.free(library.url);
+            self.allocator.free(library.sha1);
+        };
+        for (libraries, 0..) |library, index| {
+            resolved[index] = try self.resolveLegacyLibrary(
+                library,
+                profile.value.install.path,
+            );
+            initialized += 1;
+        }
+
+        const overlay = try forge_legacy.merge(self.allocator, parent.value, profile.value, resolved);
+        return .{ .forge_legacy = .{
+            .parent = parent,
+            .profile = profile,
+            .overlay = overlay,
+        } };
+    }
+
+    fn resolveLegacyLibrary(
+        self: Service,
+        library: forge_legacy.Library,
+        universal_name: []const u8,
+    ) !forge_legacy.ResolvedLibrary {
+        const base = try forge_legacy.normalizedBaseUrl(library.url);
+        const is_universal = std.mem.eql(u8, library.name, universal_name);
+        const coordinate = if (is_universal)
+            try forge_legacy.universalCoordinateAlloc(self.allocator, library.name)
+        else
+            try self.allocator.dupe(u8, library.name);
+        defer self.allocator.free(coordinate);
+
+        const relative = try neoforge.artifactPathAlloc(self.allocator, coordinate);
+        errdefer self.allocator.free(relative);
+        const artifact_url = try forge_legacy.artifactUrlAlloc(self.allocator, base, coordinate);
+        errdefer self.allocator.free(artifact_url);
+
+        const declared: []const u8 = declared: {
+            if (library.checksums) |checksums| break :declared checksums[0];
+            var buffer: [40]u8 = undefined;
+            self.fetchSha1Sidecar(artifact_url, &buffer) catch |err| {
+                if (is_universal) return error.LegacyForgeArtifactUnavailable;
+                return err;
+            };
+            break :declared &buffer;
+        };
+        const sha1 = try self.allocator.dupe(u8, declared);
+        errdefer self.allocator.free(sha1);
+
+        const size = self.fetchContentLength(artifact_url) catch |err| {
+            if (is_universal) return error.LegacyForgeArtifactUnavailable;
+            return err;
+        };
+        if (size == 0 or size > forge_legacy.max_library_size) return error.InvalidLibrarySize;
+        return .{
+            .path = relative,
+            .url = artifact_url,
+            .sha1 = sha1,
+            .size = size,
+        };
     }
 
     pub fn createInstallPlan(
@@ -528,7 +639,7 @@ pub const Service = struct {
             .neoforge => |*document| {
                 var extras = try self.buildNeoForgeExtras(selection.neoforge_version.?, document);
                 defer extras.deinit();
-                return install_plan.buildWithExtras(
+                var plan = try install_plan.buildWithExtras(
                     self.allocator,
                     metadata.*,
                     if (asset_document) |document_value| document_value.value else null,
@@ -536,11 +647,13 @@ pub const Service = struct {
                     target,
                     extras.files,
                 );
+                plan.value.loader = .neoforge;
+                return plan;
             },
             .forge => |*document| {
                 var extras = try self.buildForgeExtras(selection.id, selection.forge_version.?, document);
                 defer extras.deinit();
-                return install_plan.buildWithExtras(
+                var plan = try install_plan.buildWithExtras(
                     self.allocator,
                     metadata.*,
                     if (asset_document) |document_value| document_value.value else null,
@@ -548,14 +661,24 @@ pub const Service = struct {
                     target,
                     extras.files,
                 );
+                plan.value.loader = .forge;
+                return plan;
             },
-            else => return install_plan.build(
-                self.allocator,
-                metadata.*,
-                if (asset_document) |document| document.value else null,
-                download_source,
-                target,
-            ),
+            else => {
+                var plan = try install_plan.build(
+                    self.allocator,
+                    metadata.*,
+                    if (asset_document) |document| document.value else null,
+                    download_source,
+                    target,
+                );
+                plan.value.loader = switch (metadata_document) {
+                    .fabric => .fabric,
+                    .forge_legacy => .forge_legacy,
+                    else => .none,
+                };
+                return plan;
+            },
         }
     }
 
@@ -1166,7 +1289,7 @@ pub const Service = struct {
                 try fabric.validateSha1(provided);
                 @memcpy(sha1, provided);
             } else {
-                try self.fetchFabricSha1(artifact_url, sha1);
+                try self.fetchSha1Sidecar(artifact_url, sha1);
             }
             const size = if (library.size) |provided| provided else try self.fetchContentLength(artifact_url);
             if (size == 0 or size > fabric.max_library_size) return error.InvalidFabricLibrarySize;
@@ -1179,8 +1302,8 @@ pub const Service = struct {
         };
     }
 
-    fn fetchFabricSha1(self: Service, artifact_url: []const u8, output: []u8) !void {
-        if (output.len != 40) return error.InvalidFabricSha1Destination;
+    fn fetchSha1Sidecar(self: Service, artifact_url: []const u8, output: []u8) !void {
+        if (output.len != 40) return error.InvalidSha1Destination;
         const sidecar_url = try std.fmt.allocPrint(self.allocator, "{s}.sha1", .{artifact_url});
         defer self.allocator.free(sidecar_url);
         var body = try self.fetchBody(sidecar_url, max_sha1_sidecar_bytes);
@@ -1192,6 +1315,16 @@ pub const Service = struct {
     }
 
     fn fetchContentLength(self: Service, url: []const u8) !u64 {
+        return self.fetchContentLengthPrimary(url) catch |err| {
+            if (err != error.TlsInitializationFailed) return err;
+            const head = try https_fallback.fetchHead(self.allocator, self.io, url);
+            const status: std.http.Status = @enumFromInt(head.status);
+            if (status.class() != .success) return error.UnsuccessfulHttpStatus;
+            return head.content_length orelse error.MissingContentLength;
+        };
+    }
+
+    fn fetchContentLengthPrimary(self: Service, url: []const u8) !u64 {
         var proxy_arena = std.heap.ArenaAllocator.init(self.allocator);
         defer proxy_arena.deinit();
         var client: std.http.Client = .{

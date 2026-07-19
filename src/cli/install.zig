@@ -302,7 +302,8 @@ pub fn executeInstall(
     };
     if (reporter_context.output_failed) return error.WriteFailed;
 
-    if (neoforge_version) |loader_version| {
+    if (plan.value.loader == .neoforge) {
+        const loader_version = neoforge_version.?;
         var processor_reporter: CliProcessorReporter = .{ .writer = stderr };
         const patched = jmcl.neoforge_executor.run(
             service.allocator,
@@ -325,7 +326,8 @@ pub fn executeInstall(
         try stdout.print("processors\t{d}\n", .{patched.processors_run});
         try stdout.print("patchedClient\t{s}\n", .{patched.patched_sha1});
     }
-    if (forge_version) |loader_version| {
+    if (plan.value.loader == .forge) {
+        const loader_version = forge_version.?;
         var processor_reporter: CliProcessorReporter = .{ .writer = stderr };
         const patched = jmcl.forge_executor.run(
             service.allocator,

@@ -27,6 +27,23 @@ pub fn installerUrlAlloc(
     );
 }
 
+/// Legacy installers for some Minecraft releases (for example 1.7.10 and
+/// 1.9.4) were published under a Maven version that repeats the Minecraft
+/// version as a suffix.
+pub fn legacyInstallerUrlAlloc(
+    allocator: std.mem.Allocator,
+    minecraft_version: []const u8,
+    forge_version: []const u8,
+) ![]u8 {
+    try neoforge.validateVersionId(minecraft_version);
+    try validateForgeVersion(forge_version);
+    return std.fmt.allocPrint(
+        allocator,
+        maven_root ++ "net/minecraftforge/forge/{s}-{s}-{s}/forge-{s}-{s}-{s}-installer.jar",
+        .{ minecraft_version, forge_version, minecraft_version, minecraft_version, forge_version, minecraft_version },
+    );
+}
+
 pub fn profileIdAlloc(
     allocator: std.mem.Allocator,
     minecraft_version: []const u8,

@@ -108,6 +108,14 @@ pub const AssetProjection = struct {
     kind: ProjectionKind,
 };
 
+pub const Loader = enum {
+    none,
+    fabric,
+    neoforge,
+    forge,
+    forge_legacy,
+};
+
 pub const Data = struct {
     version_id: []const u8,
     source: DownloadSource,
@@ -118,6 +126,7 @@ pub const Data = struct {
     asset_projections: []const AssetProjection,
     total_download_size: u64,
     java_major_version: u16 = 0,
+    loader: Loader = .none,
 };
 
 pub const Plan = struct {

@@ -79,6 +79,30 @@ install.
 ## Excluded
 
 - Creating or downloading a `mods/` directory.
-- Legacy Forge installers (1.12.2 and earlier), which use a different install
-  profile layout.
 - Modrinth, CurseForge, modpacks, Quilt, Fabric API, and third-party mods.
+
+## Legacy Forge (1.7.10 through the 1.12.2-era installers)
+
+Older Forge installers embed a legacy `install_profile.json` (`install` +
+`versionInfo`) instead of a processor chain. For those versions the core
+takes a different path:
+
+- The installer archive is fetched from the Forge Maven; versions whose
+  Maven directory repeats the Minecraft version (for example
+  `1.7.10-10.13.4.1614-1.7.10`) are tried automatically.
+- Every library in `versionInfo.libraries` becomes a plain Maven download:
+  the Forge universal jar under its `universal` classifier, and the rest
+  from their declared repository or `libraries.minecraft.net`. Plain-HTTP
+  repository URLs from that era are upgraded to HTTPS for well-known hosts
+  only (Forge and Minecraft Mavens, Maven Central).
+- Integrity comes from the profile `checksums` when present, otherwise
+  from the repository's `.sha1` sidecar, with sizes from HTTP headers —
+  every file still flows through the content-addressed, verified pipeline.
+- The merged version metadata uses `net.minecraft.launchwrapper.Launch`
+  and the legacy `minecraftArguments` string (including the FML
+  `--tweakClass`), so no processor execution is needed or attempted.
+
+One caveat: the 1.6.x-era `minecraftforge` artifacts no longer exist on
+the Forge Maven, so 1.6.4 and older fail with
+`LegacyForgeArtifactUnavailable` instead of installing silently broken
+files.
