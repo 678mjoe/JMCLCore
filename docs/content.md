@@ -1,10 +1,12 @@
-# Modrinth Mods
+# Modrinth Content: Mods And Resource Packs
 
-JMCL Core installs and manages Modrinth mods for instances that have a mod
-loader (Fabric, NeoForge, or Forge). Mods are content-addressed like every
+JMCL Core installs and manages Modrinth content for instances. Mods target
+instances with a mod loader (Fabric, NeoForge, or Forge); resource packs work
+on any instance, including vanilla. Content is content-addressed like every
 other artifact: downloads are verified against the Modrinth-published SHA-1,
-stored in the shared artifact store, and hard-linked into the instance `mods/`
-directory. Manually dropped jars can be adopted into the same scheme.
+stored in the shared artifact store, and hard-linked into the instance
+directory (`mods/` for mods, `resourcepacks/` for resource packs). Manually
+dropped files can be adopted into the same scheme.
 
 This document covers installation and lifecycle management only. Searching and
 browsing the Modrinth catalog is left to the embedding application.
@@ -17,27 +19,32 @@ Each instance records its managed content in `.minecraft/.jmcl/content.json`:
 {"schema_version":1,"entries":[
   {"kind":"mod","file":"mods/sodium-fabric-0.5.8+mc1.20.4.jar","sha1":"…","size":…,
    "source":{"provider":"modrinth","project_id":"AANobbMI","version_id":"…","slug":"sodium"},
+   "enabled":true,"as_dependency":false},
+  {"kind":"resourcepack","file":"resourcepacks/pack.zip","sha1":"…","size":…,
+   "source":{"provider":"modrinth","project_id":"6SLU7tS5","version_id":"…","slug":"default-dark-mode"},
    "enabled":true,"as_dependency":false}
 ]}
 ```
 
-- `kind` is currently always `"mod"`; the schema leaves room for
-  `"resourcepack"` and `"shaderpack"` management later.
+- `kind` is `"mod"` or `"resourcepack"`. The kind fixes the target directory
+  (`mods/`, `resourcepacks/`) and the managed file extension (`.jar`, `.zip`);
+  entries whose file does not live under their kind's directory are rejected.
 - `source.provider` is `modrinth` or `manual`. Manually adopted files carry no
   project identifiers.
-- `as_dependency` marks mods installed only to satisfy another mod's required
-  dependency.
+- `as_dependency` marks content installed only to satisfy another project's
+  required dependency.
 - The registry is written atomically and only after every download succeeded;
   a failed install leaves no partial entries and no partial files.
 
-`instance.json` remains the instance identity and is never modified by mod
+`instance.json` remains the instance identity and is never modified by content
 operations.
 
-## Commands
+## Mod Commands
 
 ```sh
 jmcl-core instance mods install sodium-demo --project sodium
 jmcl-core instance mods install sodium-demo --project sodium-extra --version M0ndiav7
+jmcl-core instance mods install sodium-demo --project sodium --no-dependencies
 jmcl-core instance mods list sodium-demo
 jmcl-core instance mods list sodium-demo --json
 jmcl-core instance mods adopt sodium-demo
@@ -47,13 +54,15 @@ jmcl-core instance mods remove sodium-demo --file mods/manual.jar
 
 - `install` accepts a project slug or id and an optional exact Modrinth
   version id. Without `--version`, the newest compatible release wins over
-  beta and alpha builds.
+  beta and alpha builds. Installing a project whose Modrinth type is not
+  `mod` fails with a kind mismatch.
 - The instance loader (`fabric_loader`, `neoforge_version`, or
   `forge_version` in the manifest) selects the Modrinth loader filter;
   instances without a loader reject mod installation.
 - Required dependencies resolve recursively against the same Minecraft
   version and loader; already-registered projects are skipped and counted in
   the `skipped` line. Optional and incompatible dependencies are ignored.
+  `--no-dependencies` installs only the requested project.
 - `adopt` scans `mods/` for unregistered jars, hashes each into the artifact
   store, re-links the instance file as a hard link, and registers it with the
   `manual` provider.
@@ -61,10 +70,38 @@ jmcl-core instance mods remove sodium-demo --file mods/manual.jar
   store object remains until `store gc` reclaims it after the last link
   disappears.
 
+## Resource Pack Commands
+
+```sh
+jmcl-core instance resourcepacks install vanilla-demo --project default-dark-mode
+jmcl-core instance resourcepacks list vanilla-demo
+jmcl-core instance resourcepacks adopt vanilla-demo
+jmcl-core instance resourcepacks remove vanilla-demo --project default-dark-mode
+```
+
+- Resource packs install into `resourcepacks/` and require no mod loader;
+  vanilla instances are fully supported.
+- Compatibility resolves through Modrinth's `minecraft` pseudo-loader:
+  versions filtered by the instance's Minecraft version, newest stable release
+  first. Installing a project whose Modrinth type is not `resourcepack` fails
+  with a kind mismatch.
+- Required dependencies recurse by default (same-type only; a resource pack
+  that depends on a mod is rejected with a kind mismatch). `--no-dependencies`
+  installs only the requested project.
+- `list`, `adopt` (unmanaged `.zip` files), and `remove` behave exactly like
+  their mod counterparts, scoped to the resource pack kind.
+- Activating packs in `options.txt` is the embedding application's job; JMCL
+  manages files only.
+
+## RPC
+
 The same operations are available over RPC as `mods.list`, `mods.install`,
-`mods.remove`, and `mods.adopt`. The RPC forms take an explicit `directory`,
-`minecraft_version`, and `loader` (`fabric` | `neoforge` | `forge`) instead of
-reading an instance manifest.
+`mods.remove`, `mods.adopt` and `resourcepacks.list`, `resourcepacks.install`,
+`resourcepacks.remove`, `resourcepacks.adopt`. The RPC forms take an explicit
+`directory` and `minecraft_version` instead of reading an instance manifest.
+`mods.install` additionally requires `loader` (`fabric` | `neoforge` |
+`forge`); `resourcepacks.install` takes no loader. Both install methods accept
+`with_dependencies` (default `true`) to control dependency recursion.
 
 ## Network And Mirrors
 
@@ -85,9 +122,13 @@ still passes the exact size and SHA-1 checks of the install pipeline.
 - Project, version, and file metadata are validated: identifier character
   sets, HTTPS-only download URLs, SHA-1 presence, file size caps, and filename
   safety (no path separators, no Windows reserved names). Files are always
-  placed at `mods/<validated filename>`, never at an API-supplied path.
-- Dependency resolution is bounded: depth 32, at most 256 mods per install,
-  cycle-safe via a visited set.
+  placed at `<kind directory>/<validated filename>`, never at an API-supplied
+  path.
+- Project types are pinned to the requested kind: installing a mod through
+  the resource pack commands (or vice versa) is rejected, as are cross-kind
+  required dependencies.
+- Dependency resolution is bounded: depth 32, at most 256 projects per
+  install, cycle-safe via a visited set.
 - Every downloaded byte passes through the same verified pipeline as game
   artifacts: exact size and SHA-1 checks, atomic rename, store import, and
   hard-link materialization.
@@ -98,7 +139,8 @@ still passes the exact size and SHA-1 checks of the install pipeline.
 
 - Search, browse, and version listing RPCs.
 - CurseForge (requires a host-supplied API key; planned separately).
-- Mod updates (`mods upgrade`), optional dependencies, and enable/disable
+- Content updates (`upgrade`), optional dependencies, and enable/disable
   toggles.
-- Resource pack and shader pack management (registry schema already reserves
-  their `kind` values).
+- Shader pack management (the kind/directory mapping already leaves room for
+  a `shaderpacks/` kind).
+- Resource pack activation in `options.txt` and `pack.mcmeta` format checks.

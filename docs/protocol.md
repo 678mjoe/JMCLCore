@@ -119,7 +119,20 @@ verified content-addressed pipeline, and reports the installed entries:
 `loader` is one of `fabric`, `neoforge`, or `forge`. `mods.remove` takes
 exactly one of `project` or `file`. `mods.adopt` imports unmanaged `mods/`
 jars into the artifact store and registers them with the `manual` provider.
-See `docs/mods.md`.
+
+`resourcepacks.list`, `resourcepacks.install`, `resourcepacks.remove`, and
+`resourcepacks.adopt` mirror the mod methods for resource packs. They take no
+`loader` — compatibility resolves through Modrinth's `minecraft`
+pseudo-loader — and manage `resourcepacks/*.zip` files. Vanilla directories
+are supported:
+
+```json
+{"protocol":1,"id":"rp-install","method":"resourcepacks.install","params":{"directory":"/path/to/.minecraft","minecraft_version":"1.21.1","project":"default-dark-mode"}}
+```
+
+Both install methods default to recursing required dependencies; pass
+`"with_dependencies":false` to install only the requested project. See
+`docs/content.md`.
 
 ## `store.gc`
 

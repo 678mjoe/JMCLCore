@@ -5,7 +5,7 @@ const auth = @import("auth.zig");
 const install = @import("install.zig");
 const java = @import("java.zig");
 const launch = @import("launch.zig");
-const mods = @import("mods.zig");
+const content = @import("content.zig");
 const store = @import("store.zig");
 const version = @import("version.zig");
 
@@ -102,13 +102,21 @@ pub fn handleLine(
     } else if (std.mem.eql(u8, request.method, "store.gc")) {
         try store.writeGcResult(service, writer, request.id, request.params);
     } else if (std.mem.eql(u8, request.method, "mods.list")) {
-        try mods.writeListResult(service, writer, request.id, request.params);
+        try content.writeListResultWithKind(.mod, service, writer, request.id, request.params);
     } else if (std.mem.eql(u8, request.method, "mods.install")) {
-        try mods.writeInstallResult(service, writer, request.id, request.params);
+        try content.writeInstallResultWithKind(.mod, service, writer, request.id, request.params);
     } else if (std.mem.eql(u8, request.method, "mods.remove")) {
-        try mods.writeRemoveResult(service, writer, request.id, request.params);
+        try content.writeRemoveResultWithKind(.mod, service, writer, request.id, request.params);
     } else if (std.mem.eql(u8, request.method, "mods.adopt")) {
-        try mods.writeAdoptResult(service, writer, request.id, request.params);
+        try content.writeAdoptResultWithKind(.mod, service, writer, request.id, request.params);
+    } else if (std.mem.eql(u8, request.method, "resourcepacks.list")) {
+        try content.writeListResultWithKind(.resourcepack, service, writer, request.id, request.params);
+    } else if (std.mem.eql(u8, request.method, "resourcepacks.install")) {
+        try content.writeInstallResultWithKind(.resourcepack, service, writer, request.id, request.params);
+    } else if (std.mem.eql(u8, request.method, "resourcepacks.remove")) {
+        try content.writeRemoveResultWithKind(.resourcepack, service, writer, request.id, request.params);
+    } else if (std.mem.eql(u8, request.method, "resourcepacks.adopt")) {
+        try content.writeAdoptResultWithKind(.resourcepack, service, writer, request.id, request.params);
     } else if (std.mem.eql(u8, request.method, "java.detect")) {
         try java.writeDetectResult(service, writer, request.id, request.params);
     } else if (std.mem.eql(u8, request.method, "java.select")) {
@@ -439,10 +447,10 @@ test "account registry validation never stores or echoes credentials" {
 
 test {
     _ = auth;
+    _ = content;
     _ = install;
     _ = java;
     _ = launch;
-    _ = mods;
     _ = store;
     _ = version;
 }

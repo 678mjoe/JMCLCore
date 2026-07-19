@@ -13,6 +13,7 @@ pub const Loader = enum {
     fabric,
     forge,
     neoforge,
+    minecraft,
 
     pub fn name(loader: Loader) []const u8 {
         return @tagName(loader);
@@ -20,6 +21,18 @@ pub const Loader = enum {
 
     pub fn parse(value: []const u8) ?Loader {
         inline for (std.meta.fields(Loader)) |field| {
+            if (std.mem.eql(u8, value, field.name)) return @enumFromInt(field.value);
+        }
+        return null;
+    }
+};
+
+pub const ProjectType = enum {
+    mod,
+    resourcepack,
+
+    pub fn parse(value: []const u8) ?ProjectType {
+        inline for (std.meta.fields(ProjectType)) |field| {
             if (std.mem.eql(u8, value, field.name)) return @enumFromInt(field.value);
         }
         return null;
@@ -178,7 +191,7 @@ pub fn parseProject(allocator: std.mem.Allocator, source: []const u8) !std.json.
     errdefer document.deinit();
     try validateProjectRef(document.value.id);
     try validateProjectRef(document.value.slug);
-    if (!std.mem.eql(u8, document.value.project_type, "mod")) return error.NotAModProject;
+    if (ProjectType.parse(document.value.project_type) == null) return error.UnsupportedProjectType;
     return document;
 }
 
@@ -339,9 +352,36 @@ test "rejects unsafe version documents" {
     ;
     try std.testing.expectError(error.InsecureModrinthUrl, parseVersion(std.testing.allocator, insecure));
 
-    try std.testing.expectError(error.NotAModProject, parseProject(std.testing.allocator,
-        \\{"id":"AANobbMI","slug":"pack","title":"Pack","project_type":"resourcepack"}
+    var resourcepack_project = try parseProject(std.testing.allocator,
+        \\{"id":"BvCvBnMk","slug":"default-dark-mode","title":"Dark","project_type":"resourcepack"}
+    );
+    defer resourcepack_project.deinit();
+    try std.testing.expectEqual(ProjectType.resourcepack, ProjectType.parse(resourcepack_project.value.project_type).?);
+
+    try std.testing.expectError(error.UnsupportedProjectType, parseProject(std.testing.allocator,
+        \\{"id":"AANobbMI","slug":"pack","title":"Pack","project_type":"shader"}
     ));
+    try std.testing.expectError(error.UnsupportedProjectType, parseProject(std.testing.allocator,
+        \\{"id":"AANobbMI","slug":"pack","title":"Pack","project_type":"modpack"}
+    ));
+}
+
+test "loader parsing covers the minecraft pseudo-loader" {
+    try std.testing.expectEqual(Loader.minecraft, Loader.parse("minecraft").?);
+    try std.testing.expectEqualStrings("minecraft", Loader.minecraft.name());
+    try std.testing.expect(Loader.parse("quilt") == null);
+}
+
+test "selects a resourcepack version through the minecraft pseudo-loader" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\[{"id":"QwErTyUi","project_id":"BvCvBnMk","version_number":"1.0","version_type":"release","game_versions":["1.21.1"],"loaders":["minecraft"],"files":[{"url":"https://cdn.modrinth.com/data/BvCvBnMk/versions/QwErTyUi/pack.zip","filename":"pack.zip","primary":true,"hashes":{"sha1":"3333333333333333333333333333333333333333"},"size":300}],"dependencies":[]}]
+    ;
+    var versions = try parseVersions(allocator, source);
+    defer versions.deinit();
+    const selected = selectVersion(versions.value, "1.21.1", .minecraft).?;
+    try std.testing.expectEqualStrings("QwErTyUi", selected.id);
+    try std.testing.expect(selectVersion(versions.value, "1.21.1", .fabric) == null);
 }
 
 test "selects the newest stable compatible version" {

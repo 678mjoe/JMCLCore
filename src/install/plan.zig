@@ -71,6 +71,7 @@ pub const Usage = struct {
     logging_config: bool = false,
     asset_object: bool = false,
     mod: bool = false,
+    resourcepack: bool = false,
 
     fn merge(usage: *Usage, other: Usage) void {
         usage.client = usage.client or other.client;
@@ -80,6 +81,7 @@ pub const Usage = struct {
         usage.logging_config = usage.logging_config or other.logging_config;
         usage.asset_object = usage.asset_object or other.asset_object;
         usage.mod = usage.mod or other.mod;
+        usage.resourcepack = usage.resourcepack or other.resourcepack;
     }
 };
 

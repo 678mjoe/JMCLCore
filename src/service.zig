@@ -4,7 +4,7 @@ const authentication = @import("auth/authentication.zig");
 const authentication_http = @import("auth/http.zig");
 const account_store = @import("auth/account_store.zig");
 const asset_index = @import("install/asset_index.zig");
-const content_registry = @import("mods/content_registry.zig");
+const content_registry = @import("content/content_registry.zig");
 const core = @import("root.zig");
 const fabric = @import("loaders/fabric.zig");
 const forge = @import("loaders/forge.zig");
@@ -12,7 +12,7 @@ const forge_legacy = @import("loaders/forge_legacy.zig");
 const https_fallback = @import("install/https_fallback.zig");
 const install_plan = @import("install/plan.zig");
 const install_executor = @import("install/installer.zig");
-const modrinth = @import("mods/modrinth.zig");
+const modrinth = @import("content/modrinth.zig");
 const neoforge = @import("loaders/neoforge.zig");
 const version_manifest = @import("install/version_manifest.zig");
 const version_metadata = @import("install/version_metadata.zig");
@@ -779,9 +779,10 @@ pub const Service = struct {
         };
     }
 
-    pub const ModInstallOptions = struct {
+    pub const ContentInstallOptions = struct {
         workers: u8 = 8,
         retries: u8 = 2,
+        with_dependencies: bool = true,
     };
 
     pub const InstalledContent = struct {
@@ -805,7 +806,7 @@ pub const Service = struct {
         }
     };
 
-    const ResolvedMod = struct {
+    const ResolvedContent = struct {
         project_id: []const u8,
         slug: ?[]const u8,
         version: modrinth.Version,
@@ -816,21 +817,35 @@ pub const Service = struct {
     /// Resolves a Modrinth project and its required dependencies against the
     /// instance's Minecraft version and loader, downloads every file through
     /// the verified content-addressed pipeline, and registers the results in
-    /// the instance content registry.
-    pub fn installModrinthProject(
+    /// the instance content registry. Mods require the instance loader;
+    /// resourcepacks resolve through the `minecraft` pseudo-loader.
+    pub fn installModrinthContent(
         self: Service,
         minecraft_dir: std.Io.Dir,
         store: std.Io.Dir,
+        kind: content_registry.Kind,
         game_version: []const u8,
-        loader: modrinth.Loader,
+        loader: ?modrinth.Loader,
         project: []const u8,
         version_id: ?[]const u8,
-        options: ModInstallOptions,
+        options: ContentInstallOptions,
         reporter: ?install_executor.Reporter,
     ) !ContentInstallSummary {
         try modrinth.validateProjectRef(project);
         try modrinth.validateGameVersion(game_version);
         if (version_id) |id| try modrinth.validateVersionId(id);
+        const effective_loader: modrinth.Loader = switch (kind) {
+            .mod => blk: {
+                const value = loader orelse return error.ModLoaderRequired;
+                if (value == .minecraft) return error.ModLoaderRequired;
+                break :blk value;
+            },
+            .resourcepack => blk: {
+                if (loader != null and loader.? != .minecraft) return error.InvalidContentLoader;
+                break :blk .minecraft;
+            },
+        };
+        const directory = kind.directory();
 
         const arena = try self.allocator.create(std.heap.ArenaAllocator);
         errdefer self.allocator.destroy(arena);
@@ -841,16 +856,18 @@ pub const Service = struct {
         var registry_document = try content_registry.load(self.allocator, self.io, minecraft_dir);
         defer registry_document.deinit();
 
-        var resolved: std.ArrayList(ResolvedMod) = .empty;
+        var resolved: std.ArrayList(ResolvedContent) = .empty;
         var visited: std.StringHashMap(void) = .init(scratch);
         var skipped: usize = 0;
-        try self.resolveModrinthMod(
+        try self.resolveModrinthContent(
             scratch,
+            kind,
             game_version,
-            loader,
+            effective_loader,
             project,
             version_id,
             false,
+            options.with_dependencies,
             registry_document.value,
             &resolved,
             &visited,
@@ -860,22 +877,22 @@ pub const Service = struct {
 
         const files = try scratch.alloc(install_plan.File, resolved.items.len);
         var total_size: u64 = 0;
-        for (resolved.items, 0..) |mod, index| {
-            const path = try std.fmt.allocPrint(scratch, "mods/{s}", .{mod.file.filename});
+        for (resolved.items, 0..) |content, index| {
+            const path = try std.fmt.allocPrint(scratch, "{s}/{s}", .{ directory, content.file.filename });
             if (content_registry.findByFile(registry_document.value, path)) |existing| {
-                if (!std.ascii.eqlIgnoreCase(existing.sha1, mod.file.hashes.sha1)) {
+                if (!std.ascii.eqlIgnoreCase(existing.sha1, content.file.hashes.sha1)) {
                     return error.ContentFileConflict;
                 }
             }
             files[index] = .{
                 .path = path,
-                .url = mod.file.url,
+                .url = content.file.url,
                 .fallback_url = null,
-                .sha1 = mod.file.hashes.sha1,
-                .size = mod.file.size,
-                .usage = .{ .mod = true },
+                .sha1 = content.file.hashes.sha1,
+                .size = content.file.size,
+                .usage = .{ .mod = kind == .mod, .resourcepack = kind == .resourcepack },
             };
-            total_size = std.math.add(u64, total_size, mod.file.size) catch return error.DownloadSizeOverflow;
+            total_size = std.math.add(u64, total_size, content.file.size) catch return error.DownloadSizeOverflow;
         }
 
         const host = try install_plan.Target.host();
@@ -903,28 +920,28 @@ pub const Service = struct {
         const merged = try scratch.alloc(content_registry.Entry, old_entries.len + resolved.items.len);
         @memcpy(merged[0..old_entries.len], old_entries);
         const installed = try scratch.alloc(InstalledContent, resolved.items.len);
-        for (resolved.items, 0..) |mod, index| {
+        for (resolved.items, 0..) |content, index| {
             const file_path = files[index].path;
             merged[old_entries.len + index] = .{
-                .kind = .mod,
+                .kind = kind,
                 .file = file_path,
-                .sha1 = mod.file.hashes.sha1,
-                .size = mod.file.size,
+                .sha1 = content.file.hashes.sha1,
+                .size = content.file.size,
                 .source = .{
                     .provider = .modrinth,
-                    .project_id = try scratch.dupe(u8, mod.project_id),
-                    .version_id = try scratch.dupe(u8, mod.version.id),
-                    .slug = if (mod.slug) |slug| try scratch.dupe(u8, slug) else null,
+                    .project_id = try scratch.dupe(u8, content.project_id),
+                    .version_id = try scratch.dupe(u8, content.version.id),
+                    .slug = if (content.slug) |slug| try scratch.dupe(u8, slug) else null,
                 },
                 .enabled = true,
-                .as_dependency = mod.as_dependency,
+                .as_dependency = content.as_dependency,
             };
             installed[index] = .{
                 .file = file_path,
-                .sha1 = mod.file.hashes.sha1,
-                .size = mod.file.size,
-                .slug = mod.slug,
-                .as_dependency = mod.as_dependency,
+                .sha1 = content.file.hashes.sha1,
+                .size = content.file.size,
+                .slug = content.slug,
+                .as_dependency = content.as_dependency,
             };
         }
         try content_registry.save(self.io, minecraft_dir, .{ .entries = merged });
@@ -936,25 +953,34 @@ pub const Service = struct {
         };
     }
 
-    fn resolveModrinthMod(
+    fn resolveModrinthContent(
         self: Service,
         scratch: std.mem.Allocator,
+        kind: content_registry.Kind,
         game_version: []const u8,
         loader: modrinth.Loader,
         project: []const u8,
         version_id: ?[]const u8,
         as_dependency: bool,
+        with_dependencies: bool,
         registry: content_registry.Registry,
-        resolved: *std.ArrayList(ResolvedMod),
+        resolved: *std.ArrayList(ResolvedContent),
         visited: *std.StringHashMap(void),
         skipped: *usize,
         depth: u8,
     ) anyerror!void {
-        if (depth > 32) return error.ModDependencyTooDeep;
-        if (resolved.items.len >= 256) return error.TooManyModDependencies;
+        if (depth > 32) return error.ContentDependencyTooDeep;
+        if (resolved.items.len >= 256) return error.TooManyContentDependencies;
 
         const project_document = try self.fetchModrinthProject(scratch, project);
         const project_value = project_document.value;
+        const project_type = modrinth.ProjectType.parse(project_value.project_type) orelse
+            return error.UnsupportedProjectType;
+        const project_kind: content_registry.Kind = switch (project_type) {
+            .mod => .mod,
+            .resourcepack => .resourcepack,
+        };
+        if (project_kind != kind) return error.ContentKindMismatch;
 
         if (visited.contains(project_value.id)) return;
         try visited.put(try scratch.dupe(u8, project_value.id), {});
@@ -969,16 +995,16 @@ pub const Service = struct {
                 return error.ModrinthVersionProjectMismatch;
             }
             if (!modrinth.versionSupports(document.value, game_version, loader)) {
-                return error.IncompatibleModVersion;
+                return error.IncompatibleContentVersion;
             }
             break :blk document.value;
         } else blk: {
             const document = try self.fetchModrinthVersions(scratch, project_value.id, game_version, loader);
             break :blk modrinth.selectVersion(document.value, game_version, loader) orelse
-                return error.NoCompatibleModVersion;
+                return error.NoCompatibleContentVersion;
         };
 
-        const file = modrinth.selectFile(version) orelse return error.ModFileSelectionFailed;
+        const file = modrinth.selectFile(version) orelse return error.ContentFileSelectionFailed;
         try resolved.append(scratch, .{
             .project_id = try scratch.dupe(u8, project_value.id),
             .slug = try scratch.dupe(u8, project_value.slug),
@@ -987,16 +1013,19 @@ pub const Service = struct {
             .as_dependency = as_dependency,
         });
 
+        if (!with_dependencies) return;
         for (version.dependencies) |dependency| {
             if (dependency.dependency_type != .required) continue;
             if (dependency.project_id) |dependency_project| {
-                try self.resolveModrinthMod(
+                try self.resolveModrinthContent(
                     scratch,
+                    kind,
                     game_version,
                     loader,
                     dependency_project,
                     null,
                     true,
+                    with_dependencies,
                     registry,
                     resolved,
                     visited,
@@ -1007,13 +1036,15 @@ pub const Service = struct {
             }
             if (dependency.version_id) |dependency_version| {
                 const document = try self.fetchModrinthVersion(scratch, dependency_version);
-                try self.resolveModrinthMod(
+                try self.resolveModrinthContent(
                     scratch,
+                    kind,
                     game_version,
                     loader,
                     document.value.project_id,
                     dependency_version,
                     true,
+                    with_dependencies,
                     registry,
                     resolved,
                     visited,
@@ -1054,6 +1085,7 @@ pub const Service = struct {
     pub const ContentList = struct {
         arena: *std.heap.ArenaAllocator,
         document: content_registry.Document,
+        entries: []const content_registry.Entry,
         unmanaged: []const []const u8,
 
         pub fn deinit(list: *ContentList) void {
@@ -1065,9 +1097,10 @@ pub const Service = struct {
         }
     };
 
-    /// Lists registered content and unmanaged files inside the instance mods
-    /// directory. Unmanaged files are candidates for `adoptInstanceContent`.
-    pub fn listInstanceContent(self: Service, minecraft_dir: std.Io.Dir) !ContentList {
+    /// Lists registered content of the given kind and unmanaged files inside
+    /// the kind's directory. Unmanaged files are candidates for
+    /// `adoptInstanceContent`.
+    pub fn listInstanceContent(self: Service, minecraft_dir: std.Io.Dir, kind: content_registry.Kind) !ContentList {
         const arena = try self.allocator.create(std.heap.ArenaAllocator);
         errdefer self.allocator.destroy(arena);
         arena.* = std.heap.ArenaAllocator.init(self.allocator);
@@ -1077,31 +1110,39 @@ pub const Service = struct {
         var document = try content_registry.load(self.allocator, self.io, minecraft_dir);
         errdefer document.deinit();
 
-        const unmanaged = try self.scanUnmanagedMods(scratch, minecraft_dir, document.value);
+        var entries: std.ArrayList(content_registry.Entry) = .empty;
+        for (document.value.entries) |entry| {
+            if (entry.kind == kind) try entries.append(scratch, entry);
+        }
+        const unmanaged = try self.scanUnmanagedContent(scratch, minecraft_dir, document.value, kind);
         return .{
             .arena = arena,
             .document = document,
+            .entries = entries.items,
             .unmanaged = unmanaged,
         };
     }
 
-    fn scanUnmanagedMods(
+    fn scanUnmanagedContent(
         self: Service,
         scratch: std.mem.Allocator,
         minecraft_dir: std.Io.Dir,
         registry: content_registry.Registry,
+        kind: content_registry.Kind,
     ) ![]const []const u8 {
         var unmanaged: std.ArrayList([]const u8) = .empty;
-        const mods_dir = minecraft_dir.openDir(self.io, "mods", .{ .iterate = true }) catch |err| switch (err) {
+        const directory = kind.directory();
+        const extension = kind.extension();
+        const content_dir = minecraft_dir.openDir(self.io, directory, .{ .iterate = true }) catch |err| switch (err) {
             error.FileNotFound => return unmanaged.toOwnedSlice(scratch),
             else => |other| return other,
         };
-        defer mods_dir.close(self.io);
-        var iterator = mods_dir.iterate();
+        defer content_dir.close(self.io);
+        var iterator = content_dir.iterate();
         while (try iterator.next(self.io)) |entry| {
             if (entry.kind != .file) continue;
-            if (!std.mem.endsWith(u8, entry.name, ".jar")) continue;
-            const path = try std.fmt.allocPrint(scratch, "mods/{s}", .{entry.name});
+            if (!std.mem.endsWith(u8, entry.name, extension)) continue;
+            const path = try std.fmt.allocPrint(scratch, "{s}/{s}", .{ directory, entry.name });
             if (content_registry.findByFile(registry, path) != null) continue;
             try unmanaged.append(scratch, path);
         }
@@ -1120,12 +1161,14 @@ pub const Service = struct {
         }
     };
 
-    /// Removes a registered content entry by Modrinth project reference (id or
-    /// slug) or by registry file path, deleting the instance hard link. The
-    /// shared store object remains until garbage collection reclaims it.
+    /// Removes a registered content entry of the given kind by Modrinth
+    /// project reference (id or slug) or by registry file path, deleting the
+    /// instance hard link. The shared store object remains until garbage
+    /// collection reclaims it.
     pub fn removeInstanceContent(
         self: Service,
         minecraft_dir: std.Io.Dir,
+        kind: content_registry.Kind,
         project: ?[]const u8,
         file: ?[]const u8,
     ) !ContentRemoval {
@@ -1141,6 +1184,7 @@ pub const Service = struct {
 
         var match_index: ?usize = null;
         for (document.value.entries, 0..) |entry, index| {
+            if (entry.kind != kind) continue;
             if (project) |reference| {
                 if (entry.source.provider != .modrinth) continue;
                 if (entry.source.project_id) |id| {
@@ -1208,13 +1252,14 @@ pub const Service = struct {
         }
     };
 
-    /// Adopts unmanaged mod files into the content-addressed store: each file
-    /// is hashed, imported into the store, re-linked as a hard link, and
-    /// registered with the manual provider.
+    /// Adopts unmanaged files of the given kind into the content-addressed
+    /// store: each file is hashed, imported into the store, re-linked as a
+    /// hard link, and registered with the manual provider.
     pub fn adoptInstanceContent(
         self: Service,
         minecraft_dir: std.Io.Dir,
         store: std.Io.Dir,
+        kind: content_registry.Kind,
     ) !ContentAdoption {
         const arena = try self.allocator.create(std.heap.ArenaAllocator);
         errdefer self.allocator.destroy(arena);
@@ -1225,7 +1270,7 @@ pub const Service = struct {
         var document = try content_registry.load(self.allocator, self.io, minecraft_dir);
         defer document.deinit();
 
-        const unmanaged = try self.scanUnmanagedMods(scratch, minecraft_dir, document.value);
+        const unmanaged = try self.scanUnmanagedContent(scratch, minecraft_dir, document.value, kind);
         const adopted = try scratch.alloc(InstalledContent, unmanaged.len);
         var adopted_count: usize = 0;
         const merged = try scratch.alloc(content_registry.Entry, document.value.entries.len + unmanaged.len);
@@ -1248,7 +1293,7 @@ pub const Service = struct {
             _ = try artifact_store.materialize(self.allocator, self.io, store, object_path, minecraft_dir, path, true);
 
             merged[document.value.entries.len + adopted_count] = .{
-                .kind = .mod,
+                .kind = kind,
                 .file = path,
                 .sha1 = sha1,
                 .size = stat_size,

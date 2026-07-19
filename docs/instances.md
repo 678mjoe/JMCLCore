@@ -14,7 +14,10 @@ instances/
       versions/
       logs/
       saves/
+      mods/
       resourcepacks/
+      .jmcl/
+        content.json
 ```
 
 Instance IDs use lowercase ASCII letters, digits, `.`, `_`, and `-`. They are
@@ -78,7 +81,10 @@ Instances with a mod loader can install and manage Modrinth mods. Mods are
 verified against their published SHA-1, held in the shared artifact store,
 and hard-linked into the instance `mods/` directory. The instance records its
 managed content in `.minecraft/.jmcl/content.json`; manually dropped jars are
-brought under the same scheme with `instance mods adopt`. See `docs/mods.md`.
+brought under the same scheme with `instance mods adopt`. Resource packs are
+managed the same way through the `instance resourcepacks` commands — they
+live in `resourcepacks/` and need no mod loader, so vanilla instances are
+supported. See `docs/content.md`.
 
 Instance launch currently supports the CLI offline identity and optional
 `--arch` and repeatable `--java PATH` candidates. Microsoft authentication will

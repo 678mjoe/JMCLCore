@@ -22,6 +22,21 @@ pub const Source = struct {
 
 pub const Kind = enum {
     mod,
+    resourcepack,
+
+    pub fn directory(kind: Kind) []const u8 {
+        return switch (kind) {
+            .mod => "mods",
+            .resourcepack => "resourcepacks",
+        };
+    }
+
+    pub fn extension(kind: Kind) []const u8 {
+        return switch (kind) {
+            .mod => ".jar",
+            .resourcepack => ".zip",
+        };
+    }
 };
 
 pub const Entry = struct {
@@ -104,6 +119,7 @@ fn validate(registry: Registry) !void {
     for (registry.entries, 0..) |entry, index| {
         try install_plan.validateRelativePath(entry.file);
         if (entry.file.len > 512) return error.InvalidContentFile;
+        try validateKindPath(entry.kind, entry.file);
         try validateSha1(entry.sha1);
         if (entry.size == 0 or entry.size > max_entry_size) return error.InvalidContentSize;
         try validateSource(entry.source);
@@ -118,6 +134,13 @@ fn validate(registry: Registry) !void {
             }
         }
     }
+}
+
+fn validateKindPath(kind: Kind, file: []const u8) !void {
+    const directory = kind.directory();
+    if (file.len <= directory.len + 1) return error.ContentKindPathMismatch;
+    if (!std.mem.startsWith(u8, file, directory)) return error.ContentKindPathMismatch;
+    if (file[directory.len] != '/') return error.ContentKindPathMismatch;
 }
 
 fn validateSource(source: Source) !void {
@@ -174,19 +197,41 @@ test "round-trips an empty and a populated registry" {
                 .enabled = false,
                 .as_dependency = false,
             },
+            .{
+                .kind = .resourcepack,
+                .file = "resourcepacks/dark.zip",
+                .sha1 = "3333333333333333333333333333333333333333",
+                .size = 300,
+                .source = .{
+                    .provider = .modrinth,
+                    .project_id = "BvCvBnMk",
+                    .version_id = "QwErTyUi",
+                    .slug = "dark-mode",
+                },
+                .as_dependency = false,
+            },
         }),
     };
     try save(io, temporary.dir, registry);
 
     var loaded = try load(allocator, io, temporary.dir);
     defer loaded.deinit();
-    try std.testing.expectEqual(@as(usize, 2), loaded.value.entries.len);
+    try std.testing.expectEqual(@as(usize, 3), loaded.value.entries.len);
     try std.testing.expectEqualStrings("sodium.jar", std.fs.path.basename(loaded.value.entries[0].file));
     try std.testing.expectEqualStrings("AANobbMI", loaded.value.entries[0].source.project_id.?);
     try std.testing.expect(!loaded.value.entries[1].enabled);
     try std.testing.expect(findByProject(loaded.value, .modrinth, "AANobbMI") != null);
     try std.testing.expect(findByProject(loaded.value, .modrinth, "ZZZZZZZZ") == null);
     try std.testing.expect(findByFile(loaded.value, "mods/manual.jar") != null);
+    try std.testing.expectEqual(Kind.resourcepack, loaded.value.entries[2].kind);
+    try std.testing.expectEqualStrings("resourcepacks/dark.zip", loaded.value.entries[2].file);
+}
+
+test "kind directory and extension mappings" {
+    try std.testing.expectEqualStrings("mods", Kind.mod.directory());
+    try std.testing.expectEqualStrings("resourcepacks", Kind.resourcepack.directory());
+    try std.testing.expectEqualStrings(".jar", Kind.mod.extension());
+    try std.testing.expectEqualStrings(".zip", Kind.resourcepack.extension());
 }
 
 test "rejects invalid registry documents" {
@@ -217,4 +262,11 @@ test "rejects invalid registry documents" {
         \\{"schema_version":99,"entries":[]}
     ;
     try std.testing.expectError(error.UnsupportedContentSchema, parse(allocator, future_schema));
+
+    const kind_path_mismatch =
+        \\{"schema_version":1,"entries":[
+        \\{"kind":"resourcepack","file":"mods/a.jar","sha1":"1111111111111111111111111111111111111111","size":1,"source":{"provider":"manual"}}
+        \\]}
+    ;
+    try std.testing.expectError(error.ContentKindPathMismatch, parse(allocator, kind_path_mismatch));
 }

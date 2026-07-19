@@ -6,51 +6,58 @@ const install = @import("install.zig");
 const writeError = protocol.writeError;
 const writeEventHeader = protocol.writeEventHeader;
 
-const ModsListParams = struct {
+const ContentListParams = struct {
     directory: []const u8,
 };
 
-const ModsInstallParams = struct {
+const ContentInstallParams = struct {
     directory: []const u8,
     minecraft_version: []const u8,
-    loader: []const u8,
+    loader: ?[]const u8 = null,
     project: []const u8,
     version_id: ?[]const u8 = null,
+    with_dependencies: bool = true,
     store_directory: []const u8 = core.artifact_store.default_directory,
     workers: u8 = 8,
     retries: u8 = 2,
 };
 
-const ModsRemoveParams = struct {
+const ContentRemoveParams = struct {
     directory: []const u8,
     project: ?[]const u8 = null,
     file: ?[]const u8 = null,
 };
 
-const ModsAdoptParams = struct {
+const ContentAdoptParams = struct {
     directory: []const u8,
     store_directory: []const u8 = core.artifact_store.default_directory,
 };
 
-pub fn writeListResult(
+fn stageName(buffer: []u8, directory: []const u8, operation: []const u8) []const u8 {
+    return std.fmt.bufPrint(buffer, "{s}.{s}", .{ directory, operation }) catch unreachable;
+}
+
+pub fn writeListResultWithKind(
+    kind: core.content_registry.Kind,
     service: *core.Service,
     writer: *std.Io.Writer,
     request_id: []const u8,
     params_value: ?std.json.Value,
 ) std.Io.Writer.Error!void {
+    const command = kind.directory();
     const value = params_value orelse {
-        try writeError(writer, request_id, "INVALID_PARAMS", "mods.list requires a directory");
+        try writeError(writer, request_id, "INVALID_PARAMS", "content listing requires a directory");
         return;
     };
-    var params = std.json.parseFromValue(ModsListParams, service.allocator, value, .{
+    var params = std.json.parseFromValue(ContentListParams, service.allocator, value, .{
         .ignore_unknown_fields = true,
     }) catch {
-        try writeError(writer, request_id, "INVALID_PARAMS", "mods.list parameters are invalid");
+        try writeError(writer, request_id, "INVALID_PARAMS", "content listing parameters are invalid");
         return;
     };
     defer params.deinit();
     if (params.value.directory.len == 0) {
-        try writeError(writer, request_id, "INVALID_PARAMS", "mods.list directory must not be empty");
+        try writeError(writer, request_id, "INVALID_PARAMS", "content listing directory must not be empty");
         return;
     }
     const minecraft = core.installer.openRoot(service.io, params.value.directory) catch {
@@ -58,20 +65,21 @@ pub fn writeListResult(
         return;
     };
     defer minecraft.close(service.io);
-    var list = service.listInstanceContent(minecraft) catch {
-        try writeError(writer, request_id, "MODS_LIST_FAILED", "Failed to read the instance content registry");
+    var list = service.listInstanceContent(minecraft, kind) catch {
+        try writeError(writer, request_id, "CONTENT_LIST_FAILED", "Failed to read the instance content registry");
         return;
     };
     defer list.deinit();
 
+    var stage_buffer: [64]u8 = undefined;
     var json: std.json.Stringify = .{ .writer = writer };
     try writeEventHeader(&json, request_id, "result");
     try json.objectField("result");
     try json.beginObject();
     try json.objectField("stage");
-    try json.write("mods.list");
+    try json.write(stageName(&stage_buffer, command, "list"));
     try json.objectField("entries");
-    try json.write(list.document.value.entries);
+    try json.write(list.entries);
     try json.objectField("unmanaged");
     try json.write(list.unmanaged);
     try json.endObject();
@@ -79,31 +87,56 @@ pub fn writeListResult(
     try writer.writeByte('\n');
 }
 
-pub fn writeInstallResult(
+pub fn writeInstallResultWithKind(
+    kind: core.content_registry.Kind,
     service: *core.Service,
     writer: *std.Io.Writer,
     request_id: []const u8,
     params_value: ?std.json.Value,
 ) std.Io.Writer.Error!void {
+    const command = kind.directory();
     const value = params_value orelse {
-        try writeError(writer, request_id, "INVALID_PARAMS", "mods.install requires directory, minecraft_version, loader, and project");
+        try writeError(writer, request_id, "INVALID_PARAMS", "content install requires directory, minecraft_version, and project");
         return;
     };
-    var params = std.json.parseFromValue(ModsInstallParams, service.allocator, value, .{
+    var params = std.json.parseFromValue(ContentInstallParams, service.allocator, value, .{
         .ignore_unknown_fields = true,
     }) catch {
-        try writeError(writer, request_id, "INVALID_PARAMS", "mods.install parameters are invalid");
+        try writeError(writer, request_id, "INVALID_PARAMS", "content install parameters are invalid");
         return;
     };
     defer params.deinit();
     const input = params.value;
-    const loader = core.modrinth.Loader.parse(input.loader);
     if (input.directory.len == 0 or input.minecraft_version.len == 0 or input.project.len == 0 or
-        loader == null or input.workers == 0 or input.workers > 32 or input.retries > 5)
+        input.workers == 0 or input.workers > 32 or input.retries > 5)
     {
-        try writeError(writer, request_id, "INVALID_PARAMS", "mods.install parameters are out of range");
+        try writeError(writer, request_id, "INVALID_PARAMS", "content install parameters are out of range");
         return;
     }
+    const loader: ?core.modrinth.Loader = switch (kind) {
+        .mod => blk: {
+            const raw = input.loader orelse {
+                try writeError(writer, request_id, "INVALID_PARAMS", "mods.install requires a loader");
+                return;
+            };
+            const parsed = core.modrinth.Loader.parse(raw);
+            if (parsed == null or parsed.? == .minecraft) {
+                try writeError(writer, request_id, "INVALID_PARAMS", "mods.install requires a fabric, forge, or neoforge loader");
+                return;
+            }
+            break :blk parsed;
+        },
+        .resourcepack => blk: {
+            if (input.loader) |raw| {
+                const parsed = core.modrinth.Loader.parse(raw);
+                if (parsed != .minecraft) {
+                    try writeError(writer, request_id, "INVALID_PARAMS", "resourcepacks.install does not accept a mod loader");
+                    return;
+                }
+            }
+            break :blk null;
+        },
+    };
 
     const minecraft = core.installer.openRoot(service.io, input.directory) catch {
         try writeError(writer, request_id, "INSTALL_ROOT_ERROR", "Failed to open the install root");
@@ -122,37 +155,41 @@ pub fn writeInstallResult(
         .request_id = request_id,
         .source = .official,
     };
-    var summary = service.installModrinthProject(
+    var summary = service.installModrinthContent(
         minecraft,
         store,
+        kind,
         input.minecraft_version,
-        loader.?,
+        loader,
         input.project,
         input.version_id,
-        .{ .workers = input.workers, .retries = input.retries },
+        .{ .workers = input.workers, .retries = input.retries, .with_dependencies = input.with_dependencies },
         .{ .context = &reporter_context, .callback = install.ProtocolInstallReporter.callback },
     ) catch |err| {
         if (reporter_context.output_failed) return error.WriteFailed;
         switch (err) {
             error.InvalidModrinthProject, error.InvalidModrinthVersionId, error.InvalidGameVersion => try writeError(writer, request_id, "INVALID_PARAMS", "Project, version, or Minecraft version identifiers are invalid"),
-            error.NoCompatibleModVersion => try writeError(writer, request_id, "NO_COMPATIBLE_VERSION", "No release of the project supports the requested Minecraft version and loader"),
-            error.IncompatibleModVersion => try writeError(writer, request_id, "INCOMPATIBLE_VERSION", "The requested version does not support the Minecraft version and loader"),
-            error.ContentFileConflict => try writeError(writer, request_id, "CONTENT_CONFLICT", "A different registered mod already occupies the target file"),
+            error.NoCompatibleContentVersion => try writeError(writer, request_id, "NO_COMPATIBLE_VERSION", "No release of the project supports the requested Minecraft version and loader"),
+            error.IncompatibleContentVersion => try writeError(writer, request_id, "INCOMPATIBLE_VERSION", "The requested version does not support the Minecraft version and loader"),
+            error.ContentFileConflict => try writeError(writer, request_id, "CONTENT_CONFLICT", "A different registered content entry already occupies the target file"),
+            error.ContentKindMismatch => try writeError(writer, request_id, "CONTENT_KIND_MISMATCH", "The project type does not match the requested content kind"),
+            error.UnsupportedProjectType => try writeError(writer, request_id, "UNSUPPORTED_PROJECT_TYPE", "The project type is not supported"),
             error.UnsuccessfulHttpStatus => try writeError(writer, request_id, "HTTP_STATUS_ERROR", "The Modrinth API returned an unsuccessful HTTP status"),
             error.ModrinthResponseTooLarge => try writeError(writer, request_id, "RESPONSE_TOO_LARGE", "The Modrinth API response exceeds the size limit"),
-            else => try writeError(writer, request_id, "MODS_INSTALL_FAILED", "Failed to install the Modrinth project"),
+            else => try writeError(writer, request_id, "CONTENT_INSTALL_FAILED", "Failed to install the Modrinth project"),
         }
         return;
     };
     defer summary.deinit();
     if (reporter_context.output_failed) return error.WriteFailed;
 
+    var stage_buffer: [64]u8 = undefined;
     var json: std.json.Stringify = .{ .writer = writer };
     try writeEventHeader(&json, request_id, "result");
     try json.objectField("result");
     try json.beginObject();
     try json.objectField("stage");
-    try json.write("mods.install");
+    try json.write(stageName(&stage_buffer, command, "install"));
     try json.objectField("installed");
     try json.write(summary.installed);
     try json.objectField("skipped");
@@ -162,26 +199,28 @@ pub fn writeInstallResult(
     try writer.writeByte('\n');
 }
 
-pub fn writeRemoveResult(
+pub fn writeRemoveResultWithKind(
+    kind: core.content_registry.Kind,
     service: *core.Service,
     writer: *std.Io.Writer,
     request_id: []const u8,
     params_value: ?std.json.Value,
 ) std.Io.Writer.Error!void {
+    const command = kind.directory();
     const value = params_value orelse {
-        try writeError(writer, request_id, "INVALID_PARAMS", "mods.remove requires a directory and a selector");
+        try writeError(writer, request_id, "INVALID_PARAMS", "content removal requires a directory and a selector");
         return;
     };
-    var params = std.json.parseFromValue(ModsRemoveParams, service.allocator, value, .{
+    var params = std.json.parseFromValue(ContentRemoveParams, service.allocator, value, .{
         .ignore_unknown_fields = true,
     }) catch {
-        try writeError(writer, request_id, "INVALID_PARAMS", "mods.remove parameters are invalid");
+        try writeError(writer, request_id, "INVALID_PARAMS", "content removal parameters are invalid");
         return;
     };
     defer params.deinit();
     const input = params.value;
     if (input.directory.len == 0 or (input.project == null) == (input.file == null)) {
-        try writeError(writer, request_id, "INVALID_PARAMS", "mods.remove requires a directory and exactly one of project or file");
+        try writeError(writer, request_id, "INVALID_PARAMS", "content removal requires a directory and exactly one of project or file");
         return;
     }
     const minecraft = core.installer.openRoot(service.io, input.directory) catch {
@@ -190,22 +229,23 @@ pub fn writeRemoveResult(
     };
     defer minecraft.close(service.io);
 
-    var removal = service.removeInstanceContent(minecraft, input.project, input.file) catch |err| {
+    var removal = service.removeInstanceContent(minecraft, kind, input.project, input.file) catch |err| {
         switch (err) {
-            error.ContentNotFound => try writeError(writer, request_id, "CONTENT_NOT_FOUND", "No registered mod matches the given selector"),
+            error.ContentNotFound => try writeError(writer, request_id, "CONTENT_NOT_FOUND", "No registered content matches the given selector"),
             error.InvalidModrinthProject, error.UnsafePath, error.InvalidContentFile => try writeError(writer, request_id, "INVALID_PARAMS", "The selector is invalid"),
-            else => try writeError(writer, request_id, "MODS_REMOVE_FAILED", "Failed to remove the mod"),
+            else => try writeError(writer, request_id, "CONTENT_REMOVE_FAILED", "Failed to remove the content entry"),
         }
         return;
     };
     defer removal.deinit();
 
+    var stage_buffer: [64]u8 = undefined;
     var json: std.json.Stringify = .{ .writer = writer };
     try writeEventHeader(&json, request_id, "result");
     try json.objectField("result");
     try json.beginObject();
     try json.objectField("stage");
-    try json.write("mods.remove");
+    try json.write(stageName(&stage_buffer, command, "remove"));
     try json.objectField("removed");
     try json.write(removal.entry);
     try json.endObject();
@@ -213,25 +253,27 @@ pub fn writeRemoveResult(
     try writer.writeByte('\n');
 }
 
-pub fn writeAdoptResult(
+pub fn writeAdoptResultWithKind(
+    kind: core.content_registry.Kind,
     service: *core.Service,
     writer: *std.Io.Writer,
     request_id: []const u8,
     params_value: ?std.json.Value,
 ) std.Io.Writer.Error!void {
+    const command = kind.directory();
     const value = params_value orelse {
-        try writeError(writer, request_id, "INVALID_PARAMS", "mods.adopt requires a directory");
+        try writeError(writer, request_id, "INVALID_PARAMS", "content adoption requires a directory");
         return;
     };
-    var params = std.json.parseFromValue(ModsAdoptParams, service.allocator, value, .{
+    var params = std.json.parseFromValue(ContentAdoptParams, service.allocator, value, .{
         .ignore_unknown_fields = true,
     }) catch {
-        try writeError(writer, request_id, "INVALID_PARAMS", "mods.adopt parameters are invalid");
+        try writeError(writer, request_id, "INVALID_PARAMS", "content adoption parameters are invalid");
         return;
     };
     defer params.deinit();
     if (params.value.directory.len == 0) {
-        try writeError(writer, request_id, "INVALID_PARAMS", "mods.adopt directory must not be empty");
+        try writeError(writer, request_id, "INVALID_PARAMS", "content adoption directory must not be empty");
         return;
     }
     const minecraft = core.installer.openRoot(service.io, params.value.directory) catch {
@@ -245,18 +287,19 @@ pub fn writeAdoptResult(
     };
     defer store.close(service.io);
 
-    var adoption = service.adoptInstanceContent(minecraft, store) catch {
-        try writeError(writer, request_id, "MODS_ADOPT_FAILED", "Failed to adopt unmanaged mods");
+    var adoption = service.adoptInstanceContent(minecraft, store, kind) catch {
+        try writeError(writer, request_id, "CONTENT_ADOPT_FAILED", "Failed to adopt unmanaged content");
         return;
     };
     defer adoption.deinit();
 
+    var stage_buffer: [64]u8 = undefined;
     var json: std.json.Stringify = .{ .writer = writer };
     try writeEventHeader(&json, request_id, "result");
     try json.objectField("result");
     try json.beginObject();
     try json.objectField("stage");
-    try json.write("mods.adopt");
+    try json.write(stageName(&stage_buffer, command, "adopt"));
     try json.objectField("adopted");
     try json.write(adoption.adopted);
     try json.endObject();

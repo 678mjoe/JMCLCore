@@ -2,17 +2,18 @@ const std = @import("std");
 const jmcl = @import("jmcl_core");
 const cli_install = @import("install.zig");
 
-pub fn run(
+pub fn runWithKind(
+    kind: jmcl.content_registry.Kind,
     service: *jmcl.Service,
     args: []const []const u8,
     stdout: *std.Io.Writer,
     stderr: *std.Io.Writer,
 ) !u8 {
-    if (args.len >= 1 and std.mem.eql(u8, args[0], "list")) return runInstanceModsList(service, args[1..], stdout, stderr);
-    if (args.len >= 1 and std.mem.eql(u8, args[0], "install")) return runInstanceModsInstall(service, args[1..], stdout, stderr);
-    if (args.len >= 1 and std.mem.eql(u8, args[0], "remove")) return runInstanceModsRemove(service, args[1..], stdout, stderr);
-    if (args.len >= 1 and std.mem.eql(u8, args[0], "adopt")) return runInstanceModsAdopt(service, args[1..], stdout, stderr);
-    try stderr.writeAll("usage: jmcl-core instance mods <list|install|remove|adopt> ID [options]\n");
+    if (args.len >= 1 and std.mem.eql(u8, args[0], "list")) return runContentList(kind, service, args[1..], stdout, stderr);
+    if (args.len >= 1 and std.mem.eql(u8, args[0], "install")) return runContentInstall(kind, service, args[1..], stdout, stderr);
+    if (args.len >= 1 and std.mem.eql(u8, args[0], "remove")) return runContentRemove(kind, service, args[1..], stdout, stderr);
+    if (args.len >= 1 and std.mem.eql(u8, args[0], "adopt")) return runContentAdopt(kind, service, args[1..], stdout, stderr);
+    try stderr.print("usage: jmcl-core instance {s} <list|install|remove|adopt> ID [options]\n", .{kind.directory()});
     return 2;
 }
 
@@ -23,23 +24,24 @@ fn manifestModLoader(manifest: jmcl.instance_store.Manifest) !jmcl.modrinth.Load
     return error.InstanceHasNoLoader;
 }
 
-const InstanceModsListOptions = struct {
+const ContentListOptions = struct {
     id: []const u8,
     instances_directory: []const u8 = jmcl.instance_store.default_root,
     json: bool = false,
 };
 
-fn runInstanceModsList(
+fn runContentList(
+    kind: jmcl.content_registry.Kind,
     service: *jmcl.Service,
     args: []const []const u8,
     stdout: *std.Io.Writer,
     stderr: *std.Io.Writer,
 ) !u8 {
     if (args.len == 0) {
-        try stderr.writeAll("usage: jmcl-core instance mods list ID [--instances-directory PATH] [--json]\n");
+        try stderr.print("usage: jmcl-core instance {s} list ID [--instances-directory PATH] [--json]\n", .{kind.directory()});
         return 2;
     }
-    var options: InstanceModsListOptions = .{ .id = args[0] };
+    var options: ContentListOptions = .{ .id = args[0] };
     jmcl.instance_store.validateId(options.id) catch return error.InvalidArguments;
     var index: usize = 1;
     while (index < args.len) {
@@ -70,7 +72,7 @@ fn runInstanceModsList(
     };
     defer minecraft.close(service.io);
 
-    var list = service.listInstanceContent(minecraft) catch |err| {
+    var list = service.listInstanceContent(minecraft, kind) catch |err| {
         try stderr.print("failed to list instance content: {s}\n", .{@errorName(err)});
         return 1;
     };
@@ -80,15 +82,16 @@ fn runInstanceModsList(
         var json: std.json.Stringify = .{ .writer = stdout };
         try json.beginObject();
         try json.objectField("entries");
-        try json.write(list.document.value.entries);
+        try json.write(list.entries);
         try json.objectField("unmanaged");
         try json.write(list.unmanaged);
         try json.endObject();
         try stdout.writeByte('\n');
         return 0;
     }
-    for (list.document.value.entries) |entry| {
-        try stdout.print("mod\t{s}\t{s}\t{d}\t{s}\t{s}\t{s}\t{s}\n", .{
+    for (list.entries) |entry| {
+        try stdout.print("{s}\t{s}\t{s}\t{d}\t{s}\t{s}\t{s}\t{s}\n", .{
+            @tagName(entry.kind),
             entry.file,
             entry.sha1,
             entry.size,
@@ -104,30 +107,37 @@ fn runInstanceModsList(
     return 0;
 }
 
-const InstanceModsInstallOptions = struct {
+const ContentInstallOptions = struct {
     id: []const u8,
     project: ?[]const u8 = null,
     version_id: ?[]const u8 = null,
+    with_dependencies: bool = true,
     instances_directory: []const u8 = jmcl.instance_store.default_root,
     store_directory: []const u8 = jmcl.artifact_store.default_directory,
     workers: u8 = 8,
     retries: u8 = 2,
 };
 
-fn runInstanceModsInstall(
+fn runContentInstall(
+    kind: jmcl.content_registry.Kind,
     service: *jmcl.Service,
     args: []const []const u8,
     stdout: *std.Io.Writer,
     stderr: *std.Io.Writer,
 ) !u8 {
     if (args.len == 0) {
-        try stderr.writeAll("usage: jmcl-core instance mods install ID --project SLUG [--version ID] [--instances-directory PATH] [--store-directory PATH] [--workers N] [--retries N]\n");
+        try stderr.print("usage: jmcl-core instance {s} install ID --project SLUG [--version ID] [--no-dependencies] [--instances-directory PATH] [--store-directory PATH] [--workers N] [--retries N]\n", .{kind.directory()});
         return 2;
     }
-    var options: InstanceModsInstallOptions = .{ .id = args[0] };
+    var options: ContentInstallOptions = .{ .id = args[0] };
     jmcl.instance_store.validateId(options.id) catch return error.InvalidArguments;
     var index: usize = 1;
     while (index < args.len) {
+        if (std.mem.eql(u8, args[index], "--no-dependencies")) {
+            options.with_dependencies = false;
+            index += 1;
+            continue;
+        }
         if (index + 1 >= args.len or args[index + 1].len == 0) return error.InvalidArguments;
         const argument = args[index];
         const value = args[index + 1];
@@ -149,7 +159,7 @@ fn runInstanceModsInstall(
         index += 2;
     }
     const project = options.project orelse {
-        try stderr.writeAll("instance mods install requires --project\n");
+        try stderr.print("instance {s} install requires --project\n", .{kind.directory()});
         return 2;
     };
 
@@ -163,9 +173,12 @@ fn runInstanceModsInstall(
         return 1;
     };
     defer document.deinit();
-    const loader = manifestModLoader(document.value) catch {
-        try stderr.writeAll("instance has no mod loader; mods require Fabric, NeoForge, or Forge\n");
-        return 1;
+    const loader: ?jmcl.modrinth.Loader = switch (kind) {
+        .mod => manifestModLoader(document.value) catch {
+            try stderr.writeAll("instance has no mod loader; mods require Fabric, NeoForge, or Forge\n");
+            return 1;
+        },
+        .resourcepack => null,
     };
     const path = try jmcl.instance_store.minecraftPathAlloc(service.allocator, options.instances_directory, options.id);
     defer service.allocator.free(path);
@@ -184,22 +197,28 @@ fn runInstanceModsInstall(
         .io = service.io,
         .writer = stderr,
     };
-    var summary = service.installModrinthProject(
+    var summary = service.installModrinthContent(
         minecraft,
         store,
+        kind,
         document.value.version_id,
         loader,
         project,
         options.version_id,
-        .{ .workers = options.workers, .retries = options.retries },
+        .{ .workers = options.workers, .retries = options.retries, .with_dependencies = options.with_dependencies },
         .{ .context = &reporter_context, .callback = cli_install.CliInstallReporter.callback },
     ) catch |err| {
         if (reporter_context.output_failed) return error.WriteFailed;
         switch (err) {
-            error.NoCompatibleModVersion => try stderr.print("no {s} release of {s} supports Minecraft {s}\n", .{ @tagName(loader), project, document.value.version_id }),
-            error.IncompatibleModVersion => try stderr.print("the requested version does not support Minecraft {s} with {s}\n", .{ document.value.version_id, @tagName(loader) }),
-            error.ContentFileConflict => try stderr.writeAll("a different registered mod already occupies the target file\n"),
-            else => try stderr.print("mod installation failed: {s}\n", .{@errorName(err)}),
+            error.NoCompatibleContentVersion => switch (kind) {
+                .mod => try stderr.print("no {s} release of {s} supports Minecraft {s}\n", .{ @tagName(loader.?), project, document.value.version_id }),
+                .resourcepack => try stderr.print("no release of {s} supports Minecraft {s}\n", .{ project, document.value.version_id }),
+            },
+            error.IncompatibleContentVersion => try stderr.print("the requested version does not support Minecraft {s}\n", .{document.value.version_id}),
+            error.ContentFileConflict => try stderr.writeAll("a different registered content entry already occupies the target file\n"),
+            error.ContentKindMismatch => try stderr.print("{s} is not a {s} project\n", .{ project, @tagName(kind) }),
+            error.UnsupportedProjectType => try stderr.writeAll("the project type is not supported\n"),
+            else => try stderr.print("content installation failed: {s}\n", .{@errorName(err)}),
         }
         return 1;
     };
@@ -218,24 +237,25 @@ fn runInstanceModsInstall(
     return 0;
 }
 
-const InstanceModsRemoveOptions = struct {
+const ContentRemoveOptions = struct {
     id: []const u8,
     project: ?[]const u8 = null,
     file: ?[]const u8 = null,
     instances_directory: []const u8 = jmcl.instance_store.default_root,
 };
 
-fn runInstanceModsRemove(
+fn runContentRemove(
+    kind: jmcl.content_registry.Kind,
     service: *jmcl.Service,
     args: []const []const u8,
     stdout: *std.Io.Writer,
     stderr: *std.Io.Writer,
 ) !u8 {
     if (args.len == 0) {
-        try stderr.writeAll("usage: jmcl-core instance mods remove ID (--project REF | --file PATH) [--instances-directory PATH]\n");
+        try stderr.print("usage: jmcl-core instance {s} remove ID (--project REF | --file PATH) [--instances-directory PATH]\n", .{kind.directory()});
         return 2;
     }
-    var options: InstanceModsRemoveOptions = .{ .id = args[0] };
+    var options: ContentRemoveOptions = .{ .id = args[0] };
     jmcl.instance_store.validateId(options.id) catch return error.InvalidArguments;
     var index: usize = 1;
     while (index < args.len) {
@@ -252,7 +272,7 @@ fn runInstanceModsRemove(
         index += 2;
     }
     if ((options.project == null) == (options.file == null)) {
-        try stderr.writeAll("instance mods remove requires exactly one of --project or --file\n");
+        try stderr.print("instance {s} remove requires exactly one of --project or --file\n", .{kind.directory()});
         return 2;
     }
 
@@ -274,10 +294,10 @@ fn runInstanceModsRemove(
     };
     defer minecraft.close(service.io);
 
-    var removal = service.removeInstanceContent(minecraft, options.project, options.file) catch |err| {
+    var removal = service.removeInstanceContent(minecraft, kind, options.project, options.file) catch |err| {
         switch (err) {
-            error.ContentNotFound => try stderr.writeAll("no registered mod matches the given selector\n"),
-            else => try stderr.print("failed to remove mod: {s}\n", .{@errorName(err)}),
+            error.ContentNotFound => try stderr.print("no registered {s} matches the given selector\n", .{@tagName(kind)}),
+            else => try stderr.print("failed to remove content: {s}\n", .{@errorName(err)}),
         }
         return 1;
     };
@@ -286,23 +306,24 @@ fn runInstanceModsRemove(
     return 0;
 }
 
-const InstanceModsAdoptOptions = struct {
+const ContentAdoptOptions = struct {
     id: []const u8,
     instances_directory: []const u8 = jmcl.instance_store.default_root,
     store_directory: []const u8 = jmcl.artifact_store.default_directory,
 };
 
-fn runInstanceModsAdopt(
+fn runContentAdopt(
+    kind: jmcl.content_registry.Kind,
     service: *jmcl.Service,
     args: []const []const u8,
     stdout: *std.Io.Writer,
     stderr: *std.Io.Writer,
 ) !u8 {
     if (args.len == 0) {
-        try stderr.writeAll("usage: jmcl-core instance mods adopt ID [--instances-directory PATH] [--store-directory PATH]\n");
+        try stderr.print("usage: jmcl-core instance {s} adopt ID [--instances-directory PATH] [--store-directory PATH]\n", .{kind.directory()});
         return 2;
     }
-    var options: InstanceModsAdoptOptions = .{ .id = args[0] };
+    var options: ContentAdoptOptions = .{ .id = args[0] };
     jmcl.instance_store.validateId(options.id) catch return error.InvalidArguments;
     var index: usize = 1;
     while (index < args.len) {
@@ -340,8 +361,8 @@ fn runInstanceModsAdopt(
     };
     defer store.close(service.io);
 
-    var adoption = service.adoptInstanceContent(minecraft, store) catch |err| {
-        try stderr.print("failed to adopt unmanaged mods: {s}\n", .{@errorName(err)});
+    var adoption = service.adoptInstanceContent(minecraft, store, kind) catch |err| {
+        try stderr.print("failed to adopt unmanaged content: {s}\n", .{@errorName(err)});
         return 1;
     };
     defer adoption.deinit();
