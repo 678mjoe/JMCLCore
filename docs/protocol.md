@@ -161,6 +161,24 @@ All install methods default to recursing required dependencies; pass
 `"with_dependencies":false` to install only the requested project. See
 `docs/content.md`.
 
+## Instance Management
+
+`instance.create`, `instance.list`, `instance.get`, and `instance.delete`
+manage instances under a shared instances root (`directory`). `create`
+resolves the requested Minecraft version and at most one loader field
+(`fabric_loader`, `neoforge_version`, `forge_version`) online before writing
+the manifest, and fails with `INSTANCE_EXISTS` when the id is taken:
+
+```json
+{"protocol":1,"id":"ic-1","method":"instance.create","params":{"directory":"/path/to/instances","id":"my-instance","name":"My Instance","version_id":"1.21.4","fabric_loader":"0.16.10"}}
+```
+
+Results carry the manifest fields (`id`, `name`, `version_id`, loader
+fields, `source`). `instance.get` and `instance.delete` address one instance
+by `id` and report `INSTANCE_NOT_FOUND` when absent. Deletion removes the
+whole instance directory. Game installation remains a separate
+`install.execute` step.
+
 ## Modpack Installation
 
 `modpack.install` creates a new instance from a Modrinth `.mrpack` or

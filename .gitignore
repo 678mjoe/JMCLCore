@@ -4,3 +4,4 @@ zig-out/
 accounts/
 tests/
 AGENTS.md
+.jmclcore/

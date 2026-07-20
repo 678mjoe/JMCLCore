@@ -6,6 +6,7 @@ const install = @import("install.zig");
 const java = @import("java.zig");
 const launch = @import("launch.zig");
 const content = @import("content.zig");
+const instance = @import("instance.zig");
 const modpack = @import("modpack.zig");
 const store = @import("store.zig");
 const version = @import("version.zig");
@@ -146,6 +147,14 @@ pub fn handleLine(
         try content.writeAdoptResultWithKind(.shaderpack, service, writer, request.id, request.params);
     } else if (std.mem.eql(u8, request.method, "modpack.install")) {
         try modpack.writeInstallResult(service, writer, request.id, request.params);
+    } else if (std.mem.eql(u8, request.method, "instance.create")) {
+        try instance.writeCreateResult(service, writer, request.id, request.params);
+    } else if (std.mem.eql(u8, request.method, "instance.list")) {
+        try instance.writeListResult(service, writer, request.id, request.params);
+    } else if (std.mem.eql(u8, request.method, "instance.get")) {
+        try instance.writeGetResult(service, writer, request.id, request.params);
+    } else if (std.mem.eql(u8, request.method, "instance.delete")) {
+        try instance.writeDeleteResult(service, writer, request.id, request.params);
     } else if (std.mem.eql(u8, request.method, "java.detect")) {
         try java.writeDetectResult(service, writer, request.id, request.params);
     } else if (std.mem.eql(u8, request.method, "java.select")) {
@@ -462,12 +471,17 @@ test "authentication RPC validation never echoes supplied secrets" {
 }
 
 test "content install validation never echoes the supplied api key" {
+    var temporary = std.testing.tmpDir(.{});
+    defer temporary.cleanup();
+    const allocator = std.testing.allocator;
+    const reaching_line = try std.fmt.allocPrint(allocator, "{{\"protocol\":1,\"id\":\"cf-5\",\"method\":\"shaderpacks.install\",\"params\":{{\"directory\":\".zig-cache/tmp/{s}/mc\",\"minecraft_version\":\"1.21.4\",\"provider\":\"curseforge\",\"api_key\":\"cf-secret-key\",\"project\":\"not-numeric\",\"store_directory\":\".zig-cache/tmp/{s}/store\"}}}}", .{ temporary.sub_path, temporary.sub_path });
+    defer allocator.free(reaching_line);
     const cases = [_][]const u8{
-        "{\"protocol\":1,\"id\":\"cf-1\",\"method\":\"mods.install\",\"params\":{\"directory\":\"/tmp/x\",\"minecraft_version\":\"1.20.4\",\"loader\":\"fabric\",\"provider\":\"curseforge\",\"project\":\"238222\"}}",
-        "{\"protocol\":1,\"id\":\"cf-2\",\"method\":\"mods.install\",\"params\":{\"directory\":\"/tmp/x\",\"minecraft_version\":\"1.20.4\",\"loader\":\"fabric\",\"provider\":\"curseforge\",\"api_key\":\"bad key\",\"project\":\"238222\"}}",
-        "{\"protocol\":1,\"id\":\"cf-3\",\"method\":\"mods.install\",\"params\":{\"directory\":\"/tmp/x\",\"minecraft_version\":\"1.20.4\",\"loader\":\"fabric\",\"provider\":\"modrinth\",\"api_key\":\"cf-secret-key\",\"project\":\"sodium\"}}",
-        "{\"protocol\":1,\"id\":\"cf-4\",\"method\":\"mods.install\",\"params\":{\"directory\":\"/tmp/x\",\"minecraft_version\":\"1.20.4\",\"loader\":\"fabric\",\"provider\":\"unknown\",\"api_key\":\"cf-secret-key\",\"project\":\"238222\"}}",
-        "{\"protocol\":1,\"id\":\"cf-5\",\"method\":\"shaderpacks.install\",\"params\":{\"directory\":\"/tmp/x\",\"minecraft_version\":\"1.21.4\",\"provider\":\"curseforge\",\"api_key\":\"cf-secret-key\",\"project\":\"not-numeric\"}}",
+        "{\"protocol\":1,\"id\":\"cf-1\",\"method\":\"mods.install\",\"params\":{\"directory\":\"/nonexistent/x\",\"minecraft_version\":\"1.20.4\",\"loader\":\"fabric\",\"provider\":\"curseforge\",\"project\":\"238222\"}}",
+        "{\"protocol\":1,\"id\":\"cf-2\",\"method\":\"mods.install\",\"params\":{\"directory\":\"/nonexistent/x\",\"minecraft_version\":\"1.20.4\",\"loader\":\"fabric\",\"provider\":\"curseforge\",\"api_key\":\"bad key\",\"project\":\"238222\"}}",
+        "{\"protocol\":1,\"id\":\"cf-3\",\"method\":\"mods.install\",\"params\":{\"directory\":\"/nonexistent/x\",\"minecraft_version\":\"1.20.4\",\"loader\":\"fabric\",\"provider\":\"modrinth\",\"api_key\":\"cf-secret-key\",\"project\":\"sodium\"}}",
+        "{\"protocol\":1,\"id\":\"cf-4\",\"method\":\"mods.install\",\"params\":{\"directory\":\"/nonexistent/x\",\"minecraft_version\":\"1.20.4\",\"loader\":\"fabric\",\"provider\":\"unknown\",\"api_key\":\"cf-secret-key\",\"project\":\"238222\"}}",
+        reaching_line,
     };
     for (cases) |line| {
         var output: std.Io.Writer.Allocating = .init(std.testing.allocator);
@@ -497,6 +511,7 @@ test {
     _ = auth;
     _ = content;
     _ = install;
+    _ = instance;
     _ = java;
     _ = launch;
     _ = modpack;
