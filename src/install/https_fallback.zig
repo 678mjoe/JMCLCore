@@ -14,6 +14,22 @@ pub const max_redirects: u8 = 5;
 pub const max_header_bytes: usize = 32 * 1024;
 pub const max_status_line_bytes: usize = 1024;
 
+pub const ExtraHeader = struct {
+    name: []const u8,
+    value: []const u8,
+
+    pub fn validate(header: ExtraHeader) !void {
+        if (header.name.len == 0 or header.name.len > 64) return error.InvalidFallbackHeader;
+        if (header.value.len == 0 or header.value.len > 1024) return error.InvalidFallbackHeader;
+        for (header.name) |byte| {
+            if (!std.ascii.isAlphanumeric(byte) and byte != '-') return error.InvalidFallbackHeader;
+        }
+        for (header.value) |byte| {
+            if (byte < 0x20 or byte == 0x7f) return error.InvalidFallbackHeader;
+        }
+    }
+};
+
 /// Performs an HTTPS GET of `url`, following up to `max_redirects`
 /// absolute-URL redirects, and streams the response body into `writer`.
 /// Returns the final response status code.
@@ -22,13 +38,15 @@ pub fn fetch(
     io: std.Io,
     url: []const u8,
     writer: *std.Io.Writer,
+    extra_header: ?ExtraHeader,
 ) !u16 {
+    if (extra_header) |header| try header.validate();
     var current = try std.fmt.allocPrint(allocator, "{s}", .{url});
     defer allocator.free(current);
 
     var redirects: u8 = 0;
     while (true) {
-        const outcome = try fetchOnce(allocator, io, .get, current, writer, null);
+        const outcome = try fetchOnce(allocator, io, .get, current, writer, null, extra_header);
         switch (outcome) {
             .status => |code| return code,
             .location => |next| {
@@ -61,7 +79,7 @@ pub fn fetchHead(allocator: std.mem.Allocator, io: std.Io, url: []const u8) !Hea
         var discard_buffer: [4096]u8 = undefined;
         var discard: std.Io.Writer.Discarding = .init(&discard_buffer);
         var headers: Headers = .{};
-        const outcome = try fetchOnce(allocator, io, .head, current, &discard.writer, &headers);
+        const outcome = try fetchOnce(allocator, io, .head, current, &discard.writer, &headers, null);
         switch (outcome) {
             .status => |code| return .{ .status = code, .content_length = headers.content_length },
             .location => |next| {
@@ -96,6 +114,7 @@ fn fetchOnce(
     url: []const u8,
     writer: *std.Io.Writer,
     out_headers: ?*Headers,
+    extra_header: ?ExtraHeader,
 ) !Outcome {
     const uri = std.Uri.parse(url) catch return error.InvalidFallbackUrl;
     if (!std.mem.eql(u8, uri.scheme, "https")) return error.InvalidFallbackUrl;
@@ -158,11 +177,18 @@ fn fetchOnce(
     else
         try allocator.dupe(u8, componentText(uri.path));
     defer allocator.free(target);
-    const request = std.fmt.bufPrint(
-        &request_buffer,
-        "{s} {s} HTTP/1.1\r\nHost: {s}\r\nUser-Agent: jmcl-core/0.1.0-dev\r\nAccept: */*\r\nConnection: close\r\n\r\n",
-        .{ if (method == .head) "HEAD" else "GET", target, host },
-    ) catch return error.InvalidFallbackUrl;
+    const request = if (extra_header) |header|
+        std.fmt.bufPrint(
+            &request_buffer,
+            "{s} {s} HTTP/1.1\r\nHost: {s}\r\nUser-Agent: jmcl-core/0.1.0-dev\r\nAccept: */*\r\n{s}: {s}\r\nConnection: close\r\n\r\n",
+            .{ if (method == .head) "HEAD" else "GET", target, host, header.name, header.value },
+        ) catch return error.InvalidFallbackUrl
+    else
+        std.fmt.bufPrint(
+            &request_buffer,
+            "{s} {s} HTTP/1.1\r\nHost: {s}\r\nUser-Agent: jmcl-core/0.1.0-dev\r\nAccept: */*\r\nConnection: close\r\n\r\n",
+            .{ if (method == .head) "HEAD" else "GET", target, host },
+        ) catch return error.InvalidFallbackUrl;
     try client.writer.writeAll(request);
     try client.writer.flush();
     try stream_writer.interface.flush();

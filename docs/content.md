@@ -1,6 +1,7 @@
-# Modrinth Content: Mods, Resource Packs, And Shader Packs
+# Modrinth And CurseForge Content: Mods, Resource Packs, And Shader Packs
 
-JMCL Core installs and manages Modrinth content for instances. Mods target
+JMCL Core installs and manages Modrinth and CurseForge content for
+instances. Mods target
 instances with a mod loader (Fabric, NeoForge, or Forge); resource packs and
 shader packs work on any instance, including vanilla. Content is
 content-addressed like every other artifact: downloads are verified against
@@ -31,8 +32,9 @@ Each instance records its managed content in `.minecraft/.jmcl/content.json`:
   target directory (`mods/`, `resourcepacks/`, `shaderpacks/`) and the
   managed file extension (`.jar`, `.zip`); entries whose file does not live
   under their kind's directory are rejected.
-- `source.provider` is `modrinth` or `manual`. Manually adopted files carry no
-  project identifiers.
+- `source.provider` is `modrinth`, `curseforge`, or `manual`. Manually
+  adopted files carry no project identifiers; CurseForge entries store the
+  numeric mod id and file id as `project_id` and `version_id`.
 - `as_dependency` marks content installed only to satisfy another project's
   required dependency.
 - The registry is written atomically and only after every download succeeded;
@@ -119,6 +121,39 @@ jmcl-core instance shaderpacks remove vanilla-demo --project bsl-shaders
 - Installing a shader runtime (Iris, Oculus, OptiFine) and activating packs
   is the embedding application's job; JMCL manages files only.
 
+## CurseForge
+
+The same install path works against CurseForge by passing a provider and an
+API key:
+
+```sh
+jmcl-core instance mods install jei-demo --project 238222 --provider curseforge --api-key "$CF_KEY"
+```
+
+- CurseForge has no slugs in its core API: `--project` takes the numeric
+  mod id and `--version` the numeric file id. Resolving names to ids
+  (search/browse) is the embedding application's job.
+- The API key is **supplied by the caller** (the GUI), passed per request,
+  and never persisted or echoed by the core — same discipline as the Entra
+  client id. RPC methods take it as `api_key`; requests without one are
+  rejected with `INVALID_PARAMS`.
+- Kind mapping uses the CurseForge class: `mc-mods` (6), resource packs
+  (12), shader packs (6552). A class that does not match the requested kind
+  fails with a kind mismatch; anything else is unsupported.
+- Mod compatibility filters by game version and `modLoaderType` (Forge,
+  Fabric, NeoForge); resource packs and shader packs filter by game version
+  only. The newest available stable file wins over beta and alpha.
+- Files carry SHA-1 hashes and download through the same verified
+  content-addressed pipeline. When an author disables third-party
+  distribution (`downloadUrl` is null), the core asks the `download-url`
+  endpoint; if that also yields nothing, the install fails with
+  `DOWNLOAD_UNAVAILABLE`.
+- Required dependencies (`relationType` 3) recurse by numeric mod id with
+  the same bounds as Modrinth (depth 32, 256 projects, cycle-safe).
+- `list`, `remove`, and `adopt` are provider-agnostic and unchanged;
+  adopted files stay `manual` (CurseForge fingerprint matching is future
+  work).
+
 ## RPC
 
 The same operations are available over RPC as `mods.list`, `mods.install`,
@@ -128,13 +163,16 @@ and `minecraft_version` instead of reading an instance manifest.
 `mods.install` additionally requires `loader` (`fabric` | `neoforge` |
 `forge`); `resourcepacks.install` and `shaderpacks.install` take no loader.
 All install methods accept `with_dependencies` (default `true`) to control
-dependency recursion.
+dependency recursion, plus `provider` (default `"modrinth"`) and `api_key`;
+the CurseForge provider requires `api_key` and rejects any other use of it.
 
 ## Network And Mirrors
 
-Modrinth API requests target `https://api.modrinth.com`; file downloads target
-the file URL published by the API (the Modrinth CDN). Neither is rewritten by
-`source: "bmclapi"` — BMCLAPI mirrors Minecraft content only.
+Modrinth API requests target `https://api.modrinth.com`; CurseForge API
+requests target `https://api.curseforge.com` with the caller-supplied
+`x-api-key` header. File downloads target the file URL published by each
+API. None of them are rewritten by `source: "bmclapi"` — BMCLAPI mirrors
+Minecraft content only.
 
 The primary HTTP stack is the Zig standard library client. When its TLS
 handshake fails, downloads and API calls fall back to a minimal HTTPS client
@@ -153,7 +191,10 @@ still passes the exact size and SHA-1 checks of the install pipeline.
   path.
 - Project types are pinned to the requested kind: installing a mod through
   the resource pack commands (or vice versa) is rejected, as are cross-kind
-  required dependencies.
+  required dependencies. The CurseForge class id pins the kind the same way.
+- Caller-supplied secrets (Microsoft OAuth material, the CurseForge API key)
+  are validated before use and never persisted or echoed in results, events,
+  or errors.
 - Dependency resolution is bounded: depth 32, at most 256 projects per
   install, cycle-safe via a visited set.
 - Every downloaded byte passes through the same verified pipeline as game
@@ -164,8 +205,8 @@ still passes the exact size and SHA-1 checks of the install pipeline.
 
 ## Excluded
 
-- Search, browse, and version listing RPCs.
-- CurseForge (requires a host-supplied API key; planned separately).
+- Search, browse, and version listing RPCs (both providers).
+- CurseForge modpacks and fingerprint-based adoption.
 - Content updates (`upgrade`), optional dependencies, and enable/disable
   toggles.
 - Shader runtime selection and shader pack activation; `pack.mcmeta` and

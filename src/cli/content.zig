@@ -111,6 +111,8 @@ const ContentInstallOptions = struct {
     id: []const u8,
     project: ?[]const u8 = null,
     version_id: ?[]const u8 = null,
+    provider: jmcl.content_registry.Provider = .modrinth,
+    api_key: ?[]const u8 = null,
     with_dependencies: bool = true,
     instances_directory: []const u8 = jmcl.instance_store.default_root,
     store_directory: []const u8 = jmcl.artifact_store.default_directory,
@@ -126,7 +128,7 @@ fn runContentInstall(
     stderr: *std.Io.Writer,
 ) !u8 {
     if (args.len == 0) {
-        try stderr.print("usage: jmcl-core instance {s} install ID --project SLUG [--version ID] [--no-dependencies] [--instances-directory PATH] [--store-directory PATH] [--workers N] [--retries N]\n", .{kind.directory()});
+        try stderr.print("usage: jmcl-core instance {s} install ID --project SLUG [--version ID] [--provider modrinth|curseforge] [--api-key KEY] [--no-dependencies] [--instances-directory PATH] [--store-directory PATH] [--workers N] [--retries N]\n", .{kind.directory()});
         return 2;
     }
     var options: ContentInstallOptions = .{ .id = args[0] };
@@ -145,6 +147,14 @@ fn runContentInstall(
             options.project = value;
         } else if (std.mem.eql(u8, argument, "--version")) {
             options.version_id = value;
+        } else if (std.mem.eql(u8, argument, "--provider")) {
+            if (std.mem.eql(u8, value, "modrinth")) {
+                options.provider = .modrinth;
+            } else if (std.mem.eql(u8, value, "curseforge")) {
+                options.provider = .curseforge;
+            } else return error.InvalidArguments;
+        } else if (std.mem.eql(u8, argument, "--api-key")) {
+            options.api_key = value;
         } else if (std.mem.eql(u8, argument, "--instances-directory")) {
             options.instances_directory = value;
         } else if (std.mem.eql(u8, argument, "--store-directory")) {
@@ -162,6 +172,21 @@ fn runContentInstall(
         try stderr.print("instance {s} install requires --project\n", .{kind.directory()});
         return 2;
     };
+    switch (options.provider) {
+        .curseforge => {
+            if (options.api_key == null) {
+                try stderr.writeAll("curseforge installs require --api-key (supplied by the embedding application)\n");
+                return 2;
+            }
+        },
+        .modrinth => {
+            if (options.api_key != null) {
+                try stderr.writeAll("--api-key is only used with --provider curseforge\n");
+                return 2;
+            }
+        },
+        .manual => return error.InvalidArguments,
+    }
 
     const root = jmcl.instance_store.openRoot(service.io, options.instances_directory) catch |err| {
         try stderr.print("failed to open instances directory: {s}\n", .{@errorName(err)});
@@ -197,17 +222,32 @@ fn runContentInstall(
         .io = service.io,
         .writer = stderr,
     };
-    var summary = service.installModrinthContent(
-        minecraft,
-        store,
-        kind,
-        document.value.version_id,
-        loader,
-        project,
-        options.version_id,
-        .{ .workers = options.workers, .retries = options.retries, .with_dependencies = options.with_dependencies },
-        .{ .context = &reporter_context, .callback = cli_install.CliInstallReporter.callback },
-    ) catch |err| {
+    var summary = switch (options.provider) {
+        .modrinth => service.installModrinthContent(
+            minecraft,
+            store,
+            kind,
+            document.value.version_id,
+            loader,
+            project,
+            options.version_id,
+            .{ .workers = options.workers, .retries = options.retries, .with_dependencies = options.with_dependencies },
+            .{ .context = &reporter_context, .callback = cli_install.CliInstallReporter.callback },
+        ),
+        .curseforge => service.installCurseforgeContent(
+            minecraft,
+            store,
+            kind,
+            document.value.version_id,
+            loader,
+            options.api_key.?,
+            project,
+            options.version_id,
+            .{ .workers = options.workers, .retries = options.retries, .with_dependencies = options.with_dependencies },
+            .{ .context = &reporter_context, .callback = cli_install.CliInstallReporter.callback },
+        ),
+        .manual => unreachable,
+    } catch |err| {
         if (reporter_context.output_failed) return error.WriteFailed;
         switch (err) {
             error.NoCompatibleContentVersion => switch (kind) {
@@ -218,6 +258,9 @@ fn runContentInstall(
             error.ContentFileConflict => try stderr.writeAll("a different registered content entry already occupies the target file\n"),
             error.ContentKindMismatch => try stderr.print("{s} is not a {s} project\n", .{ project, @tagName(kind) }),
             error.UnsupportedProjectType => try stderr.writeAll("the project type is not supported\n"),
+            error.CurseforgeDownloadUnavailable => try stderr.writeAll("the project file is not available for third-party downloads\n"),
+            error.InvalidCurseforgeId => try stderr.writeAll("curseforge projects and files use numeric ids\n"),
+            error.UnsuccessfulHttpStatus => try stderr.writeAll("the content API returned an unsuccessful HTTP status (check the api key)\n"),
             else => try stderr.print("content installation failed: {s}\n", .{@errorName(err)}),
         }
         return 1;

@@ -14,6 +14,8 @@ const ContentInstallParams = struct {
     directory: []const u8,
     minecraft_version: []const u8,
     loader: ?[]const u8 = null,
+    provider: ?[]const u8 = null,
+    api_key: ?[]const u8 = null,
     project: []const u8,
     version_id: ?[]const u8 = null,
     with_dependencies: bool = true,
@@ -145,6 +147,33 @@ pub fn writeInstallResultWithKind(
         },
     };
 
+    const provider: core.content_registry.Provider = blk: {
+        const raw = input.provider orelse break :blk .modrinth;
+        if (std.mem.eql(u8, raw, "modrinth")) break :blk .modrinth;
+        if (std.mem.eql(u8, raw, "curseforge")) break :blk .curseforge;
+        try writeError(writer, request_id, "INVALID_PARAMS", "provider must be modrinth or curseforge");
+        return;
+    };
+    switch (provider) {
+        .curseforge => {
+            const key = input.api_key orelse {
+                try writeError(writer, request_id, "INVALID_PARAMS", "curseforge installs require an api_key supplied by the caller");
+                return;
+            };
+            core.curseforge.validateApiKey(key) catch {
+                try writeError(writer, request_id, "INVALID_PARAMS", "the curseforge api_key is invalid");
+                return;
+            };
+        },
+        .modrinth => {
+            if (input.api_key != null) {
+                try writeError(writer, request_id, "INVALID_PARAMS", "api_key is only used with the curseforge provider");
+                return;
+            }
+        },
+        .manual => unreachable,
+    }
+
     const minecraft = core.installer.openRoot(service.io, input.directory) catch {
         try writeError(writer, request_id, "INSTALL_ROOT_ERROR", "Failed to open the install root");
         return;
@@ -162,28 +191,44 @@ pub fn writeInstallResultWithKind(
         .request_id = request_id,
         .source = .official,
     };
-    var summary = service.installModrinthContent(
-        minecraft,
-        store,
-        kind,
-        input.minecraft_version,
-        loader,
-        input.project,
-        input.version_id,
-        .{ .workers = input.workers, .retries = input.retries, .with_dependencies = input.with_dependencies },
-        .{ .context = &reporter_context, .callback = install.ProtocolInstallReporter.callback },
-    ) catch |err| {
+    var summary = switch (provider) {
+        .modrinth => service.installModrinthContent(
+            minecraft,
+            store,
+            kind,
+            input.minecraft_version,
+            loader,
+            input.project,
+            input.version_id,
+            .{ .workers = input.workers, .retries = input.retries, .with_dependencies = input.with_dependencies },
+            .{ .context = &reporter_context, .callback = install.ProtocolInstallReporter.callback },
+        ),
+        .curseforge => service.installCurseforgeContent(
+            minecraft,
+            store,
+            kind,
+            input.minecraft_version,
+            loader,
+            input.api_key.?,
+            input.project,
+            input.version_id,
+            .{ .workers = input.workers, .retries = input.retries, .with_dependencies = input.with_dependencies },
+            .{ .context = &reporter_context, .callback = install.ProtocolInstallReporter.callback },
+        ),
+        .manual => unreachable,
+    } catch |err| {
         if (reporter_context.output_failed) return error.WriteFailed;
         switch (err) {
-            error.InvalidModrinthProject, error.InvalidModrinthVersionId, error.InvalidGameVersion => try writeError(writer, request_id, "INVALID_PARAMS", "Project, version, or Minecraft version identifiers are invalid"),
+            error.InvalidModrinthProject, error.InvalidModrinthVersionId, error.InvalidGameVersion, error.InvalidCurseforgeId => try writeError(writer, request_id, "INVALID_PARAMS", "Project, version, or Minecraft version identifiers are invalid"),
             error.NoCompatibleContentVersion => try writeError(writer, request_id, "NO_COMPATIBLE_VERSION", "No release of the project supports the requested Minecraft version and loader"),
             error.IncompatibleContentVersion => try writeError(writer, request_id, "INCOMPATIBLE_VERSION", "The requested version does not support the Minecraft version and loader"),
             error.ContentFileConflict => try writeError(writer, request_id, "CONTENT_CONFLICT", "A different registered content entry already occupies the target file"),
             error.ContentKindMismatch => try writeError(writer, request_id, "CONTENT_KIND_MISMATCH", "The project type does not match the requested content kind"),
             error.UnsupportedProjectType => try writeError(writer, request_id, "UNSUPPORTED_PROJECT_TYPE", "The project type is not supported"),
-            error.UnsuccessfulHttpStatus => try writeError(writer, request_id, "HTTP_STATUS_ERROR", "The Modrinth API returned an unsuccessful HTTP status"),
-            error.ModrinthResponseTooLarge => try writeError(writer, request_id, "RESPONSE_TOO_LARGE", "The Modrinth API response exceeds the size limit"),
-            else => try writeError(writer, request_id, "CONTENT_INSTALL_FAILED", "Failed to install the Modrinth project"),
+            error.CurseforgeDownloadUnavailable => try writeError(writer, request_id, "DOWNLOAD_UNAVAILABLE", "The project file is not available for third-party downloads"),
+            error.UnsuccessfulHttpStatus => try writeError(writer, request_id, "HTTP_STATUS_ERROR", "The content API returned an unsuccessful HTTP status"),
+            error.ModrinthResponseTooLarge, error.CurseforgeResponseTooLarge => try writeError(writer, request_id, "RESPONSE_TOO_LARGE", "The content API response exceeds the size limit"),
+            else => try writeError(writer, request_id, "CONTENT_INSTALL_FAILED", "Failed to install the project"),
         }
         return;
     };

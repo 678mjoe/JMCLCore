@@ -1,6 +1,7 @@
 const std = @import("std");
 const install_plan = @import("../install/plan.zig");
 const modrinth = @import("modrinth.zig");
+const curseforge = @import("curseforge.zig");
 
 pub const schema_version: u32 = 1;
 pub const relative_path = ".jmcl/content.json";
@@ -10,6 +11,7 @@ pub const max_entry_size: u64 = 4 * 1024 * 1024 * 1024;
 
 pub const Provider = enum {
     modrinth,
+    curseforge,
     manual,
 };
 
@@ -153,6 +155,11 @@ fn validateSource(source: Source) !void {
             try modrinth.validateVersionId(source.version_id orelse return error.InvalidContentSource);
             if (source.slug) |slug| try modrinth.validateProjectRef(slug);
         },
+        .curseforge => {
+            try curseforge.validateNumericId(source.project_id orelse return error.InvalidContentSource);
+            try curseforge.validateNumericId(source.version_id orelse return error.InvalidContentSource);
+            if (source.slug) |slug| try modrinth.validateProjectRef(slug);
+        },
         .manual => {
             if (source.project_id != null or source.version_id != null or source.slug != null) {
                 return error.InvalidContentSource;
@@ -267,6 +274,21 @@ test "rejects invalid registry documents" {
         \\{"schema_version":99,"entries":[]}
     ;
     try std.testing.expectError(error.UnsupportedContentSchema, parse(allocator, future_schema));
+
+    var curseforge_document = try parse(allocator,
+        \\{"schema_version":1,"entries":[
+        \\{"kind":"mod","file":"mods/jei.jar","sha1":"1111111111111111111111111111111111111111","size":1,"source":{"provider":"curseforge","project_id":"238222","version_id":"5123456","slug":"jei"}}
+        \\]}
+    );
+    defer curseforge_document.deinit();
+    try std.testing.expectEqualStrings("238222", curseforge_document.value.entries[0].source.project_id.?);
+
+    const curseforge_bad_id =
+        \\{"schema_version":1,"entries":[
+        \\{"kind":"mod","file":"mods/jei.jar","sha1":"1111111111111111111111111111111111111111","size":1,"source":{"provider":"curseforge","project_id":"jei","version_id":"5123456"}}
+        \\]}
+    ;
+    try std.testing.expectError(error.InvalidCurseforgeId, parse(allocator, curseforge_bad_id));
 
     const kind_path_mismatch =
         \\{"schema_version":1,"entries":[

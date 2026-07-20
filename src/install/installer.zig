@@ -436,6 +436,7 @@ fn downloadOnce(
                     client.io,
                     url,
                     &limited.interface,
+                    null,
                 );
                 break :blk @enumFromInt(fallback_status);
             },

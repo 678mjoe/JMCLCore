@@ -142,6 +142,15 @@ application's job.
 {"protocol":1,"id":"sp-install","method":"shaderpacks.install","params":{"directory":"/path/to/.minecraft","minecraft_version":"1.21.4","project":"bsl-shaders"}}
 ```
 
+All install methods accept an optional `provider` (`"modrinth"` by default,
+or `"curseforge"`). The CurseForge provider resolves projects by numeric mod
+id and requires an `api_key` parameter, supplied by the caller per request
+and never persisted or echoed by the core:
+
+```json
+{"protocol":1,"id":"cf-install","method":"mods.install","params":{"directory":"/path/to/.minecraft","minecraft_version":"1.20.4","loader":"fabric","provider":"curseforge","api_key":"$2a$10$…","project":"238222"}}
+```
+
 All install methods default to recursing required dependencies; pass
 `"with_dependencies":false` to install only the requested project. See
 `docs/content.md`.

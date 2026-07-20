@@ -440,6 +440,25 @@ test "authentication RPC validation never echoes supplied secrets" {
     }
 }
 
+test "content install validation never echoes the supplied api key" {
+    const cases = [_][]const u8{
+        "{\"protocol\":1,\"id\":\"cf-1\",\"method\":\"mods.install\",\"params\":{\"directory\":\"/tmp/x\",\"minecraft_version\":\"1.20.4\",\"loader\":\"fabric\",\"provider\":\"curseforge\",\"project\":\"238222\"}}",
+        "{\"protocol\":1,\"id\":\"cf-2\",\"method\":\"mods.install\",\"params\":{\"directory\":\"/tmp/x\",\"minecraft_version\":\"1.20.4\",\"loader\":\"fabric\",\"provider\":\"curseforge\",\"api_key\":\"bad key\",\"project\":\"238222\"}}",
+        "{\"protocol\":1,\"id\":\"cf-3\",\"method\":\"mods.install\",\"params\":{\"directory\":\"/tmp/x\",\"minecraft_version\":\"1.20.4\",\"loader\":\"fabric\",\"provider\":\"modrinth\",\"api_key\":\"cf-secret-key\",\"project\":\"sodium\"}}",
+        "{\"protocol\":1,\"id\":\"cf-4\",\"method\":\"mods.install\",\"params\":{\"directory\":\"/tmp/x\",\"minecraft_version\":\"1.20.4\",\"loader\":\"fabric\",\"provider\":\"unknown\",\"api_key\":\"cf-secret-key\",\"project\":\"238222\"}}",
+        "{\"protocol\":1,\"id\":\"cf-5\",\"method\":\"shaderpacks.install\",\"params\":{\"directory\":\"/tmp/x\",\"minecraft_version\":\"1.21.4\",\"provider\":\"curseforge\",\"api_key\":\"cf-secret-key\",\"project\":\"not-numeric\"}}",
+    };
+    for (cases) |line| {
+        var output: std.Io.Writer.Allocating = .init(std.testing.allocator);
+        defer output.deinit();
+        var service = core.Service.init(std.testing.allocator, std.testing.io, null);
+        try handleLine(&service, line, &output.writer);
+        try std.testing.expect(std.mem.indexOf(u8, output.written(), "INVALID_PARAMS") != null);
+        try std.testing.expect(std.mem.indexOf(u8, output.written(), "cf-secret-key") == null);
+        try std.testing.expect(std.mem.indexOf(u8, output.written(), "bad key") == null);
+    }
+}
+
 test "account registry validation never stores or echoes credentials" {
     var output: std.Io.Writer.Allocating = .init(std.testing.allocator);
     defer output.deinit();

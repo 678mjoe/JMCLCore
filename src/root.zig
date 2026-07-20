@@ -14,6 +14,7 @@ pub const forge = @import("loaders/forge.zig");
 pub const forge_legacy = @import("loaders/forge_legacy.zig");
 pub const forge_executor = @import("loaders/forge_executor.zig");
 pub const modrinth = @import("content/modrinth.zig");
+pub const curseforge = @import("content/curseforge.zig");
 pub const content_registry = @import("content/content_registry.zig");
 pub const https_fallback = @import("install/https_fallback.zig");
 pub const zip_reader = @import("install/zip_reader.zig");
@@ -45,6 +46,7 @@ test {
     _ = forge_legacy;
     _ = forge_executor;
     _ = modrinth;
+    _ = curseforge;
     _ = content_registry;
     _ = https_fallback;
     _ = zip_reader;

@@ -6,6 +6,7 @@ const account_store = @import("auth/account_store.zig");
 const asset_index = @import("install/asset_index.zig");
 const content_registry = @import("content/content_registry.zig");
 const core = @import("root.zig");
+const curseforge = @import("content/curseforge.zig");
 const fabric = @import("loaders/fabric.zig");
 const forge = @import("loaders/forge.zig");
 const forge_legacy = @import("loaders/forge_legacy.zig");
@@ -809,8 +810,11 @@ pub const Service = struct {
     const ResolvedContent = struct {
         project_id: []const u8,
         slug: ?[]const u8,
-        version: modrinth.Version,
-        file: modrinth.VersionFile,
+        version_id: []const u8,
+        file_name: []const u8,
+        url: []const u8,
+        sha1: []const u8,
+        size: u64,
         as_dependency: bool,
     };
 
@@ -850,12 +854,11 @@ pub const Service = struct {
                 break :blk null;
             },
         };
-        const directory = kind.directory();
 
         const arena = try self.allocator.create(std.heap.ArenaAllocator);
-        errdefer self.allocator.destroy(arena);
+        defer self.allocator.destroy(arena);
         arena.* = std.heap.ArenaAllocator.init(self.allocator);
-        errdefer arena.deinit();
+        defer arena.deinit();
         const scratch = arena.allocator();
 
         var registry_document = try content_registry.load(self.allocator, self.io, minecraft_dir);
@@ -880,24 +883,139 @@ pub const Service = struct {
             0,
         );
 
-        const files = try scratch.alloc(install_plan.File, resolved.items.len);
+        return self.installResolvedContent(
+            minecraft_dir,
+            store,
+            kind,
+            game_version,
+            .modrinth,
+            registry_document.value,
+            resolved.items,
+            skipped,
+            options,
+            reporter,
+        );
+    }
+
+    /// Resolves a CurseForge project (numeric mod id) and its required
+    /// dependencies against the instance's Minecraft version and loader,
+    /// then downloads and registers like `installModrinthContent`. The API
+    /// key is supplied by the caller and never persisted. Projects whose
+    /// CurseForge class does not match the requested kind are rejected.
+    pub fn installCurseforgeContent(
+        self: Service,
+        minecraft_dir: std.Io.Dir,
+        store: std.Io.Dir,
+        kind: content_registry.Kind,
+        game_version: []const u8,
+        loader: ?modrinth.Loader,
+        api_key: []const u8,
+        project: []const u8,
+        file_id: ?[]const u8,
+        options: ContentInstallOptions,
+        reporter: ?install_executor.Reporter,
+    ) !ContentInstallSummary {
+        try curseforge.validateNumericId(project);
+        try curseforge.validateApiKey(api_key);
+        try modrinth.validateGameVersion(game_version);
+        if (file_id) |id| try curseforge.validateNumericId(id);
+        const effective_loader: ?modrinth.Loader = switch (kind) {
+            .mod => blk: {
+                const value = loader orelse return error.ModLoaderRequired;
+                if (value == .minecraft) return error.ModLoaderRequired;
+                break :blk value;
+            },
+            .resourcepack, .shaderpack => blk: {
+                if (loader != null) return error.InvalidContentLoader;
+                break :blk null;
+            },
+        };
+
+        const arena = try self.allocator.create(std.heap.ArenaAllocator);
+        defer self.allocator.destroy(arena);
+        arena.* = std.heap.ArenaAllocator.init(self.allocator);
+        defer arena.deinit();
+        const scratch = arena.allocator();
+
+        var registry_document = try content_registry.load(self.allocator, self.io, minecraft_dir);
+        defer registry_document.deinit();
+
+        var resolved: std.ArrayList(ResolvedContent) = .empty;
+        var visited: std.StringHashMap(void) = .init(scratch);
+        var skipped: usize = 0;
+        try self.resolveCurseforgeContent(
+            scratch,
+            kind,
+            game_version,
+            effective_loader,
+            api_key,
+            project,
+            file_id,
+            false,
+            options.with_dependencies,
+            registry_document.value,
+            &resolved,
+            &visited,
+            &skipped,
+            0,
+        );
+
+        return self.installResolvedContent(
+            minecraft_dir,
+            store,
+            kind,
+            game_version,
+            .curseforge,
+            registry_document.value,
+            resolved.items,
+            skipped,
+            options,
+            reporter,
+        );
+    }
+
+    /// Shared install tail: conflict-checks resolved content against the
+    /// registry, downloads through the verified content-addressed pipeline,
+    /// and merges new registry entries atomically.
+    fn installResolvedContent(
+        self: Service,
+        minecraft_dir: std.Io.Dir,
+        store: std.Io.Dir,
+        kind: content_registry.Kind,
+        game_version: []const u8,
+        provider: content_registry.Provider,
+        registry: content_registry.Registry,
+        resolved: []const ResolvedContent,
+        skipped: usize,
+        options: ContentInstallOptions,
+        reporter: ?install_executor.Reporter,
+    ) !ContentInstallSummary {
+        const directory = kind.directory();
+
+        const arena = try self.allocator.create(std.heap.ArenaAllocator);
+        errdefer self.allocator.destroy(arena);
+        arena.* = std.heap.ArenaAllocator.init(self.allocator);
+        errdefer arena.deinit();
+        const scratch = arena.allocator();
+
+        const files = try scratch.alloc(install_plan.File, resolved.len);
         var total_size: u64 = 0;
-        for (resolved.items, 0..) |content, index| {
-            const path = try std.fmt.allocPrint(scratch, "{s}/{s}", .{ directory, content.file.filename });
-            if (content_registry.findByFile(registry_document.value, path)) |existing| {
-                if (!std.ascii.eqlIgnoreCase(existing.sha1, content.file.hashes.sha1)) {
+        for (resolved, 0..) |content, index| {
+            const path = try std.fmt.allocPrint(scratch, "{s}/{s}", .{ directory, content.file_name });
+            if (content_registry.findByFile(registry, path)) |existing| {
+                if (!std.ascii.eqlIgnoreCase(existing.sha1, content.sha1)) {
                     return error.ContentFileConflict;
                 }
             }
             files[index] = .{
                 .path = path,
-                .url = content.file.url,
+                .url = content.url,
                 .fallback_url = null,
-                .sha1 = content.file.hashes.sha1,
-                .size = content.file.size,
+                .sha1 = content.sha1,
+                .size = content.size,
                 .usage = .{ .mod = kind == .mod, .resourcepack = kind == .resourcepack, .shaderpack = kind == .shaderpack },
             };
-            total_size = std.math.add(u64, total_size, content.file.size) catch return error.DownloadSizeOverflow;
+            total_size = std.math.add(u64, total_size, content.size) catch return error.DownloadSizeOverflow;
         }
 
         const host = try install_plan.Target.host();
@@ -921,21 +1039,21 @@ pub const Service = struct {
             reporter,
         );
 
-        const old_entries = registry_document.value.entries;
-        const merged = try scratch.alloc(content_registry.Entry, old_entries.len + resolved.items.len);
+        const old_entries = registry.entries;
+        const merged = try scratch.alloc(content_registry.Entry, old_entries.len + resolved.len);
         @memcpy(merged[0..old_entries.len], old_entries);
-        const installed = try scratch.alloc(InstalledContent, resolved.items.len);
-        for (resolved.items, 0..) |content, index| {
+        const installed = try scratch.alloc(InstalledContent, resolved.len);
+        for (resolved, 0..) |content, index| {
             const file_path = files[index].path;
             merged[old_entries.len + index] = .{
                 .kind = kind,
                 .file = file_path,
-                .sha1 = content.file.hashes.sha1,
-                .size = content.file.size,
+                .sha1 = content.sha1,
+                .size = content.size,
                 .source = .{
-                    .provider = .modrinth,
+                    .provider = provider,
                     .project_id = try scratch.dupe(u8, content.project_id),
-                    .version_id = try scratch.dupe(u8, content.version.id),
+                    .version_id = try scratch.dupe(u8, content.version_id),
                     .slug = if (content.slug) |slug| try scratch.dupe(u8, slug) else null,
                 },
                 .enabled = true,
@@ -943,9 +1061,9 @@ pub const Service = struct {
             };
             installed[index] = .{
                 .file = file_path,
-                .sha1 = content.file.hashes.sha1,
-                .size = content.file.size,
-                .slug = content.slug,
+                .sha1 = try scratch.dupe(u8, content.sha1),
+                .size = content.size,
+                .slug = if (content.slug) |slug| try scratch.dupe(u8, slug) else null,
                 .as_dependency = content.as_dependency,
             };
         }
@@ -1014,8 +1132,11 @@ pub const Service = struct {
         try resolved.append(scratch, .{
             .project_id = try scratch.dupe(u8, project_value.id),
             .slug = try scratch.dupe(u8, project_value.slug),
-            .version = version,
-            .file = file,
+            .version_id = try scratch.dupe(u8, version.id),
+            .file_name = file.filename,
+            .url = file.url,
+            .sha1 = file.hashes.sha1,
+            .size = file.size,
             .as_dependency = as_dependency,
         });
 
@@ -1086,6 +1207,148 @@ pub const Service = struct {
         var body = try self.fetchBody(url, modrinth.max_versions_list_bytes);
         defer body.deinit();
         return modrinth.parseVersions(scratch, body.content);
+    }
+
+    fn resolveCurseforgeContent(
+        self: Service,
+        scratch: std.mem.Allocator,
+        kind: content_registry.Kind,
+        game_version: []const u8,
+        loader: ?modrinth.Loader,
+        api_key: []const u8,
+        project: []const u8,
+        file_id: ?[]const u8,
+        as_dependency: bool,
+        with_dependencies: bool,
+        registry: content_registry.Registry,
+        resolved: *std.ArrayList(ResolvedContent),
+        visited: *std.StringHashMap(void),
+        skipped: *usize,
+        depth: u8,
+    ) anyerror!void {
+        if (depth > 32) return error.ContentDependencyTooDeep;
+        if (resolved.items.len >= 256) return error.TooManyContentDependencies;
+
+        const api_header: https_fallback.ExtraHeader = .{ .name = "x-api-key", .value = api_key };
+        const project_document = try self.fetchCurseforgeMod(scratch, api_header, project);
+        const project_value = project_document.value.data.*;
+        const project_kind: content_registry.Kind = switch (project_value.classId) {
+            curseforge.class_id_mods => .mod,
+            curseforge.class_id_resourcepacks => .resourcepack,
+            curseforge.class_id_shaderpacks => .shaderpack,
+            else => return error.UnsupportedProjectType,
+        };
+        if (project_kind != kind) return error.ContentKindMismatch;
+
+        const project_id = try std.fmt.allocPrint(scratch, "{d}", .{project_value.id});
+        if (visited.contains(project_id)) return;
+        try visited.put(project_id, {});
+        if (content_registry.findByProject(registry, .curseforge, project_id) != null) {
+            skipped.* += 1;
+            return;
+        }
+
+        const file = if (file_id) |id| blk: {
+            const document = try self.fetchCurseforgeFile(scratch, api_header, project_id, id);
+            const value = document.value.data.*;
+            if (value.modId != project_value.id) return error.CurseforgeFileProjectMismatch;
+            if (!curseforge.fileSupports(value, game_version, loader)) {
+                return error.IncompatibleContentVersion;
+            }
+            if (!value.isAvailable) return error.CurseforgeDownloadUnavailable;
+            break :blk value;
+        } else blk: {
+            const files = try self.fetchCurseforgeFiles(scratch, api_header, project_id, game_version, loader);
+            break :blk curseforge.selectFile(files) orelse return error.NoCompatibleContentVersion;
+        };
+
+        var download_url = file.downloadUrl;
+        if (download_url == null) {
+            const document = try self.fetchCurseforgeDownloadUrl(scratch, api_header, project_id, file.id);
+            download_url = document.value.data;
+        }
+        const url = download_url orelse return error.CurseforgeDownloadUnavailable;
+
+        try resolved.append(scratch, .{
+            .project_id = project_id,
+            .slug = try scratch.dupe(u8, project_value.slug),
+            .version_id = try std.fmt.allocPrint(scratch, "{d}", .{file.id}),
+            .file_name = file.fileName,
+            .url = url,
+            .sha1 = curseforge.sha1Of(file),
+            .size = file.fileLength,
+            .as_dependency = as_dependency,
+        });
+
+        if (!with_dependencies) return;
+        for (file.dependencies) |dependency| {
+            if (dependency.relationType != curseforge.relation_required) continue;
+            const dependency_project = try std.fmt.allocPrint(scratch, "{d}", .{dependency.modId});
+            try self.resolveCurseforgeContent(
+                scratch,
+                kind,
+                game_version,
+                loader,
+                api_key,
+                dependency_project,
+                null,
+                true,
+                with_dependencies,
+                registry,
+                resolved,
+                visited,
+                skipped,
+                depth + 1,
+            );
+        }
+    }
+
+    fn fetchCurseforgeMod(self: Service, scratch: std.mem.Allocator, api_header: https_fallback.ExtraHeader, project: []const u8) !std.json.Parsed(curseforge.Envelope(*curseforge.Mod)) {
+        const url = try curseforge.projectUrlAlloc(scratch, project);
+        var body = try self.fetchBodyWithHeader(url, curseforge.max_project_bytes, api_header);
+        defer body.deinit();
+        return curseforge.parseMod(scratch, body.content);
+    }
+
+    fn fetchCurseforgeFile(self: Service, scratch: std.mem.Allocator, api_header: https_fallback.ExtraHeader, project: []const u8, file_id: []const u8) !std.json.Parsed(curseforge.Envelope(*curseforge.File)) {
+        const url = try curseforge.fileUrlAlloc(scratch, project, file_id);
+        var body = try self.fetchBodyWithHeader(url, curseforge.max_file_bytes, api_header);
+        defer body.deinit();
+        return curseforge.parseFile(scratch, body.content);
+    }
+
+    fn fetchCurseforgeDownloadUrl(self: Service, scratch: std.mem.Allocator, api_header: https_fallback.ExtraHeader, project: []const u8, file_id: u32) !std.json.Parsed(curseforge.Envelope(?[]const u8)) {
+        const file_id_string = try std.fmt.allocPrint(scratch, "{d}", .{file_id});
+        const url = try curseforge.downloadUrlAlloc(scratch, project, file_id_string);
+        var body = try self.fetchBodyWithHeader(url, curseforge.max_file_bytes, api_header);
+        defer body.deinit();
+        return curseforge.parseDownloadUrl(scratch, body.content);
+    }
+
+    fn fetchCurseforgeFiles(
+        self: Service,
+        scratch: std.mem.Allocator,
+        api_header: https_fallback.ExtraHeader,
+        project: []const u8,
+        game_version: []const u8,
+        loader: ?modrinth.Loader,
+    ) ![]const curseforge.File {
+        var files: std.ArrayList(curseforge.File) = .empty;
+        var index: u32 = 0;
+        while (true) {
+            const url = try curseforge.filesPageUrlAlloc(scratch, project, game_version, loader, index);
+            var body = try self.fetchBodyWithHeader(url, curseforge.max_files_page_bytes, api_header);
+            defer body.deinit();
+            const page = try curseforge.parseFilesPage(scratch, body.content);
+            if (page.value.data.len == 0) break;
+            try files.appendSlice(scratch, page.value.data);
+            if (files.items.len > curseforge.max_files_per_project) return error.TooManyCurseforgeFiles;
+            const pagination = page.value.pagination orelse break;
+            if (files.items.len >= pagination.totalCount) break;
+            if (page.value.data.len < curseforge.files_page_size) break;
+            index += @intCast(page.value.data.len);
+        }
+        return files.items;
     }
 
     pub const ContentList = struct {
@@ -1413,6 +1676,11 @@ pub const Service = struct {
     }
 
     fn fetchBody(self: Service, url: []const u8, max_bytes: usize) !ResponseBody {
+        return self.fetchBodyWithHeader(url, max_bytes, null);
+    }
+
+    fn fetchBodyWithHeader(self: Service, url: []const u8, max_bytes: usize, extra_header: ?https_fallback.ExtraHeader) !ResponseBody {
+        if (extra_header) |header| try header.validate();
         var proxy_arena = std.heap.ArenaAllocator.init(self.allocator);
         defer proxy_arena.deinit();
 
@@ -1430,6 +1698,10 @@ pub const Service = struct {
         errdefer self.allocator.free(storage);
         var body = std.Io.Writer.fixed(storage);
 
+        const extra_headers: []const std.http.Header = if (extra_header) |header|
+            &.{ .{ .name = header.name, .value = header.value } }
+        else
+            &.{};
         const result = client.fetch(.{
             .location = .{ .url = url },
             .response_writer = &body,
@@ -1437,6 +1709,7 @@ pub const Service = struct {
             .headers = .{
                 .user_agent = .{ .override = core.name ++ "/" ++ core.version },
             },
+            .extra_headers = extra_headers,
         }) catch |err| {
             if (err == error.WriteFailed and body.end > max_bytes) {
                 return error.ResponseBodyTooLarge;
@@ -1448,6 +1721,7 @@ pub const Service = struct {
                     self.io,
                     url,
                     &body,
+                    extra_header,
                 ));
                 if (body.end > max_bytes) return error.ResponseBodyTooLarge;
                 if (fallback_status.class() != .success) return error.UnsuccessfulHttpStatus;
