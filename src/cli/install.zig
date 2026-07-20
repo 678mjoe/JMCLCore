@@ -352,6 +352,19 @@ pub fn executeInstall(
         try stdout.print("patchedClient\t{s}\n", .{patched.patched_sha1});
     }
 
+    jmcl.instance_store.recordInstallation(service.io, root, .{
+        .version_id = plan.value.version_id,
+        .fabric_loader = fabric_loader,
+        .neoforge_version = neoforge_version,
+        .forge_version = forge_version,
+        .source = source,
+        .os = @tagName(target.os),
+        .arch = @tagName(target.arch),
+    }) catch |err| {
+        try stderr.print("failed to record completed installation: {s}\n", .{@errorName(err)});
+        return 1;
+    };
+
     try common.writeSourceNotice(stdout, source);
     try stdout.print("version\t{s}\n", .{id});
     try stdout.print("downloaded\t{d}\n", .{summary.files_downloaded});

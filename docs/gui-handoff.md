@@ -128,9 +128,9 @@ instance is `instances/<id>/` with `instance.json` plus the game directory
 
 | Method | Required params | Optional params | Notes |
 |---|---|---|---|
-| `instance.create` | `directory`, `id`, `version_id` | `name` (defaults to id), one loader field, `source` | resolves the version+loader online first; `INSTANCE_EXISTS` if taken |
-| `instance.list` | `directory` | — | `{instances[]}` of manifests, sorted by id |
-| `instance.get` | `directory`, `id` | — | one manifest; `INSTANCE_NOT_FOUND` |
+| `instance.create` | `directory`, `id`, `version_id` | `name` (defaults to id), one loader field, `source` | resolves the version+loader online first; returns `installed:false`; `INSTANCE_EXISTS` if taken |
+| `instance.list` | `directory` | — | `{instances[]}` sorted by id; each includes `installed` |
+| `instance.get` | `directory`, `id` | — | one manifest with `installed`; `INSTANCE_NOT_FOUND` |
 | `instance.delete` | `directory`, `id` | — | removes the whole instance directory |
 
 ```json
@@ -140,8 +140,13 @@ instance is `instances/<id>/` with `instance.json` plus the game directory
 A manifest looks like:
 
 ```json
-{"id":"my-instance","name":"My Instance","version_id":"1.21.4","fabric_loader":"0.16.10","neoforge_version":null,"forge_version":null,"source":"official"}
+{"id":"my-instance","name":"My Instance","version_id":"1.21.4","fabric_loader":"0.16.10","neoforge_version":null,"forge_version":null,"source":"official","installed":false}
 ```
+
+`installed` becomes true only after `install.execute` fully succeeds for the
+manifest's exact version, loader, and source. A missing, corrupt, or mismatched
+completion marker returns false; older instances can be safely reinstalled
+because verified artifacts are reused through the shared store and hard links.
 
 `id` rules: ≤64 chars, starts `[a-z0-9]`, then `[a-z0-9._-]`, no trailing dot,
 no Windows reserved stems. At most one loader field (`fabric_loader`,

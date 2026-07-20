@@ -29,7 +29,11 @@ fn parseSource(raw: []const u8) ?core.DownloadSource {
     return core.DownloadSource.parse(raw);
 }
 
-fn writeManifestFields(json: *std.json.Stringify, manifest: core.instance_store.Manifest) std.Io.Writer.Error!void {
+fn writeManifestFields(
+    json: *std.json.Stringify,
+    manifest: core.instance_store.Manifest,
+    installed: bool,
+) std.Io.Writer.Error!void {
     try json.objectField("id");
     try json.write(manifest.id);
     try json.objectField("name");
@@ -44,6 +48,23 @@ fn writeManifestFields(json: *std.json.Stringify, manifest: core.instance_store.
     try json.write(manifest.forge_version);
     try json.objectField("source");
     try json.write(@tagName(manifest.source));
+    try json.objectField("installed");
+    try json.write(installed);
+}
+
+fn installationStatus(
+    service: *core.Service,
+    root: std.Io.Dir,
+    manifest: core.instance_store.Manifest,
+) !bool {
+    var path_buffer: [96]u8 = undefined;
+    const path = std.fmt.bufPrint(&path_buffer, "{s}/.minecraft", .{manifest.id}) catch unreachable;
+    const minecraft = root.openDir(service.io, path, .{ .follow_symlinks = false }) catch |err| switch (err) {
+        error.FileNotFound => return false,
+        else => |other| return other,
+    };
+    defer minecraft.close(service.io);
+    return core.instance_store.isInstalled(service.allocator, service.io, minecraft, manifest);
 }
 
 pub fn writeCreateResult(
@@ -126,7 +147,7 @@ pub fn writeCreateResult(
     try json.beginObject();
     try json.objectField("stage");
     try json.write("instance.create");
-    try writeManifestFields(&json, manifest);
+    try writeManifestFields(&json, manifest, false);
     try json.endObject();
     try json.endObject();
     try writer.writeByte('\n');
@@ -163,6 +184,17 @@ pub fn writeListResult(
         return;
     };
     defer instances.deinit();
+    const installed = service.allocator.alloc(bool, instances.items.len) catch {
+        try writeError(writer, request_id, "INSTANCE_STATUS_FAILED", "Failed to read instance installation status");
+        return;
+    };
+    defer service.allocator.free(installed);
+    for (instances.items, installed) |document, *status| {
+        status.* = installationStatus(service, root, document.value) catch {
+            try writeError(writer, request_id, "INSTANCE_STATUS_FAILED", "Failed to read instance installation status");
+            return;
+        };
+    }
 
     var json: std.json.Stringify = .{ .writer = writer };
     try writeEventHeader(&json, request_id, "result");
@@ -172,9 +204,9 @@ pub fn writeListResult(
     try json.write("instance.list");
     try json.objectField("instances");
     try json.beginArray();
-    for (instances.items) |document| {
+    for (instances.items, installed) |document, status| {
         try json.beginObject();
-        try writeManifestFields(&json, document.value);
+        try writeManifestFields(&json, document.value, status);
         try json.endObject();
     }
     try json.endArray();
@@ -221,6 +253,10 @@ pub fn writeGetResult(
         },
     };
     defer document.deinit();
+    const installed = installationStatus(service, root, document.value) catch {
+        try writeError(writer, request_id, "INSTANCE_STATUS_FAILED", "Failed to read instance installation status");
+        return;
+    };
 
     var json: std.json.Stringify = .{ .writer = writer };
     try writeEventHeader(&json, request_id, "result");
@@ -228,7 +264,7 @@ pub fn writeGetResult(
     try json.beginObject();
     try json.objectField("stage");
     try json.write("instance.get");
-    try writeManifestFields(&json, document.value);
+    try writeManifestFields(&json, document.value, installed);
     try json.endObject();
     try json.endObject();
     try writer.writeByte('\n');

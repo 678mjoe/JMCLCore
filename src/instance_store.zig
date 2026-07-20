@@ -4,6 +4,9 @@ const DownloadSource = @import("install/download_source.zig").DownloadSource;
 pub const schema_version: u32 = 1;
 pub const default_root = "instances";
 const max_manifest_bytes = 64 * 1024;
+pub const installation_schema_version: u32 = 1;
+pub const installation_relative_path = ".jmcl/install.json";
+const max_installation_bytes = 16 * 1024;
 const max_instances = 4096;
 
 pub const Manifest = struct {
@@ -15,6 +18,17 @@ pub const Manifest = struct {
     neoforge_version: ?[]const u8 = null,
     forge_version: ?[]const u8 = null,
     source: DownloadSource = .official,
+};
+
+pub const Installation = struct {
+    schema_version: u32 = installation_schema_version,
+    version_id: []const u8,
+    fabric_loader: ?[]const u8 = null,
+    neoforge_version: ?[]const u8 = null,
+    forge_version: ?[]const u8 = null,
+    source: DownloadSource = .official,
+    os: []const u8,
+    arch: []const u8,
 };
 
 pub const Document = std.json.Parsed(Manifest);
@@ -125,6 +139,55 @@ pub fn delete(allocator: std.mem.Allocator, io: std.Io, root: std.Io.Dir, id: []
     try root.deleteTree(io, id);
 }
 
+pub fn recordInstallation(io: std.Io, minecraft_dir: std.Io.Dir, installation: Installation) !void {
+    try validateInstallation(installation);
+    var atomic_file = try minecraft_dir.createFileAtomic(io, installation_relative_path, .{
+        .make_path = true,
+        .replace = true,
+    });
+    defer atomic_file.deinit(io);
+    var buffer: [4096]u8 = undefined;
+    var writer: std.Io.File.Writer = .init(atomic_file.file, io, &buffer);
+    var json: std.json.Stringify = .{ .writer = &writer.interface };
+    try json.write(installation);
+    try writer.interface.writeByte('\n');
+    try writer.interface.flush();
+    try atomic_file.file.sync(io);
+    try atomic_file.replace(io);
+}
+
+pub fn isInstalled(
+    allocator: std.mem.Allocator,
+    io: std.Io,
+    minecraft_dir: std.Io.Dir,
+    manifest: Manifest,
+) !bool {
+    const bytes = minecraft_dir.readFileAlloc(
+        io,
+        installation_relative_path,
+        allocator,
+        .limited(max_installation_bytes + 1),
+    ) catch |err| switch (err) {
+        error.FileNotFound, error.StreamTooLong => return false,
+        else => |other| return other,
+    };
+    defer allocator.free(bytes);
+    if (bytes.len > max_installation_bytes) return false;
+    var document = std.json.parseFromSlice(Installation, allocator, bytes, .{
+        .allocate = .alloc_always,
+        .ignore_unknown_fields = true,
+        .max_value_len = max_installation_bytes,
+    }) catch return false;
+    defer document.deinit();
+    validateInstallation(document.value) catch return false;
+    const installation = document.value;
+    return std.mem.eql(u8, installation.version_id, manifest.version_id) and
+        optionalEql(installation.fabric_loader, manifest.fabric_loader) and
+        optionalEql(installation.neoforge_version, manifest.neoforge_version) and
+        optionalEql(installation.forge_version, manifest.forge_version) and
+        installation.source == manifest.source;
+}
+
 pub fn minecraftPathAlloc(allocator: std.mem.Allocator, instances_root: []const u8, id: []const u8) ![]u8 {
     try validateId(id);
     return std.fs.path.join(allocator, &.{ instances_root, id, ".minecraft" });
@@ -162,6 +225,38 @@ fn validateManifest(manifest: Manifest) !void {
     if (manifest.neoforge_version != null) loaders += 1;
     if (manifest.forge_version != null) loaders += 1;
     if (loaders > 1) return error.LoaderConflict;
+}
+
+fn validateInstallation(installation: Installation) !void {
+    if (installation.schema_version != installation_schema_version) {
+        return error.UnsupportedInstallationSchema;
+    }
+    if (installation.version_id.len == 0 or installation.version_id.len > 256) {
+        return error.InvalidVersionId;
+    }
+    for ([_]?[]const u8{
+        installation.fabric_loader,
+        installation.neoforge_version,
+        installation.forge_version,
+    }) |loader| {
+        if (loader) |value| {
+            if (value.len == 0 or value.len > 256) return error.InvalidLoaderVersion;
+        }
+    }
+    const loader_count: u8 = @intFromBool(installation.fabric_loader != null) +
+        @intFromBool(installation.neoforge_version != null) +
+        @intFromBool(installation.forge_version != null);
+    if (loader_count > 1) return error.LoaderConflict;
+    if (installation.os.len == 0 or installation.os.len > 32 or
+        installation.arch.len == 0 or installation.arch.len > 32)
+    {
+        return error.InvalidInstallationTarget;
+    }
+}
+
+fn optionalEql(left: ?[]const u8, right: ?[]const u8) bool {
+    if (left == null or right == null) return left == null and right == null;
+    return std.mem.eql(u8, left.?, right.?);
 }
 
 fn isLowerAlphaNumeric(byte: u8) bool {
@@ -219,4 +314,40 @@ test "creates lists loads and deletes isolated instances" {
 
     try delete(std.testing.allocator, io, root, "test-instance");
     try std.testing.expectError(error.FileNotFound, load(std.testing.allocator, io, root, "test-instance"));
+}
+
+test "installation marker matches only its completed manifest" {
+    const io = std.testing.io;
+    const allocator = std.testing.allocator;
+    var temporary = std.testing.tmpDir(.{});
+    defer temporary.cleanup();
+    const manifest: Manifest = .{
+        .id = "fabric",
+        .name = "Fabric",
+        .version_id = "1.21.4",
+        .fabric_loader = "0.16.10",
+        .source = .bmclapi,
+    };
+
+    try std.testing.expect(!try isInstalled(allocator, io, temporary.dir, manifest));
+    try recordInstallation(io, temporary.dir, .{
+        .version_id = manifest.version_id,
+        .fabric_loader = manifest.fabric_loader,
+        .source = manifest.source,
+        .os = "linux",
+        .arch = "x86_64",
+    });
+    try std.testing.expect(try isInstalled(allocator, io, temporary.dir, manifest));
+
+    var other = manifest;
+    other.fabric_loader = "0.16.11";
+    try std.testing.expect(!try isInstalled(allocator, io, temporary.dir, other));
+    other = manifest;
+    other.version_id = "1.21.5";
+    try std.testing.expect(!try isInstalled(allocator, io, temporary.dir, other));
+
+    var file = try temporary.dir.createFile(io, installation_relative_path, .{ .truncate = true });
+    defer file.close(io);
+    try file.writeStreamingAll(io, "{broken");
+    try std.testing.expect(!try isInstalled(allocator, io, temporary.dir, manifest));
 }

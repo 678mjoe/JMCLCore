@@ -174,10 +174,21 @@ the manifest, and fails with `INSTANCE_EXISTS` when the id is taken:
 ```
 
 Results carry the manifest fields (`id`, `name`, `version_id`, loader
-fields, `source`). `instance.get` and `instance.delete` address one instance
-by `id` and report `INSTANCE_NOT_FOUND` when absent. Deletion removes the
-whole instance directory. Game installation remains a separate
+fields, `source`) plus `installed`. `instance.create` always returns
+`installed:false`; `instance.list` and `instance.get` read the current
+installation status. `instance.get` and `instance.delete` address one
+instance by `id` and report `INSTANCE_NOT_FOUND` when absent. Deletion removes
+the whole instance directory. Game installation remains a separate
 `install.execute` step.
+
+`installed:true` means a complete `install.execute` (including the
+NeoForge/Forge processor chain when applicable) last succeeded for the exact
+version, loader, and source in the instance manifest. Completion is recorded
+atomically in `.minecraft/.jmcl/install.json`; an absent, malformed, or
+mismatched marker returns `false`. Instances installed before this marker was
+introduced conservatively return `false` and can be reinstalled
+idempotently—the verified artifact store and hard-link materialization avoid
+duplicate downloads and storage.
 
 ## Modpack Installation
 
@@ -405,6 +416,10 @@ terminal `result` or `error` event follows.
 {"protocol":1,"id":"install-1","event":"progress","source":"bmclapi","progress":{"files_completed":100,"files_total":5000,"bytes_verified":12000000,"bytes_total":600000000,"bytes_transferred":8000000}}
 {"protocol":1,"id":"install-1","event":"result","source":"bmclapi","result":{"stage":"download","version_id":"1.21.11","files_total":5000,"files_downloaded":4500,"files_cached":500,"files_hard_linked":4990,"files_copied":10,"bytes_verified":600000000,"bytes_transferred":550000000}}
 ```
+
+Only after every planned file and loader processor succeeds,
+`install.execute` atomically records `.jmcl/install.json`. Instance
+`installed` status therefore never becomes true for a partial install.
 
 RPC execution is synchronous in protocol version 1: the session cannot process
 another request until the terminal event. Cancellation will be added with the
