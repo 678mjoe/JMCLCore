@@ -155,6 +155,22 @@ All install methods default to recursing required dependencies; pass
 `"with_dependencies":false` to install only the requested project. See
 `docs/content.md`.
 
+## Modpack Installation
+
+`modpack.install` creates a new instance from a Modrinth `.mrpack` or
+CurseForge `manifest.json` archive: it pins the Minecraft version and mod
+loader, downloads every client-side content file through the verified
+content-addressed pipeline, registers them in the content registry, and
+extracts the pack's overrides. CurseForge packs require an `api_key`.
+
+```json
+{"protocol":1,"id":"mp-1","method":"modpack.install","params":{"directory":"/path/to/instances","id":"my-pack","file":"/path/to/pack.mrpack"}}
+```
+
+The result reports the instance identity, the selected loader,
+`files_installed`, `files_skipped`, and `overrides_written`. See
+`docs/modpack.md`.
+
 ## `store.gc`
 
 `store.gc` performs conservative cache reclamation. It defaults to dry-run mode

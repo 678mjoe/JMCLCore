@@ -3,6 +3,7 @@ const jmcl = @import("jmcl_core");
 const cli_install = @import("install.zig");
 const cli_launch = @import("launch.zig");
 const cli_content = @import("content.zig");
+const cli_modpack = @import("modpack.zig");
 
 pub fn run(
     service: *jmcl.Service,
@@ -19,7 +20,8 @@ pub fn run(
     if (args.len >= 1 and std.mem.eql(u8, args[0], "mods")) return cli_content.runWithKind(.mod, service, args[1..], stdout, stderr);
     if (args.len >= 1 and std.mem.eql(u8, args[0], "resourcepacks")) return cli_content.runWithKind(.resourcepack, service, args[1..], stdout, stderr);
     if (args.len >= 1 and std.mem.eql(u8, args[0], "shaderpacks")) return cli_content.runWithKind(.shaderpack, service, args[1..], stdout, stderr);
-    try stderr.writeAll("usage: jmcl-core instance <create|list|show|delete|install|launch|mods|resourcepacks|shaderpacks> [options]\n");
+    if (args.len >= 1 and std.mem.eql(u8, args[0], "modpack")) return cli_modpack.run(service, args[1..], stdout, stderr);
+    try stderr.writeAll("usage: jmcl-core instance <create|list|show|delete|install|launch|mods|resourcepacks|shaderpacks|modpack> [options]\n");
     return 2;
 }
 

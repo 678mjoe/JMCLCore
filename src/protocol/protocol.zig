@@ -6,6 +6,7 @@ const install = @import("install.zig");
 const java = @import("java.zig");
 const launch = @import("launch.zig");
 const content = @import("content.zig");
+const modpack = @import("modpack.zig");
 const store = @import("store.zig");
 const version = @import("version.zig");
 
@@ -125,6 +126,8 @@ pub fn handleLine(
         try content.writeRemoveResultWithKind(.shaderpack, service, writer, request.id, request.params);
     } else if (std.mem.eql(u8, request.method, "shaderpacks.adopt")) {
         try content.writeAdoptResultWithKind(.shaderpack, service, writer, request.id, request.params);
+    } else if (std.mem.eql(u8, request.method, "modpack.install")) {
+        try modpack.writeInstallResult(service, writer, request.id, request.params);
     } else if (std.mem.eql(u8, request.method, "java.detect")) {
         try java.writeDetectResult(service, writer, request.id, request.params);
     } else if (std.mem.eql(u8, request.method, "java.select")) {
@@ -478,6 +481,7 @@ test {
     _ = install;
     _ = java;
     _ = launch;
+    _ = modpack;
     _ = store;
     _ = version;
 }

@@ -16,6 +16,8 @@ pub const forge_executor = @import("loaders/forge_executor.zig");
 pub const modrinth = @import("content/modrinth.zig");
 pub const curseforge = @import("content/curseforge.zig");
 pub const content_registry = @import("content/content_registry.zig");
+pub const mrpack = @import("modpack/mrpack.zig");
+pub const curseforge_pack = @import("modpack/curseforge_pack.zig");
 pub const https_fallback = @import("install/https_fallback.zig");
 pub const zip_reader = @import("install/zip_reader.zig");
 pub const DownloadSource = @import("install/download_source.zig").DownloadSource;
@@ -48,6 +50,8 @@ test {
     _ = modrinth;
     _ = curseforge;
     _ = content_registry;
+    _ = mrpack;
+    _ = curseforge_pack;
     _ = https_fallback;
     _ = zip_reader;
     _ = DownloadSource;

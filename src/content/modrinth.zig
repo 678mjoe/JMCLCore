@@ -143,7 +143,7 @@ fn validateFilename(value: []const u8) !void {
     }
 }
 
-fn validateSha1(value: []const u8) !void {
+pub fn validateSha1(value: []const u8) !void {
     if (value.len != 40) return error.InvalidModrinthHash;
     for (value) |byte| if (!std.ascii.isHex(byte)) return error.InvalidModrinthHash;
 }

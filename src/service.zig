@@ -13,7 +13,10 @@ const forge_legacy = @import("loaders/forge_legacy.zig");
 const https_fallback = @import("install/https_fallback.zig");
 const install_plan = @import("install/plan.zig");
 const install_executor = @import("install/installer.zig");
+const instance_store = @import("instance_store.zig");
 const modrinth = @import("content/modrinth.zig");
+const mrpack = @import("modpack/mrpack.zig");
+const curseforge_pack = @import("modpack/curseforge_pack.zig");
 const neoforge = @import("loaders/neoforge.zig");
 const version_manifest = @import("install/version_manifest.zig");
 const version_metadata = @import("install/version_metadata.zig");
@@ -1586,6 +1589,396 @@ pub const Service = struct {
         return .{
             .arena = arena,
             .adopted = adopted[0..adopted_count],
+        };
+    }
+
+    pub const ModpackInstallSummary = struct {
+        arena: *std.heap.ArenaAllocator,
+        id: []const u8,
+        name: []const u8,
+        version_id: []const u8,
+        loader_name: ?[]const u8,
+        loader_version: ?[]const u8,
+        files_installed: usize,
+        files_skipped: usize,
+        overrides_written: usize,
+
+        pub fn deinit(summary: *ModpackInstallSummary) void {
+            const allocator = summary.arena.child_allocator;
+            summary.arena.deinit();
+            allocator.destroy(summary.arena);
+            summary.* = undefined;
+        }
+    };
+
+    pub const max_modpack_bytes: usize = 512 * 1024 * 1024;
+    const max_override_file_bytes: usize = 64 * 1024 * 1024;
+    const max_override_total_bytes: u64 = 512 * 1024 * 1024;
+    const max_override_count: usize = 8192;
+
+    /// Creates a new instance from a modpack archive: parses the embedded
+    /// index (Modrinth `.mrpack` or CurseForge `manifest.json` format),
+    /// creates the instance with the pack's Minecraft version and mod loader,
+    /// downloads every client-side content file through the verified
+    /// content-addressed pipeline, registers them in the content registry,
+    /// and extracts the pack's overrides. CurseForge packs require a
+    /// caller-supplied API key. Game files are not installed; run the normal
+    /// instance install afterwards.
+    pub fn installModpack(
+        self: Service,
+        instances_root: std.Io.Dir,
+        store: std.Io.Dir,
+        id: []const u8,
+        pack_path: []const u8,
+        api_key: ?[]const u8,
+        options: ContentInstallOptions,
+        reporter: ?install_executor.Reporter,
+    ) !ModpackInstallSummary {
+        try instance_store.validateId(id);
+        if (api_key) |key| try curseforge.validateApiKey(key);
+
+        const arena = try self.allocator.create(std.heap.ArenaAllocator);
+        errdefer self.allocator.destroy(arena);
+        arena.* = std.heap.ArenaAllocator.init(self.allocator);
+        errdefer arena.deinit();
+        const scratch = arena.allocator();
+
+        const pack_bytes = std.Io.Dir.cwd().readFileAlloc(self.io, pack_path, scratch, .limited(max_modpack_bytes + 1)) catch |err| switch (err) {
+            error.StreamTooLong => return error.ModpackTooLarge,
+            else => |other| return other,
+        };
+        if (pack_bytes.len > max_modpack_bytes) return error.ModpackTooLarge;
+
+        if (instances_root.openDir(self.io, id, .{})) |existing| {
+            var dir = existing;
+            dir.close(self.io);
+            return error.InstanceAlreadyExists;
+        } else |err| switch (err) {
+            error.FileNotFound => {},
+            else => |other| return other,
+        }
+
+        if (try zip_reader.findEntry(pack_bytes, mrpack.index_name)) |_| {
+            return self.installMrpack(arena, instances_root, store, id, pack_bytes, options, reporter);
+        }
+        if (try zip_reader.findEntry(pack_bytes, curseforge_pack.manifest_name)) |_| {
+            const key = api_key orelse return error.CurseforgeApiKeyRequired;
+            return self.installCurseforgePack(arena, instances_root, store, id, pack_bytes, key, options, reporter);
+        }
+        return error.UnknownModpackFormat;
+    }
+
+    fn installMrpack(
+        self: Service,
+        arena: *std.heap.ArenaAllocator,
+        instances_root: std.Io.Dir,
+        store: std.Io.Dir,
+        id: []const u8,
+        pack_bytes: []const u8,
+        options: ContentInstallOptions,
+        reporter: ?install_executor.Reporter,
+    ) !ModpackInstallSummary {
+        const scratch = arena.allocator();
+        const index_bytes = (try zip_reader.readEntryAlloc(scratch, pack_bytes, mrpack.index_name, mrpack.max_index_bytes)).?;
+        const index_document = try mrpack.parse(scratch, index_bytes);
+        const index = index_document.value;
+
+        const name = if (index.versionId) |version_id|
+            try std.fmt.allocPrint(scratch, "{s} {s}", .{ index.name, version_id })
+        else
+            index.name;
+        var manifest: instance_store.Manifest = .{
+            .id = id,
+            .name = name,
+            .version_id = index.dependencies.minecraft,
+        };
+        var loader_name: ?[]const u8 = null;
+        var loader_version: ?[]const u8 = null;
+        if (try mrpack.loaderSelection(index.dependencies)) |selection| {
+            loader_name = @tagName(selection.loader);
+            loader_version = selection.version;
+            switch (selection.loader) {
+                .fabric => manifest.fabric_loader = selection.version,
+                .forge => manifest.forge_version = selection.version,
+                .neoforge => manifest.neoforge_version = selection.version,
+            }
+        }
+
+        const minecraft = try self.createModpackInstance(instances_root, id, manifest);
+        defer minecraft.close(self.io);
+        errdefer instances_root.deleteTree(self.io, id) catch {};
+
+        var files: std.ArrayList(install_plan.File) = .empty;
+        var entries: std.ArrayList(content_registry.Entry) = .empty;
+        var skipped: usize = 0;
+        for (index.files) |file| {
+            if (!mrpack.shipsToClient(file)) {
+                skipped += 1;
+                continue;
+            }
+            const kind = kindForContentPath(file.path);
+            try files.append(scratch, .{
+                .path = file.path,
+                .url = file.downloads[0],
+                .fallback_url = if (file.downloads.len > 1) file.downloads[1] else null,
+                .sha1 = file.hashes.sha1,
+                .size = file.fileSize,
+                .usage = usageForContentKind(kind),
+            });
+            if (kind) |content_kind| {
+                const source: content_registry.Source = if (mrpack.modrinthIdsFromUrl(file.downloads[0])) |ids|
+                    .{ .provider = .modrinth, .project_id = ids.project_id, .version_id = ids.version_id }
+                else
+                    .{ .provider = .manual };
+                try entries.append(scratch, .{
+                    .kind = content_kind,
+                    .file = file.path,
+                    .sha1 = file.hashes.sha1,
+                    .size = file.fileSize,
+                    .source = source,
+                    .enabled = true,
+                    .as_dependency = false,
+                });
+            }
+        }
+
+        try self.executeModpackDownloads(minecraft, store, index.dependencies.minecraft, files.items, options, reporter);
+        try content_registry.save(self.io, minecraft, .{ .entries = entries.items });
+
+        var overrides = try self.extractOverrides(scratch, pack_bytes, minecraft, mrpack.overrides_directory);
+        overrides += try self.extractOverrides(scratch, pack_bytes, minecraft, mrpack.client_overrides_directory);
+
+        return .{
+            .arena = arena,
+            .id = id,
+            .name = name,
+            .version_id = index.dependencies.minecraft,
+            .loader_name = loader_name,
+            .loader_version = loader_version,
+            .files_installed = files.items.len,
+            .files_skipped = skipped,
+            .overrides_written = overrides,
+        };
+    }
+
+    fn installCurseforgePack(
+        self: Service,
+        arena: *std.heap.ArenaAllocator,
+        instances_root: std.Io.Dir,
+        store: std.Io.Dir,
+        id: []const u8,
+        pack_bytes: []const u8,
+        api_key: []const u8,
+        options: ContentInstallOptions,
+        reporter: ?install_executor.Reporter,
+    ) !ModpackInstallSummary {
+        const scratch = arena.allocator();
+        const manifest_bytes = (try zip_reader.readEntryAlloc(scratch, pack_bytes, curseforge_pack.manifest_name, curseforge_pack.max_manifest_bytes)).?;
+        const manifest_document = try curseforge_pack.parse(scratch, manifest_bytes);
+        const pack = manifest_document.value;
+
+        const name = if (pack.version) |version|
+            try std.fmt.allocPrint(scratch, "{s} {s}", .{ pack.name, version })
+        else
+            pack.name;
+        var manifest: instance_store.Manifest = .{
+            .id = id,
+            .name = name,
+            .version_id = pack.minecraft.version,
+        };
+        var loader_name: ?[]const u8 = null;
+        var loader_version: ?[]const u8 = null;
+        if (try curseforge_pack.loaderSelection(pack.minecraft)) |selection| {
+            loader_name = @tagName(selection.loader);
+            loader_version = selection.version;
+            switch (selection.loader) {
+                .fabric => manifest.fabric_loader = selection.version,
+                .forge => manifest.forge_version = selection.version,
+                .neoforge => manifest.neoforge_version = selection.version,
+            }
+        }
+
+        const minecraft = try self.createModpackInstance(instances_root, id, manifest);
+        defer minecraft.close(self.io);
+        errdefer instances_root.deleteTree(self.io, id) catch {};
+
+        const api_header: https_fallback.ExtraHeader = .{ .name = "x-api-key", .value = api_key };
+        var project_kinds = std.AutoHashMap(u32, content_registry.Kind).init(scratch);
+        var project_slugs = std.AutoHashMap(u32, []const u8).init(scratch);
+        var seen_files: std.StringHashMap(void) = .init(scratch);
+        var files: std.ArrayList(install_plan.File) = .empty;
+        var entries: std.ArrayList(content_registry.Entry) = .empty;
+        var skipped: usize = 0;
+        for (pack.files) |reference| {
+            if (!reference.required) {
+                skipped += 1;
+                continue;
+            }
+            const project_id = try std.fmt.allocPrint(scratch, "{d}", .{reference.projectID});
+            const kind = project_kinds.get(reference.projectID) orelse blk: {
+                const mod_document = try self.fetchCurseforgeMod(scratch, api_header, project_id);
+                const mod = mod_document.value.data.*;
+                const resolved: content_registry.Kind = switch (mod.classId) {
+                    curseforge.class_id_mods => .mod,
+                    curseforge.class_id_resourcepacks => .resourcepack,
+                    curseforge.class_id_shaderpacks => .shaderpack,
+                    else => return error.UnsupportedProjectType,
+                };
+                try project_kinds.put(reference.projectID, resolved);
+                try project_slugs.put(reference.projectID, mod.slug);
+                break :blk resolved;
+            };
+            const file_id = try std.fmt.allocPrint(scratch, "{d}", .{reference.fileID});
+            const file_document = try self.fetchCurseforgeFile(scratch, api_header, project_id, file_id);
+            const file = file_document.value.data.*;
+            if (file.modId != reference.projectID) return error.CurseforgeFileProjectMismatch;
+
+            var download_url = file.downloadUrl;
+            if (download_url == null) {
+                const url_document = try self.fetchCurseforgeDownloadUrl(scratch, api_header, project_id, file.id);
+                download_url = url_document.value.data;
+            }
+            const url = download_url orelse return error.CurseforgeDownloadUnavailable;
+
+            const path = try std.fmt.allocPrint(scratch, "{s}/{s}", .{ kind.directory(), file.fileName });
+            if (seen_files.contains(path)) return error.DuplicateModpackFile;
+            try seen_files.put(path, {});
+            try files.append(scratch, .{
+                .path = path,
+                .url = url,
+                .fallback_url = null,
+                .sha1 = curseforge.sha1Of(file),
+                .size = file.fileLength,
+                .usage = usageForContentKind(kind),
+            });
+            try entries.append(scratch, .{
+                .kind = kind,
+                .file = path,
+                .sha1 = curseforge.sha1Of(file),
+                .size = file.fileLength,
+                .source = .{
+                    .provider = .curseforge,
+                    .project_id = project_id,
+                    .version_id = file_id,
+                    .slug = project_slugs.get(reference.projectID),
+                },
+                .enabled = true,
+                .as_dependency = false,
+            });
+        }
+
+        try self.executeModpackDownloads(minecraft, store, pack.minecraft.version, files.items, options, reporter);
+        try content_registry.save(self.io, minecraft, .{ .entries = entries.items });
+
+        const overrides = try self.extractOverrides(scratch, pack_bytes, minecraft, pack.overrides orelse curseforge_pack.default_overrides_directory);
+
+        return .{
+            .arena = arena,
+            .id = id,
+            .name = name,
+            .version_id = pack.minecraft.version,
+            .loader_name = loader_name,
+            .loader_version = loader_version,
+            .files_installed = files.items.len,
+            .files_skipped = skipped,
+            .overrides_written = overrides,
+        };
+    }
+
+    fn createModpackInstance(
+        self: Service,
+        instances_root: std.Io.Dir,
+        id: []const u8,
+        manifest: instance_store.Manifest,
+    ) !std.Io.Dir {
+        try instance_store.create(self.io, instances_root, manifest);
+        const minecraft_path = try std.fmt.allocPrint(self.allocator, "{s}/.minecraft", .{id});
+        defer self.allocator.free(minecraft_path);
+        return instances_root.openDir(self.io, minecraft_path, .{});
+    }
+
+    fn executeModpackDownloads(
+        self: Service,
+        minecraft: std.Io.Dir,
+        store: std.Io.Dir,
+        game_version: []const u8,
+        files: []const install_plan.File,
+        options: ContentInstallOptions,
+        reporter: ?install_executor.Reporter,
+    ) !void {
+        var total_size: u64 = 0;
+        for (files) |file| {
+            total_size = std.math.add(u64, total_size, file.size) catch return error.DownloadSizeOverflow;
+        }
+        const host = try install_plan.Target.host();
+        _ = try install_executor.execute(
+            self.allocator,
+            self.io,
+            self.environ_map,
+            minecraft,
+            store,
+            .{
+                .version_id = game_version,
+                .source = .official,
+                .target = host,
+                .files = files,
+                .classpath = &.{},
+                .native_extractions = &.{},
+                .asset_projections = &.{},
+                .total_download_size = total_size,
+            },
+            .{ .workers = options.workers, .retries = options.retries },
+            reporter,
+        );
+    }
+
+    /// Extracts override files from the pack archive into the instance
+    /// directory. Entry names are validated as safe relative paths; writes
+    /// are atomic with parent creation.
+    fn extractOverrides(
+        self: Service,
+        scratch: std.mem.Allocator,
+        pack_bytes: []const u8,
+        minecraft: std.Io.Dir,
+        directory: []const u8,
+    ) !usize {
+        const prefix = try std.fmt.allocPrint(scratch, "{s}/", .{directory});
+        var written: usize = 0;
+        var total_bytes: u64 = 0;
+        var iterator = try zip_reader.entries(pack_bytes);
+        while (try iterator.next()) |entry| {
+            if (!std.mem.startsWith(u8, entry.name, prefix)) continue;
+            const relative = entry.name[prefix.len..];
+            if (relative.len == 0) continue;
+            try install_plan.validateRelativePath(relative);
+            if (relative.len > 512) return error.InvalidModpackOverride;
+            if (written >= max_override_count) return error.TooManyModpackOverrides;
+            const content = try zip_reader.readAlloc(scratch, pack_bytes, entry, max_override_file_bytes);
+            total_bytes = std.math.add(u64, total_bytes, content.len) catch return error.ModpackOverridesTooLarge;
+            if (total_bytes > max_override_total_bytes) return error.ModpackOverridesTooLarge;
+            var atomic = try minecraft.createFileAtomic(self.io, relative, .{ .make_path = true, .replace = true });
+            defer atomic.deinit(self.io);
+            try std.Io.File.writeStreamingAll(atomic.file, self.io, content);
+            try atomic.replace(self.io);
+            written += 1;
+        }
+        return written;
+    }
+
+    fn kindForContentPath(path: []const u8) ?content_registry.Kind {
+        inline for (.{ content_registry.Kind.mod, content_registry.Kind.resourcepack, content_registry.Kind.shaderpack }) |kind| {
+            const prefix = comptime (kind.directory() ++ "/");
+            if (std.mem.startsWith(u8, path, prefix) and path.len > prefix.len) return kind;
+        }
+        return null;
+    }
+
+    fn usageForContentKind(kind: ?content_registry.Kind) install_plan.Usage {
+        const value = kind orelse return .{};
+        return .{
+            .mod = value == .mod,
+            .resourcepack = value == .resourcepack,
+            .shaderpack = value == .shaderpack,
         };
     }
 
