@@ -1592,6 +1592,206 @@ pub const Service = struct {
         };
     }
 
+    pub const ContentVersionChange = struct {
+        arena: *std.heap.ArenaAllocator,
+        changed: bool,
+        file: []const u8,
+        sha1: []const u8,
+        size: u64,
+        old_version_id: []const u8,
+        new_version_id: []const u8,
+
+        pub fn deinit(change: *ContentVersionChange) void {
+            const allocator = change.arena.child_allocator;
+            change.arena.deinit();
+            allocator.destroy(change.arena);
+            change.* = undefined;
+        }
+    };
+
+    /// Switches a registered content entry to an exact caller-selected
+    /// provider version, upgrade or downgrade. The new version must belong
+    /// to the same project and support the instance's Minecraft version and
+    /// loader. The file downloads through the verified pipeline before the
+    /// registry is updated atomically; the old hard link is removed last.
+    /// CurseForge entries require a caller-supplied API key. Dependencies
+    /// are not touched.
+    pub fn setInstanceContentVersion(
+        self: Service,
+        minecraft_dir: std.Io.Dir,
+        store: std.Io.Dir,
+        kind: content_registry.Kind,
+        game_version: []const u8,
+        loader: ?modrinth.Loader,
+        project: []const u8,
+        version_id: []const u8,
+        api_key: ?[]const u8,
+        options: ContentInstallOptions,
+        reporter: ?install_executor.Reporter,
+    ) !ContentVersionChange {
+        try modrinth.validateProjectRef(project);
+        try modrinth.validateGameVersion(game_version);
+        if (api_key) |key| try curseforge.validateApiKey(key);
+        const effective_loader: ?modrinth.Loader = switch (kind) {
+            .mod => blk: {
+                const value = loader orelse return error.ModLoaderRequired;
+                if (value == .minecraft) return error.ModLoaderRequired;
+                break :blk value;
+            },
+            .resourcepack => blk: {
+                if (loader != null and loader.? != .minecraft) return error.InvalidContentLoader;
+                break :blk .minecraft;
+            },
+            .shaderpack => blk: {
+                if (loader != null) return error.InvalidContentLoader;
+                break :blk null;
+            },
+        };
+
+        const arena = try self.allocator.create(std.heap.ArenaAllocator);
+        errdefer self.allocator.destroy(arena);
+        arena.* = std.heap.ArenaAllocator.init(self.allocator);
+        errdefer arena.deinit();
+        const scratch = arena.allocator();
+
+        var registry_document = try content_registry.load(self.allocator, self.io, minecraft_dir);
+        defer registry_document.deinit();
+
+        var entry_index: ?usize = null;
+        for (registry_document.value.entries, 0..) |entry, index| {
+            if (entry.kind != kind) continue;
+            if (entry.source.provider == .manual) continue;
+            if (entry.source.project_id) |id| {
+                if (std.mem.eql(u8, id, project)) {
+                    entry_index = index;
+                    break;
+                }
+            }
+            if (entry.source.slug) |slug| {
+                if (std.mem.eql(u8, slug, project)) {
+                    entry_index = index;
+                    break;
+                }
+            }
+        }
+        const index = entry_index orelse return error.ContentNotFound;
+        const entry = registry_document.value.entries[index];
+        const project_id = entry.source.project_id.?;
+        const old_version_id = entry.source.version_id.?;
+
+        if (std.mem.eql(u8, old_version_id, version_id)) {
+            return .{
+                .arena = arena,
+                .changed = false,
+                .file = try scratch.dupe(u8, entry.file),
+                .sha1 = try scratch.dupe(u8, entry.sha1),
+                .size = entry.size,
+                .old_version_id = try scratch.dupe(u8, old_version_id),
+                .new_version_id = try scratch.dupe(u8, version_id),
+            };
+        }
+
+        var new_file_name: []const u8 = undefined;
+        var new_url: []const u8 = undefined;
+        var new_sha1: []const u8 = undefined;
+        var new_size: u64 = undefined;
+        switch (entry.source.provider) {
+            .modrinth => {
+                try modrinth.validateVersionId(version_id);
+                const document = try self.fetchModrinthVersion(scratch, version_id);
+                const version = document.value;
+                if (!std.mem.eql(u8, version.project_id, project_id)) {
+                    return error.ModrinthVersionProjectMismatch;
+                }
+                if (!modrinth.versionSupports(version, game_version, effective_loader)) {
+                    return error.IncompatibleContentVersion;
+                }
+                const file = modrinth.selectFile(version) orelse return error.ContentFileSelectionFailed;
+                new_file_name = file.filename;
+                new_url = file.url;
+                new_sha1 = file.hashes.sha1;
+                new_size = file.size;
+            },
+            .curseforge => {
+                try curseforge.validateNumericId(version_id);
+                const key = api_key orelse return error.CurseforgeApiKeyRequired;
+                const api_header: https_fallback.ExtraHeader = .{ .name = "x-api-key", .value = key };
+                const document = try self.fetchCurseforgeFile(scratch, api_header, project_id, version_id);
+                const file = document.value.data.*;
+                if (!std.mem.eql(u8, try std.fmt.allocPrint(scratch, "{d}", .{file.modId}), project_id)) {
+                    return error.CurseforgeFileProjectMismatch;
+                }
+                if (!curseforge.fileSupports(file, game_version, effective_loader)) {
+                    return error.IncompatibleContentVersion;
+                }
+                if (!file.isAvailable) return error.CurseforgeDownloadUnavailable;
+                var download_url = file.downloadUrl;
+                if (download_url == null) {
+                    const url_document = try self.fetchCurseforgeDownloadUrl(scratch, api_header, project_id, file.id);
+                    download_url = url_document.value.data;
+                }
+                new_file_name = file.fileName;
+                new_url = download_url orelse return error.CurseforgeDownloadUnavailable;
+                new_sha1 = curseforge.sha1Of(file);
+                new_size = file.fileLength;
+            },
+            .manual => unreachable,
+        }
+
+        const new_path = try std.fmt.allocPrint(scratch, "{s}/{s}", .{ kind.directory(), new_file_name });
+        for (registry_document.value.entries, 0..) |other, other_index| {
+            if (other_index == index) continue;
+            if (!std.mem.eql(u8, other.file, new_path)) continue;
+            if (!std.ascii.eqlIgnoreCase(other.sha1, new_sha1)) return error.ContentFileConflict;
+        }
+
+        const files = try scratch.alloc(install_plan.File, 1);
+        files[0] = .{
+            .path = new_path,
+            .url = new_url,
+            .fallback_url = null,
+            .sha1 = new_sha1,
+            .size = new_size,
+            .usage = usageForContentKind(kind),
+        };
+        try self.executeModpackDownloads(minecraft_dir, store, game_version, files, options, reporter);
+
+        const updated = try scratch.alloc(content_registry.Entry, registry_document.value.entries.len);
+        @memcpy(updated, registry_document.value.entries);
+        updated[index] = .{
+            .kind = kind,
+            .file = new_path,
+            .sha1 = new_sha1,
+            .size = new_size,
+            .source = .{
+                .provider = entry.source.provider,
+                .project_id = try scratch.dupe(u8, project_id),
+                .version_id = try scratch.dupe(u8, version_id),
+                .slug = if (entry.source.slug) |slug| try scratch.dupe(u8, slug) else null,
+            },
+            .enabled = entry.enabled,
+            .as_dependency = entry.as_dependency,
+        };
+        try content_registry.save(self.io, minecraft_dir, .{ .entries = updated });
+
+        if (!std.mem.eql(u8, entry.file, new_path)) {
+            minecraft_dir.deleteFile(self.io, entry.file) catch |err| switch (err) {
+                error.FileNotFound => {},
+                else => |other| return other,
+            };
+        }
+
+        return .{
+            .arena = arena,
+            .changed = true,
+            .file = new_path,
+            .sha1 = try scratch.dupe(u8, new_sha1),
+            .size = new_size,
+            .old_version_id = try scratch.dupe(u8, old_version_id),
+            .new_version_id = try scratch.dupe(u8, version_id),
+        };
+    }
+
     pub const ModpackInstallSummary = struct {
         arena: *std.heap.ArenaAllocator,
         id: []const u8,

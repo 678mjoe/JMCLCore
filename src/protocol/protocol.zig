@@ -106,6 +106,8 @@ pub fn handleLine(
         try content.writeListResultWithKind(.mod, service, writer, request.id, request.params);
     } else if (std.mem.eql(u8, request.method, "mods.install")) {
         try content.writeInstallResultWithKind(.mod, service, writer, request.id, request.params);
+    } else if (std.mem.eql(u8, request.method, "mods.set-version")) {
+        try content.writeSetVersionResultWithKind(.mod, service, writer, request.id, request.params);
     } else if (std.mem.eql(u8, request.method, "mods.remove")) {
         try content.writeRemoveResultWithKind(.mod, service, writer, request.id, request.params);
     } else if (std.mem.eql(u8, request.method, "mods.adopt")) {
@@ -114,6 +116,8 @@ pub fn handleLine(
         try content.writeListResultWithKind(.resourcepack, service, writer, request.id, request.params);
     } else if (std.mem.eql(u8, request.method, "resourcepacks.install")) {
         try content.writeInstallResultWithKind(.resourcepack, service, writer, request.id, request.params);
+    } else if (std.mem.eql(u8, request.method, "resourcepacks.set-version")) {
+        try content.writeSetVersionResultWithKind(.resourcepack, service, writer, request.id, request.params);
     } else if (std.mem.eql(u8, request.method, "resourcepacks.remove")) {
         try content.writeRemoveResultWithKind(.resourcepack, service, writer, request.id, request.params);
     } else if (std.mem.eql(u8, request.method, "resourcepacks.adopt")) {
@@ -122,6 +126,8 @@ pub fn handleLine(
         try content.writeListResultWithKind(.shaderpack, service, writer, request.id, request.params);
     } else if (std.mem.eql(u8, request.method, "shaderpacks.install")) {
         try content.writeInstallResultWithKind(.shaderpack, service, writer, request.id, request.params);
+    } else if (std.mem.eql(u8, request.method, "shaderpacks.set-version")) {
+        try content.writeSetVersionResultWithKind(.shaderpack, service, writer, request.id, request.params);
     } else if (std.mem.eql(u8, request.method, "shaderpacks.remove")) {
         try content.writeRemoveResultWithKind(.shaderpack, service, writer, request.id, request.params);
     } else if (std.mem.eql(u8, request.method, "shaderpacks.adopt")) {

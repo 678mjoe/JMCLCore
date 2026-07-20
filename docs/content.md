@@ -52,6 +52,7 @@ jmcl-core instance mods install sodium-demo --project sodium --no-dependencies
 jmcl-core instance mods list sodium-demo
 jmcl-core instance mods list sodium-demo --json
 jmcl-core instance mods adopt sodium-demo
+jmcl-core instance mods set-version sodium-demo --project sodium --version FRXt5xaI
 jmcl-core instance mods remove sodium-demo --project sodium-extra
 jmcl-core instance mods remove sodium-demo --file mods/manual.jar
 ```
@@ -70,6 +71,14 @@ jmcl-core instance mods remove sodium-demo --file mods/manual.jar
 - `adopt` scans `mods/` for unregistered jars, hashes each into the artifact
   store, re-links the instance file as a hard link, and registers it with the
   `manual` provider.
+- `set-version` switches a registered entry to an exact caller-selected
+  version, upgrade or downgrade. The version must belong to the same project
+  and support the instance's Minecraft version and loader; selecting the
+  current version is a no-op. The new file downloads through the verified
+  pipeline before the registry entry is updated atomically, and the old hard
+  link is removed last. Dependencies are not touched, and manually adopted
+  entries cannot be switched (they carry no provider identity). CurseForge
+  entries take `--api-key` and a numeric file id.
 - `remove` deletes the instance hard link and registry entry. The shared
   store object remains until `store gc` reclaims it after the last link
   disappears.
@@ -157,8 +166,8 @@ jmcl-core instance mods install jei-demo --project 238222 --provider curseforge 
 ## RPC
 
 The same operations are available over RPC as `mods.list`, `mods.install`,
-`mods.remove`, `mods.adopt`, the matching `resourcepacks.*` methods, and the
-matching `shaderpacks.*` methods. The RPC forms take an explicit `directory`
+`mods.set-version`, `mods.remove`, `mods.adopt`, the matching
+`resourcepacks.*` methods, and the matching `shaderpacks.*` methods. The RPC forms take an explicit `directory`
 and `minecraft_version` instead of reading an instance manifest.
 `mods.install` additionally requires `loader` (`fabric` | `neoforge` |
 `forge`); `resourcepacks.install` and `shaderpacks.install` take no loader.
@@ -207,7 +216,6 @@ still passes the exact size and SHA-1 checks of the install pipeline.
 
 - Search, browse, and version listing RPCs (both providers).
 - CurseForge modpacks and fingerprint-based adoption.
-- Content updates (`upgrade`), optional dependencies, and enable/disable
-  toggles.
+- Optional dependencies and enable/disable toggles.
 - Shader runtime selection and shader pack activation; `pack.mcmeta` and
   shader config format checks.

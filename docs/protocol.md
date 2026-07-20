@@ -116,7 +116,10 @@ verified content-addressed pipeline, and reports the installed entries:
 {"protocol":1,"id":"mods-install","method":"mods.install","params":{"directory":"/path/to/.minecraft","minecraft_version":"1.20.4","loader":"fabric","project":"sodium"}}
 ```
 
-`loader` is one of `fabric`, `neoforge`, or `forge`. `mods.remove` takes
+`loader` is one of `fabric`, `neoforge`, or `forge`. `mods.set-version`
+switches a registered entry to an exact caller-selected version id (upgrade
+or downgrade) and takes no `provider` — the registry entry determines it;
+CurseForge entries pass `api_key` and a numeric file id. `mods.remove` takes
 exactly one of `project` or `file`. `mods.adopt` imports unmanaged `mods/`
 jars into the artifact store and registers them with the `manual` provider.
 
