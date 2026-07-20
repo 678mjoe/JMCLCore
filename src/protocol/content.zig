@@ -397,6 +397,63 @@ pub fn writeSetVersionResultWithKind(
     try writer.writeByte('\n');
 }
 
+pub fn writeSetEnabledResultWithKind(
+    kind: core.content_registry.Kind,
+    service: *core.Service,
+    writer: *std.Io.Writer,
+    request_id: []const u8,
+    params_value: ?std.json.Value,
+    enabled: bool,
+) std.Io.Writer.Error!void {
+    const command = kind.directory();
+    const value = params_value orelse {
+        try writeError(writer, request_id, "INVALID_PARAMS", "content toggle requires a directory and a selector");
+        return;
+    };
+    var params = std.json.parseFromValue(ContentRemoveParams, service.allocator, value, .{
+        .ignore_unknown_fields = true,
+    }) catch {
+        try writeError(writer, request_id, "INVALID_PARAMS", "content toggle parameters are invalid");
+        return;
+    };
+    defer params.deinit();
+    const input = params.value;
+    if (input.directory.len == 0 or (input.project == null) == (input.file == null)) {
+        try writeError(writer, request_id, "INVALID_PARAMS", "content toggle requires a directory and exactly one of project or file");
+        return;
+    }
+    const minecraft = core.installer.openRoot(service.io, input.directory) catch {
+        try writeError(writer, request_id, "INSTALL_ROOT_ERROR", "Failed to open the install root");
+        return;
+    };
+    defer minecraft.close(service.io);
+
+    var toggle = service.setInstanceContentEnabled(minecraft, kind, input.project, input.file, enabled) catch |err| {
+        switch (err) {
+            error.ContentNotFound => try writeError(writer, request_id, "CONTENT_NOT_FOUND", "No registered content matches the given selector"),
+            error.InvalidModrinthProject, error.UnsafePath, error.InvalidContentFile => try writeError(writer, request_id, "INVALID_PARAMS", "The selector is invalid"),
+            else => try writeError(writer, request_id, "CONTENT_TOGGLE_FAILED", "Failed to toggle the content entry"),
+        }
+        return;
+    };
+    defer toggle.deinit();
+
+    var stage_buffer: [64]u8 = undefined;
+    var json: std.json.Stringify = .{ .writer = writer };
+    try writeEventHeader(&json, request_id, "result");
+    try json.objectField("result");
+    try json.beginObject();
+    try json.objectField("stage");
+    try json.write(stageName(&stage_buffer, command, if (enabled) "enable" else "disable"));
+    try json.objectField("changed");
+    try json.write(toggle.changed);
+    try json.objectField("entry");
+    try json.write(toggle.entry);
+    try json.endObject();
+    try json.endObject();
+    try writer.writeByte('\n');
+}
+
 pub fn writeRemoveResultWithKind(
     kind: core.content_registry.Kind,
     service: *core.Service,

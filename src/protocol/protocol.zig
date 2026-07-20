@@ -108,6 +108,10 @@ pub fn handleLine(
         try content.writeInstallResultWithKind(.mod, service, writer, request.id, request.params);
     } else if (std.mem.eql(u8, request.method, "mods.set-version")) {
         try content.writeSetVersionResultWithKind(.mod, service, writer, request.id, request.params);
+    } else if (std.mem.eql(u8, request.method, "mods.enable")) {
+        try content.writeSetEnabledResultWithKind(.mod, service, writer, request.id, request.params, true);
+    } else if (std.mem.eql(u8, request.method, "mods.disable")) {
+        try content.writeSetEnabledResultWithKind(.mod, service, writer, request.id, request.params, false);
     } else if (std.mem.eql(u8, request.method, "mods.remove")) {
         try content.writeRemoveResultWithKind(.mod, service, writer, request.id, request.params);
     } else if (std.mem.eql(u8, request.method, "mods.adopt")) {
@@ -118,6 +122,10 @@ pub fn handleLine(
         try content.writeInstallResultWithKind(.resourcepack, service, writer, request.id, request.params);
     } else if (std.mem.eql(u8, request.method, "resourcepacks.set-version")) {
         try content.writeSetVersionResultWithKind(.resourcepack, service, writer, request.id, request.params);
+    } else if (std.mem.eql(u8, request.method, "resourcepacks.enable")) {
+        try content.writeSetEnabledResultWithKind(.resourcepack, service, writer, request.id, request.params, true);
+    } else if (std.mem.eql(u8, request.method, "resourcepacks.disable")) {
+        try content.writeSetEnabledResultWithKind(.resourcepack, service, writer, request.id, request.params, false);
     } else if (std.mem.eql(u8, request.method, "resourcepacks.remove")) {
         try content.writeRemoveResultWithKind(.resourcepack, service, writer, request.id, request.params);
     } else if (std.mem.eql(u8, request.method, "resourcepacks.adopt")) {
@@ -128,6 +136,10 @@ pub fn handleLine(
         try content.writeInstallResultWithKind(.shaderpack, service, writer, request.id, request.params);
     } else if (std.mem.eql(u8, request.method, "shaderpacks.set-version")) {
         try content.writeSetVersionResultWithKind(.shaderpack, service, writer, request.id, request.params);
+    } else if (std.mem.eql(u8, request.method, "shaderpacks.enable")) {
+        try content.writeSetEnabledResultWithKind(.shaderpack, service, writer, request.id, request.params, true);
+    } else if (std.mem.eql(u8, request.method, "shaderpacks.disable")) {
+        try content.writeSetEnabledResultWithKind(.shaderpack, service, writer, request.id, request.params, false);
     } else if (std.mem.eql(u8, request.method, "shaderpacks.remove")) {
         try content.writeRemoveResultWithKind(.shaderpack, service, writer, request.id, request.params);
     } else if (std.mem.eql(u8, request.method, "shaderpacks.adopt")) {

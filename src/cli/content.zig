@@ -12,9 +12,11 @@ pub fn runWithKind(
     if (args.len >= 1 and std.mem.eql(u8, args[0], "list")) return runContentList(kind, service, args[1..], stdout, stderr);
     if (args.len >= 1 and std.mem.eql(u8, args[0], "install")) return runContentInstall(kind, service, args[1..], stdout, stderr);
     if (args.len >= 1 and std.mem.eql(u8, args[0], "set-version")) return runContentSetVersion(kind, service, args[1..], stdout, stderr);
+    if (args.len >= 1 and std.mem.eql(u8, args[0], "enable")) return runContentSetEnabled(kind, service, args[1..], true, stdout, stderr);
+    if (args.len >= 1 and std.mem.eql(u8, args[0], "disable")) return runContentSetEnabled(kind, service, args[1..], false, stdout, stderr);
     if (args.len >= 1 and std.mem.eql(u8, args[0], "remove")) return runContentRemove(kind, service, args[1..], stdout, stderr);
     if (args.len >= 1 and std.mem.eql(u8, args[0], "adopt")) return runContentAdopt(kind, service, args[1..], stdout, stderr);
-    try stderr.print("usage: jmcl-core instance {s} <list|install|set-version|remove|adopt> ID [options]\n", .{kind.directory()});
+    try stderr.print("usage: jmcl-core instance {s} <list|install|set-version|enable|disable|remove|adopt> ID [options]\n", .{kind.directory()});
     return 2;
 }
 
@@ -399,6 +401,75 @@ fn runContentSetVersion(
         try stdout.print("changed\t{s}\t{s}\t{s}\t{s}\n", .{ change.file, change.sha1, change.old_version_id, change.new_version_id });
     } else {
         try stdout.print("unchanged\t{s}\t{s}\n", .{ change.file, change.new_version_id });
+    }
+    return 0;
+}
+
+fn runContentSetEnabled(
+    kind: jmcl.content_registry.Kind,
+    service: *jmcl.Service,
+    args: []const []const u8,
+    enabled: bool,
+    stdout: *std.Io.Writer,
+    stderr: *std.Io.Writer,
+) !u8 {
+    const verb = if (enabled) "enable" else "disable";
+    if (args.len == 0) {
+        try stderr.print("usage: jmcl-core instance {s} {s} ID (--project REF | --file PATH) [--instances-directory PATH]\n", .{ kind.directory(), verb });
+        return 2;
+    }
+    var options: ContentRemoveOptions = .{ .id = args[0] };
+    jmcl.instance_store.validateId(options.id) catch return error.InvalidArguments;
+    var index: usize = 1;
+    while (index < args.len) {
+        if (index + 1 >= args.len or args[index + 1].len == 0) return error.InvalidArguments;
+        const argument = args[index];
+        const value = args[index + 1];
+        if (std.mem.eql(u8, argument, "--project")) {
+            options.project = value;
+        } else if (std.mem.eql(u8, argument, "--file")) {
+            options.file = value;
+        } else if (std.mem.eql(u8, argument, "--instances-directory")) {
+            options.instances_directory = value;
+        } else return error.InvalidArguments;
+        index += 2;
+    }
+    if ((options.project == null) == (options.file == null)) {
+        try stderr.print("instance {s} {s} requires exactly one of --project or --file\n", .{ kind.directory(), verb });
+        return 2;
+    }
+
+    const root = jmcl.instance_store.openRoot(service.io, options.instances_directory) catch |err| {
+        try stderr.print("failed to open instances directory: {s}\n", .{@errorName(err)});
+        return 1;
+    };
+    defer root.close(service.io);
+    var document = jmcl.instance_store.load(service.allocator, service.io, root, options.id) catch |err| {
+        try stderr.print("failed to load instance: {s}\n", .{@errorName(err)});
+        return 1;
+    };
+    defer document.deinit();
+    const path = try jmcl.instance_store.minecraftPathAlloc(service.allocator, options.instances_directory, options.id);
+    defer service.allocator.free(path);
+    const minecraft = jmcl.installer.openRoot(service.io, path) catch |err| {
+        try stderr.print("failed to open instance directory: {s}\n", .{@errorName(err)});
+        return 1;
+    };
+    defer minecraft.close(service.io);
+
+    var toggle = service.setInstanceContentEnabled(minecraft, kind, options.project, options.file, enabled) catch |err| {
+        switch (err) {
+            error.ContentNotFound => try stderr.print("no registered {s} matches the given selector\n", .{@tagName(kind)}),
+            else => try stderr.print("failed to {s} content: {s}\n", .{ verb, @errorName(err) }),
+        }
+        return 1;
+    };
+    defer toggle.deinit();
+
+    if (toggle.changed) {
+        try stdout.print("{s}\t{s}\n", .{ if (enabled) "enabled" else "disabled", toggle.entry.file });
+    } else {
+        try stdout.print("unchanged\t{s}\t{s}\n", .{ toggle.entry.file, if (enabled) "enabled" else "disabled" });
     }
     return 0;
 }

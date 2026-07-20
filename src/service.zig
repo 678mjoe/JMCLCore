@@ -1479,7 +1479,12 @@ pub const Service = struct {
         const index = match_index orelse return error.ContentNotFound;
         const removed = document.value.entries[index];
 
-        minecraft_dir.deleteFile(self.io, removed.file) catch |err| switch (err) {
+        const disk_path = if (removed.enabled)
+            removed.file
+        else
+            try std.fmt.allocPrint(self.allocator, "{s}{s}", .{ removed.file, disabled_suffix });
+        defer if (!removed.enabled) self.allocator.free(disk_path);
+        minecraft_dir.deleteFile(self.io, disk_path) catch |err| switch (err) {
             error.FileNotFound => {},
             else => |other| return other,
         };
@@ -1589,6 +1594,132 @@ pub const Service = struct {
         return .{
             .arena = arena,
             .adopted = adopted[0..adopted_count],
+        };
+    }
+
+    pub const ContentToggle = struct {
+        arena: *std.heap.ArenaAllocator,
+        changed: bool,
+        entry: content_registry.Entry,
+
+        pub fn deinit(toggle: *ContentToggle) void {
+            const allocator = toggle.arena.child_allocator;
+            toggle.arena.deinit();
+            allocator.destroy(toggle.arena);
+            toggle.* = undefined;
+        }
+    };
+
+    pub const disabled_suffix = ".disabled";
+
+    /// Enables or disables a registered content entry. Disabling renames the
+    /// instance file to `<file>.disabled` so the game no longer loads it;
+    /// enabling renames it back. The registry keeps the canonical path plus
+    /// the enabled flag, so project lookups, removal, and version switching
+    /// work regardless of state. Renames follow the on-disk reality, making
+    /// repeated toggles idempotent even after a partial failure.
+    pub fn setInstanceContentEnabled(
+        self: Service,
+        minecraft_dir: std.Io.Dir,
+        kind: content_registry.Kind,
+        project: ?[]const u8,
+        file: ?[]const u8,
+        enabled: bool,
+    ) !ContentToggle {
+        if ((project == null) == (file == null)) return error.ContentSelectorRequired;
+        if (project) |reference| try modrinth.validateProjectRef(reference);
+        if (file) |path| {
+            try install_plan.validateRelativePath(path);
+            if (path.len > 512) return error.InvalidContentFile;
+        }
+
+        var document = try content_registry.load(self.allocator, self.io, minecraft_dir);
+        defer document.deinit();
+
+        var match_index: ?usize = null;
+        for (document.value.entries, 0..) |entry, index| {
+            if (entry.kind != kind) continue;
+            if (project) |reference| {
+                if (entry.source.project_id) |id| {
+                    if (std.mem.eql(u8, id, reference)) {
+                        match_index = index;
+                        break;
+                    }
+                }
+                if (entry.source.slug) |slug| {
+                    if (std.mem.eql(u8, slug, reference)) {
+                        match_index = index;
+                        break;
+                    }
+                }
+            } else if (std.mem.eql(u8, entry.file, file.?)) {
+                match_index = index;
+                break;
+            }
+        }
+        const index = match_index orelse return error.ContentNotFound;
+        const entry = document.value.entries[index];
+
+        const arena = try self.allocator.create(std.heap.ArenaAllocator);
+        errdefer self.allocator.destroy(arena);
+        arena.* = std.heap.ArenaAllocator.init(self.allocator);
+        errdefer arena.deinit();
+        const scratch = arena.allocator();
+
+        const disabled_path = try std.fmt.allocPrint(scratch, "{s}{s}", .{ entry.file, disabled_suffix });
+        const canonical_exists = blk: {
+            minecraft_dir.access(self.io, entry.file, .{}) catch |err| switch (err) {
+                error.FileNotFound => break :blk false,
+                else => |other| return other,
+            };
+            break :blk true;
+        };
+        const disabled_exists = blk: {
+            minecraft_dir.access(self.io, disabled_path, .{}) catch |err| switch (err) {
+                error.FileNotFound => break :blk false,
+                else => |other| return other,
+            };
+            break :blk true;
+        };
+        if (enabled and !canonical_exists and disabled_exists) {
+            try minecraft_dir.rename(disabled_path, minecraft_dir, entry.file, self.io);
+        } else if (!enabled and canonical_exists) {
+            try minecraft_dir.rename(entry.file, minecraft_dir, disabled_path, self.io);
+        }
+
+        const changed = entry.enabled != enabled;
+        if (changed) {
+            const updated = try scratch.alloc(content_registry.Entry, document.value.entries.len);
+            @memcpy(updated, document.value.entries);
+            updated[index] = .{
+                .kind = entry.kind,
+                .file = entry.file,
+                .sha1 = entry.sha1,
+                .size = entry.size,
+                .source = entry.source,
+                .enabled = enabled,
+                .as_dependency = entry.as_dependency,
+            };
+            try content_registry.save(self.io, minecraft_dir, .{ .entries = updated });
+        }
+
+        return .{
+            .arena = arena,
+            .changed = changed,
+            .entry = .{
+                .kind = entry.kind,
+                .file = try scratch.dupe(u8, entry.file),
+                .sha1 = try scratch.dupe(u8, entry.sha1),
+                .size = entry.size,
+                .source = .{
+                    .provider = entry.source.provider,
+                    .project_id = if (entry.source.project_id) |id| try scratch.dupe(u8, id) else null,
+                    .version_id = if (entry.source.version_id) |id| try scratch.dupe(u8, id) else null,
+                    .slug = if (entry.source.slug) |slug| try scratch.dupe(u8, slug) else null,
+                },
+                .enabled = enabled,
+                .as_dependency = entry.as_dependency,
+            },
         };
     }
 
@@ -1756,6 +1887,21 @@ pub const Service = struct {
         };
         try self.executeModpackDownloads(minecraft_dir, store, game_version, files, options, reporter);
 
+        const old_disk_path = if (entry.enabled)
+            entry.file
+        else
+            try std.fmt.allocPrint(scratch, "{s}{s}", .{ entry.file, disabled_suffix });
+        if (!entry.enabled) {
+            const disabled_new_path = try std.fmt.allocPrint(scratch, "{s}{s}", .{ new_path, disabled_suffix });
+            if (std.mem.eql(u8, new_path, entry.file)) {
+                minecraft_dir.deleteFile(self.io, disabled_new_path) catch |err| switch (err) {
+                    error.FileNotFound => {},
+                    else => |other| return other,
+                };
+            }
+            try minecraft_dir.rename(new_path, minecraft_dir, disabled_new_path, self.io);
+        }
+
         const updated = try scratch.alloc(content_registry.Entry, registry_document.value.entries.len);
         @memcpy(updated, registry_document.value.entries);
         updated[index] = .{
@@ -1775,7 +1921,7 @@ pub const Service = struct {
         try content_registry.save(self.io, minecraft_dir, .{ .entries = updated });
 
         if (!std.mem.eql(u8, entry.file, new_path)) {
-            minecraft_dir.deleteFile(self.io, entry.file) catch |err| switch (err) {
+            minecraft_dir.deleteFile(self.io, old_disk_path) catch |err| switch (err) {
                 error.FileNotFound => {},
                 else => |other| return other,
             };

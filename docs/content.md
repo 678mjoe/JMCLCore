@@ -32,6 +32,10 @@ Each instance records its managed content in `.minecraft/.jmcl/content.json`:
   target directory (`mods/`, `resourcepacks/`, `shaderpacks/`) and the
   managed file extension (`.jar`, `.zip`); entries whose file does not live
   under their kind's directory are rejected.
+- `enabled` marks active content. Disabling renames the instance file to
+  `<file>.disabled` so the game no longer loads it; the registry keeps the
+  canonical path, so project lookups, removal, and version switching work
+  regardless of state. `.disabled` files are ignored by `adopt`.
 - `source.provider` is `modrinth`, `curseforge`, or `manual`. Manually
   adopted files carry no project identifiers; CurseForge entries store the
   numeric mod id and file id as `project_id` and `version_id`.
@@ -53,6 +57,8 @@ jmcl-core instance mods list sodium-demo
 jmcl-core instance mods list sodium-demo --json
 jmcl-core instance mods adopt sodium-demo
 jmcl-core instance mods set-version sodium-demo --project sodium --version FRXt5xaI
+jmcl-core instance mods disable sodium-demo --project sodium
+jmcl-core instance mods enable sodium-demo --project sodium
 jmcl-core instance mods remove sodium-demo --project sodium-extra
 jmcl-core instance mods remove sodium-demo --file mods/manual.jar
 ```
@@ -78,8 +84,14 @@ jmcl-core instance mods remove sodium-demo --file mods/manual.jar
   pipeline before the registry entry is updated atomically, and the old hard
   link is removed last. Dependencies are not touched, and manually adopted
   entries cannot be switched (they carry no provider identity). CurseForge
-  entries take `--api-key` and a numeric file id.
-- `remove` deletes the instance hard link and registry entry. The shared
+  entries take `--api-key` and a numeric file id. Switching the version of
+  a disabled entry keeps the new file disabled on disk.
+- `disable`/`enable` toggle a registered entry without deleting it, using
+  the same `--project`/`--file` selectors as `remove`. Toggles are
+  idempotent: repeating the current state is a no-op, and the rename follows
+  the on-disk reality so a partial failure heals on retry.
+- `remove` deletes the instance hard link and registry entry, including the
+  `.disabled` variant of a disabled entry. The shared
   store object remains until `store gc` reclaims it after the last link
   disappears.
 
@@ -166,8 +178,9 @@ jmcl-core instance mods install jei-demo --project 238222 --provider curseforge 
 ## RPC
 
 The same operations are available over RPC as `mods.list`, `mods.install`,
-`mods.set-version`, `mods.remove`, `mods.adopt`, the matching
-`resourcepacks.*` methods, and the matching `shaderpacks.*` methods. The RPC forms take an explicit `directory`
+`mods.set-version`, `mods.enable`, `mods.disable`, `mods.remove`,
+`mods.adopt`, the matching `resourcepacks.*` methods, and the matching
+`shaderpacks.*` methods. The RPC forms take an explicit `directory`
 and `minecraft_version` instead of reading an instance manifest.
 `mods.install` additionally requires `loader` (`fabric` | `neoforge` |
 `forge`); `resourcepacks.install` and `shaderpacks.install` take no loader.
@@ -216,6 +229,6 @@ still passes the exact size and SHA-1 checks of the install pipeline.
 
 - Search, browse, and version listing RPCs (both providers).
 - CurseForge modpacks and fingerprint-based adoption.
-- Optional dependencies and enable/disable toggles.
+- Optional dependencies.
 - Shader runtime selection and shader pack activation; `pack.mcmeta` and
   shader config format checks.

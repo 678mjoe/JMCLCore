@@ -119,7 +119,10 @@ verified content-addressed pipeline, and reports the installed entries:
 `loader` is one of `fabric`, `neoforge`, or `forge`. `mods.set-version`
 switches a registered entry to an exact caller-selected version id (upgrade
 or downgrade) and takes no `provider` — the registry entry determines it;
-CurseForge entries pass `api_key` and a numeric file id. `mods.remove` takes
+CurseForge entries pass `api_key` and a numeric file id. `mods.enable` and
+`mods.disable` toggle a registered entry (same selectors as `mods.remove`);
+disabled entries are renamed to `<file>.disabled` on disk so the game does
+not load them. `mods.remove` takes
 exactly one of `project` or `file`. `mods.adopt` imports unmanaged `mods/`
 jars into the artifact store and registers them with the `manual` provider.
 
