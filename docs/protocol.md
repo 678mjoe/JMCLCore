@@ -102,6 +102,13 @@ SHA-1:
 {"protocol":1,"id":"forge-install","method":"install.execute","params":{"id":"1.20.4","forge_version":"49.2.8"}}
 ```
 
+NeoForge and Forge emit one `processor_started` event before each applicable
+installer processor, with the same progress fields printed by the CLI:
+
+```json
+{"protocol":1,"id":"forge-install","event":"processor_started","source":"official","processor_started":{"stage":"processor","index":2,"total":4,"name":"net.minecraftforge:installertools:1.4.1"}}
+```
+
 See `docs/forge.md` for details.
 
 ## Mod Management

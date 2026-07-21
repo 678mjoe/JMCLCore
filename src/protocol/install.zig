@@ -129,6 +129,29 @@ pub const ProtocolInstallReporter = struct {
         };
     }
 };
+const ProtocolProcessorReporter = struct {
+    writer: *std.Io.Writer,
+    request_id: []const u8,
+    source: core.DownloadSource,
+    output_failed: bool = false,
+
+    fn callback(raw_context: *anyopaque, event: core.neoforge_executor.Event) void {
+        const context: *ProtocolProcessorReporter = @ptrCast(@alignCast(raw_context));
+        if (context.output_failed) return;
+        writeProcessorProgressEvent(
+            context.writer,
+            context.request_id,
+            context.source,
+            event,
+        ) catch {
+            context.output_failed = true;
+            return;
+        };
+        context.writer.flush() catch {
+            context.output_failed = true;
+        };
+    }
+};
 
 pub fn writeExecuteResult(
     service: *core.Service,
@@ -212,6 +235,15 @@ pub fn writeExecuteResult(
 
     var processors_run: usize = 0;
     var patched_client: ?[]const u8 = null;
+    var processor_reporter_context: ProtocolProcessorReporter = .{
+        .writer = writer,
+        .request_id = request_id,
+        .source = params.value.source,
+    };
+    const processor_reporter: core.neoforge_executor.Reporter = .{
+        .context = &processor_reporter_context,
+        .callback = ProtocolProcessorReporter.callback,
+    };
     if (plan.value.loader == .neoforge) {
         const loader_version = params.value.neoforge_version.?;
         const patched = core.neoforge_executor.run(
@@ -226,8 +258,9 @@ pub fn writeExecuteResult(
                 .java_paths = params.value.java_paths,
                 .required_major = plan.value.java_major_version,
             },
-            null,
+            processor_reporter,
         ) catch |err| {
+            if (processor_reporter_context.output_failed) return error.WriteFailed;
             switch (err) {
                 error.NoCompatibleJava => try writeError(writer, request_id, "JAVA_INCOMPATIBLE", "No Java runtime is available for the NeoForge processor chain"),
                 error.EnvironmentUnavailable => try writeError(writer, request_id, "ENVIRONMENT_UNAVAILABLE", "Process environment is unavailable"),
@@ -236,6 +269,7 @@ pub fn writeExecuteResult(
             return;
         };
         defer service.allocator.free(patched.patched_sha1);
+        if (processor_reporter_context.output_failed) return error.WriteFailed;
         processors_run = patched.processors_run;
         patched_client = patched.patched_sha1;
     }
@@ -254,8 +288,9 @@ pub fn writeExecuteResult(
                 .java_paths = params.value.java_paths,
                 .required_major = plan.value.java_major_version,
             },
-            null,
+            processor_reporter,
         ) catch |err| {
+            if (processor_reporter_context.output_failed) return error.WriteFailed;
             switch (err) {
                 error.NoCompatibleJava => try writeError(writer, request_id, "JAVA_INCOMPATIBLE", "No Java runtime is available for the Forge processor chain"),
                 error.EnvironmentUnavailable => try writeError(writer, request_id, "ENVIRONMENT_UNAVAILABLE", "Process environment is unavailable"),
@@ -264,6 +299,7 @@ pub fn writeExecuteResult(
             return;
         };
         defer service.allocator.free(patched.patched_sha1);
+        if (processor_reporter_context.output_failed) return error.WriteFailed;
         processors_run = patched.processors_run;
         patched_client = patched.patched_sha1;
     }
@@ -467,6 +503,56 @@ fn writeInstallProgressEvent(
     }
     try json.endObject();
     try writer.writeByte('\n');
+}
+fn writeProcessorProgressEvent(
+    writer: *std.Io.Writer,
+    request_id: []const u8,
+    source: core.DownloadSource,
+    event: core.neoforge_executor.Event,
+) std.Io.Writer.Error!void {
+    var json: std.json.Stringify = .{ .writer = writer };
+    switch (event) {
+        .processor_started => |started| {
+            try writeEventHeader(&json, request_id, "processor_started");
+            try writeSourceField(&json, source);
+            try json.objectField("processor_started");
+            try json.beginObject();
+            try json.objectField("stage");
+            try json.write("processor");
+            try json.objectField("index");
+            try json.write(started.index);
+            try json.objectField("total");
+            try json.write(started.total);
+            try json.objectField("name");
+            try json.write(started.name);
+            try json.endObject();
+        },
+    }
+    try json.endObject();
+    try writer.writeByte('\n');
+}
+
+test "processor progress event preserves CLI fields" {
+    var output: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer output.deinit();
+    var reporter: ProtocolProcessorReporter = .{
+        .writer = &output.writer,
+        .request_id = "install-1",
+        .source = .official,
+    };
+    ProtocolProcessorReporter.callback(
+        &reporter,
+        .{ .processor_started = .{
+            .index = 2,
+            .total = 4,
+            .name = "processor.jar",
+        } },
+    );
+    try std.testing.expect(!reporter.output_failed);
+    try std.testing.expectEqualStrings(
+        "{\"protocol\":1,\"id\":\"install-1\",\"event\":\"processor_started\",\"source\":\"official\",\"processor_started\":{\"stage\":\"processor\",\"index\":2,\"total\":4,\"name\":\"processor.jar\"}}\n",
+        output.written(),
+    );
 }
 
 fn writeInstallPlanningError(

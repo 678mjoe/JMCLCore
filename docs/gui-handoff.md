@@ -59,6 +59,7 @@ Events:
 {"protocol":1,"id":"i-1","event":"file","source":"official","file":{"path":"mods/sodium.jar","status":"downloaded","placement":"hard_link","size":1306799,"attempts":1}}
 {"protocol":1,"id":"i-1","event":"retry","source":"official","retry":{"path":"assets/objects/ab/abcd","attempt":1,"max_attempts":3,"error":"UnsuccessfulHttpStatus"}}
 {"protocol":1,"id":"i-1","event":"progress","source":"official","progress":{"files_completed":12,"files_total":320,"bytes_verified":4194304,"bytes_total":52428800,"bytes_transferred":2097152}}
+{"protocol":1,"id":"i-1","event":"processor_started","source":"official","processor_started":{"stage":"processor","index":2,"total":4,"name":"net.neoforged:installertools:2.1.3"}}
 ```
 
 - `launch.execute` additionally emits `started` (with `pid` + redacted argv),
@@ -87,13 +88,15 @@ Verify `protocol == 1` before anything else. `ping` checks liveness.
 | `version.list` | — | `type`, `limit` (1–1000, default 20), `source` | `latest`, `versions[]` |
 | `version.get` | `id` | `source` | full normalized version metadata |
 | `install.plan` | `id` | `source`, `os`, `arch`, loader fields | deduped file list, classpath, natives, total size |
-| `install.execute` | `id` | `directory` (default `.minecraft`), `store_directory` (default `.jmclcore`), `source`, `os`, `arch`, loader fields, `workers` (1–32, default 8), `retries` (0–5, default 2) | started/file/retry/progress events, final counters |
+| `install.execute` | `id` | `directory` (default `.minecraft`), `store_directory` (default `.jmclcore`), `source`, `os`, `arch`, loader fields, `workers` (1–32, default 8), `retries` (0–5, default 2) | started/file/retry/progress events, processor_started for NeoForge/Forge, final counters |
 | `install.prepare` | `id` | `directory`, `source`, `os`, `arch`, loader fields | `native_directory` (pass to `launch.plan`) |
 
 Loader fields: at most one of `fabric_loader`, `neoforge_version`,
 `forge_version` per request. NeoForge/Forge `install.execute` runs the
-official processor chain locally and reports `processors_run` and the
-`patched_client` SHA-1. Typical full install: `install.execute` →
+official processor chain locally and emits `processor_started` with the
+CLI-equivalent `index`, `total`, and processor `name`; its result reports
+`processors_run` and the `patched_client` SHA-1. Typical full install:
+`install.execute` →
 `install.prepare` → `launch.execute`.
 
 ### Java
