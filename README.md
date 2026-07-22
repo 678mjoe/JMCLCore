@@ -1,5 +1,7 @@
 # JMCL Core
 
+English | [简体中文](README-zh_CN.md)
+
 JMCL Core is a Minecraft: Java Edition launcher core written in Zig. It is
 designed to be driven by a separate graphical interface through a versioned
 command-line protocol.
