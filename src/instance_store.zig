@@ -139,7 +139,29 @@ pub fn delete(allocator: std.mem.Allocator, io: std.Io, root: std.Io.Dir, id: []
     try root.deleteTree(io, id);
 }
 
-pub fn recordInstallation(io: std.Io, minecraft_dir: std.Io.Dir, installation: Installation) !void {
+pub fn recordCompletedInstallation(
+    io: std.Io,
+    minecraft_dir: std.Io.Dir,
+    minecraft_version: []const u8,
+    fabric_loader: ?[]const u8,
+    neoforge_version: ?[]const u8,
+    forge_version: ?[]const u8,
+    source: DownloadSource,
+    os: []const u8,
+    arch: []const u8,
+) !void {
+    try recordInstallation(io, minecraft_dir, .{
+        .version_id = minecraft_version,
+        .fabric_loader = fabric_loader,
+        .neoforge_version = neoforge_version,
+        .forge_version = forge_version,
+        .source = source,
+        .os = os,
+        .arch = arch,
+    });
+}
+
+fn recordInstallation(io: std.Io, minecraft_dir: std.Io.Dir, installation: Installation) !void {
     try validateInstallation(installation);
     var atomic_file = try minecraft_dir.createFileAtomic(io, installation_relative_path, .{
         .make_path = true,
@@ -184,8 +206,7 @@ pub fn isInstalled(
     return std.mem.eql(u8, installation.version_id, manifest.version_id) and
         optionalEql(installation.fabric_loader, manifest.fabric_loader) and
         optionalEql(installation.neoforge_version, manifest.neoforge_version) and
-        optionalEql(installation.forge_version, manifest.forge_version) and
-        installation.source == manifest.source;
+        optionalEql(installation.forge_version, manifest.forge_version);
 }
 
 pub fn minecraftPathAlloc(allocator: std.mem.Allocator, instances_root: []const u8, id: []const u8) ![]u8 {
@@ -316,38 +337,74 @@ test "creates lists loads and deletes isolated instances" {
     try std.testing.expectError(error.FileNotFound, load(std.testing.allocator, io, root, "test-instance"));
 }
 
-test "installation marker matches only its completed manifest" {
+test "installation marker matches Minecraft and loader identity" {
     const io = std.testing.io;
     const allocator = std.testing.allocator;
     var temporary = std.testing.tmpDir(.{});
     defer temporary.cleanup();
-    const manifest: Manifest = .{
-        .id = "fabric",
-        .name = "Fabric",
-        .version_id = "1.21.4",
-        .fabric_loader = "0.16.10",
-        .source = .bmclapi,
+    const manifests = [_]Manifest{
+        .{
+            .id = "fabric",
+            .name = "Fabric",
+            .version_id = "1.21.4",
+            .fabric_loader = "0.16.10",
+            .source = .bmclapi,
+        },
+        .{
+            .id = "neoforge",
+            .name = "NeoForge",
+            .version_id = "1.21.4",
+            .neoforge_version = "21.4.150",
+        },
+        .{
+            .id = "forge",
+            .name = "Forge",
+            .version_id = "1.20.4",
+            .forge_version = "49.2.8",
+            .source = .bmclapi,
+        },
     };
 
-    try std.testing.expect(!try isInstalled(allocator, io, temporary.dir, manifest));
-    try recordInstallation(io, temporary.dir, .{
-        .version_id = manifest.version_id,
-        .fabric_loader = manifest.fabric_loader,
-        .source = manifest.source,
-        .os = "linux",
-        .arch = "x86_64",
-    });
-    try std.testing.expect(try isInstalled(allocator, io, temporary.dir, manifest));
+    for (manifests) |manifest| {
+        try recordCompletedInstallation(
+            io,
+            temporary.dir,
+            manifest.version_id,
+            manifest.fabric_loader,
+            manifest.neoforge_version,
+            manifest.forge_version,
+            if (manifest.source == .official) .bmclapi else .official,
+            "linux",
+            "x86_64",
+        );
+        try std.testing.expect(try isInstalled(allocator, io, temporary.dir, manifest));
 
-    var other = manifest;
-    other.fabric_loader = "0.16.11";
-    try std.testing.expect(!try isInstalled(allocator, io, temporary.dir, other));
-    other = manifest;
-    other.version_id = "1.21.5";
-    try std.testing.expect(!try isInstalled(allocator, io, temporary.dir, other));
+        var mismatch = manifest;
+        mismatch.version_id = "different";
+        try std.testing.expect(!try isInstalled(allocator, io, temporary.dir, mismatch));
+        mismatch = manifest;
+        if (mismatch.fabric_loader != null) mismatch.fabric_loader = "different";
+        if (mismatch.neoforge_version != null) mismatch.neoforge_version = "different";
+        if (mismatch.forge_version != null) mismatch.forge_version = "different";
+        try std.testing.expect(!try isInstalled(allocator, io, temporary.dir, mismatch));
+    }
+
+    const fabric = manifests[0];
+    try recordCompletedInstallation(
+        io,
+        temporary.dir,
+        "fabric-loader-0.16.10-1.21.4",
+        fabric.fabric_loader,
+        null,
+        null,
+        fabric.source,
+        "linux",
+        "x86_64",
+    );
+    try std.testing.expect(!try isInstalled(allocator, io, temporary.dir, fabric));
 
     var file = try temporary.dir.createFile(io, installation_relative_path, .{ .truncate = true });
     defer file.close(io);
     try file.writeStreamingAll(io, "{broken");
-    try std.testing.expect(!try isInstalled(allocator, io, temporary.dir, manifest));
+    try std.testing.expect(!try isInstalled(allocator, io, temporary.dir, fabric));
 }

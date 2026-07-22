@@ -155,9 +155,12 @@ A manifest looks like:
 ```
 
 `installed` becomes true only after `install.execute` fully succeeds for the
-manifest's exact version, loader, and source. A missing, corrupt, or mismatched
-completion marker returns false; older instances can be safely reinstalled
-because verified artifacts are reused through the shared store and hard links.
+manifest's exact Minecraft version and loader. Download source does not affect
+the status because artifacts are SHA-1 verified. A missing, corrupt, or
+version/loader-mismatched completion marker returns false. Loader instances
+installed by affected older core builds may return false once; reinstalling is
+safe because verified artifacts are reused through the shared store and hard
+links.
 
 `id` rules: ≤64 chars, starts `[a-z0-9]`, then `[a-z0-9._-]`, no trailing dot,
 no Windows reserved stems. At most one loader field (`fabric_loader`,

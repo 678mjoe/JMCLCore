@@ -190,12 +190,16 @@ the whole instance directory. Game installation remains a separate
 
 `installed:true` means a complete `install.execute` (including the
 NeoForge/Forge processor chain when applicable) last succeeded for the exact
-version, loader, and source in the instance manifest. Completion is recorded
-atomically in `.minecraft/.jmcl/install.json`; an absent, malformed, or
-mismatched marker returns `false`. Instances installed before this marker was
-introduced conservatively return `false` and can be reinstalled
-idempotently—the verified artifact store and hard-link materialization avoid
-duplicate downloads and storage.
+Minecraft version and loader in the instance manifest. The merged runtime
+profile id (`fabric-loader-*`, `neoforge-*`, or a Forge profile id) is not the
+Minecraft version identity. Download source is retained in the marker for
+diagnostics but does not affect installation status because every artifact is
+verified by the same published SHA-1. Completion is recorded atomically in
+`.minecraft/.jmcl/install.json`. An absent or malformed marker returns
+`false`, as does a version/loader mismatch. Instances installed before this
+marker was introduced—or loader instances recorded by affected older
+builds—can be reinstalled idempotently; verified artifact-store objects and
+hard-link materialization avoid duplicate downloads and storage.
 
 ## Modpack Installation
 

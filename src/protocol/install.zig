@@ -304,15 +304,17 @@ pub fn writeExecuteResult(
         patched_client = patched.patched_sha1;
     }
 
-    core.instance_store.recordInstallation(service.io, root, .{
-        .version_id = plan.value.version_id,
-        .fabric_loader = params.value.fabric_loader,
-        .neoforge_version = params.value.neoforge_version,
-        .forge_version = params.value.forge_version,
-        .source = params.value.source,
-        .os = @tagName(target.os),
-        .arch = @tagName(target.arch),
-    }) catch {
+    core.instance_store.recordCompletedInstallation(
+        service.io,
+        root,
+        params.value.id,
+        params.value.fabric_loader,
+        params.value.neoforge_version,
+        params.value.forge_version,
+        params.value.source,
+        @tagName(target.os),
+        @tagName(target.arch),
+    ) catch {
         try writeError(writer, request_id, "INSTALL_STATE_ERROR", "Failed to record the completed installation");
         return;
     };
