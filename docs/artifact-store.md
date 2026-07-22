@@ -80,6 +80,3 @@ the CLI exits nonzero and RPC returns `STORE_GC_PARTIAL` in that case.
 
 Removing an instance unlinks its paths without affecting other instances. A
 later GC run can reclaim the final remaining store link.
-
-The Windows validation checklist is available in
-`docs/windows-hardlink-testing.md`.

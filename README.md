@@ -7,15 +7,24 @@ designed to be driven by a separate graphical interface through a versioned
 command-line protocol.
 
 The project currently provides the protocol and CLI foundation, Mojang metadata
-resolution, complete static installs, concurrent verified downloads, secure
-native extraction, legacy asset projection, Java runtime selection, launch
-planning, and supervised game execution. Configurable Microsoft authentication
-and a credentialless public account registry are available; managed Java
-downloads remain a future milestone.
+resolution, complete static installs, content-addressed hard-link storage,
+concurrent verified downloads, secure native extraction, legacy asset projection,
+Java runtime selection, launch planning, and supervised game execution.
+Configurable Microsoft authentication and a credentialless public account
+registry are available; support for
+downloading and managing multiple Java versions is planned for a future
+milestone.
 
 ## NOTICE
 
 This is a vibe coding project.
+
+## Note
+
+JMCL Core provides a Minecraft: Java Edition launcher backend that anyone can
+use. To create a launcher of your own, simply give your AI agent
+`docs/gui-handoff.md`, a link to this repository, and a compiled `jmcl-core`
+binary. As a Minecraft advancement reminds us: “Sky's the Limit.”
 
 ## Requirements
 
