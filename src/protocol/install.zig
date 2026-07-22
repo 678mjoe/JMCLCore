@@ -432,7 +432,7 @@ pub fn writePrepareResult(
     try writer.writeByte('\n');
 }
 
-fn writeInstallStarted(
+pub fn writeInstallStarted(
     writer: *std.Io.Writer,
     request_id: []const u8,
     source: core.DownloadSource,

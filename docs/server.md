@@ -1,7 +1,8 @@
 # Server Management
 
-Status: Phase 1 server instance storage and RPC CRUD are implemented. Phases
-2–6 remain the roadmap. Multi-instance Minecraft server management is
+Status: Phase 1 server instance storage and RPC CRUD plus Phase 2 vanilla
+installation and properties management are implemented. Phases 3–6 remain
+the roadmap. Multi-instance Minecraft server management is
 **Linux first**—other platforms are explicitly deferred and every `server.*`
 method returns `UNSUPPORTED_PLATFORM`. The GUI talks to a server-side
 `jmcl-core` over SSH.
@@ -48,9 +49,10 @@ Server instances are separate from client instances:
 ```text
 servers/<id>/server.json        identity: id, name, version_id, loader fields,
                                 source, accept_eula, optional java_path
-servers/<id>/server.jar         hard link into the artifact store (Phase 2)
-servers/<id>/eula.txt           Phase 2
-servers/<id>/server.properties Phase 2
+servers/<id>/server.jar         verified hard link into the artifact store
+servers/<id>/.jmcl/install.json completed-install identity and server digest
+servers/<id>/eula.txt           recorded EULA acceptance
+servers/<id>/server.properties atomically managed key/value configuration
 servers/<id>/world/ logs/ mods/ config/   later phases
 
 Mojang requires explicit EULA acceptance: install operations require
@@ -68,14 +70,27 @@ Mojang requires explicit EULA acceptance: install operations require
   off Linux.
 - E2E: create/list/get/delete round-trip.
 
-### Phase 2 — Vanilla installation and configuration
+### Phase 2 — Vanilla installation and configuration (implemented)
 
-- `server.install`: resolve metadata → download the server jar through the
-  verified pipeline → write `eula.txt` (given `accept_eula`) and a default
-  `server.properties`. Select the JVM via `java.select`.
-- `server.properties.get` / `server.properties.set` (key/value edits with
-  atomic rewrite; port, motd, difficulty, etc.).
-- E2E: install a vanilla server, set properties, verify on-disk results.
+- `server.install` resolves Mojang metadata, selects a compatible JVM, and
+  downloads `server.jar` through the shared size+SHA-1 verified artifact
+  pipeline. The jar is materialized by hard link with atomic copy fallback.
+- Every install request must pass `accept_eula:true`. The acceptance is stored
+  in `server.json`, and successful installation atomically writes `eula.txt`.
+- A missing `server.properties` receives conservative defaults. Existing
+  properties are never overwritten by installation.
+- `server.properties.get` returns the complete decoded key/value map.
+  `server.properties.set` merges string-valued keys and atomically rewrites
+  the file. Java properties escapes, continuations, Unicode escapes, and
+  duplicate-key last-write semantics are supported.
+- Successful installation writes `.jmcl/install.json`. `server.get` and
+  `server.list` report `installed:true` only when its version, loader, source,
+  server file size, and current manifest still match. Missing or malformed
+  state returns `false`.
+- Phase 2 is vanilla-only. Loader-bearing manifests return
+  `SERVER_LOADER_UNSUPPORTED` until Phase 4.
+- Linux ARM64 E2E verified create → download Minecraft 1.21.4 → properties
+  get/set → installed status → idempotent cache-hit reinstall.
 
 ### Phase 3 — Process lifecycle
 

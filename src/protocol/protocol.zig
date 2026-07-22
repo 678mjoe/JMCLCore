@@ -164,6 +164,12 @@ pub fn handleLine(
         try server.writeGetResult(service, writer, request.id, request.params);
     } else if (std.mem.eql(u8, request.method, "server.delete")) {
         try server.writeDeleteResult(service, writer, request.id, request.params);
+    } else if (std.mem.eql(u8, request.method, "server.install")) {
+        try server.writeInstallResult(service, writer, request.id, request.params);
+    } else if (std.mem.eql(u8, request.method, "server.properties.get")) {
+        try server.writePropertiesGetResult(service, writer, request.id, request.params);
+    } else if (std.mem.eql(u8, request.method, "server.properties.set")) {
+        try server.writePropertiesSetResult(service, writer, request.id, request.params);
     } else if (std.mem.eql(u8, request.method, "java.detect")) {
         try java.writeDetectResult(service, writer, request.id, request.params);
     } else if (std.mem.eql(u8, request.method, "java.select")) {
@@ -523,6 +529,9 @@ test "server methods reject non-Linux hosts" {
         "server.list",
         "server.get",
         "server.delete",
+        "server.install",
+        "server.properties.get",
+        "server.properties.set",
     };
     for (methods) |method| {
         var output: std.Io.Writer.Allocating = .init(std.testing.allocator);

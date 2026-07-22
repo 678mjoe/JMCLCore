@@ -34,7 +34,6 @@ pub const VersionSelection = struct {
     forge_version: ?[]const u8 = null,
 };
 
-
 const FabricResolvedMetadata = struct {
     parent: std.json.Parsed(version_metadata.Metadata),
     profile: std.json.Parsed(fabric.Profile),
@@ -597,6 +596,17 @@ pub const Service = struct {
         target: install_plan.Target,
     ) !install_plan.Plan {
         return self.createInstallPlanForSelection(.{ .id = version_id }, source, target);
+    }
+
+    pub fn createServerInstallPlan(
+        self: Service,
+        version_id: []const u8,
+        source: core.DownloadSource,
+        target: install_plan.Target,
+    ) !install_plan.Plan {
+        var metadata = try self.fetchVersionMetadataPreferred(version_id, source);
+        defer metadata.deinit();
+        return install_plan.buildServer(self.allocator, metadata.value, source, target);
     }
 
     pub fn createInstallPlanForSelection(
@@ -2438,7 +2448,7 @@ pub const Service = struct {
         var body = std.Io.Writer.fixed(storage);
 
         const extra_headers: []const std.http.Header = if (extra_header) |header|
-            &.{ .{ .name = header.name, .value = header.value } }
+            &.{.{ .name = header.name, .value = header.value }}
         else
             &.{};
         const result = client.fetch(.{

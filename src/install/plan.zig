@@ -73,6 +73,7 @@ pub const Usage = struct {
     mod: bool = false,
     resourcepack: bool = false,
     shaderpack: bool = false,
+    server: bool = false,
 
     fn merge(usage: *Usage, other: Usage) void {
         usage.client = usage.client or other.client;
@@ -84,6 +85,7 @@ pub const Usage = struct {
         usage.mod = usage.mod or other.mod;
         usage.resourcepack = usage.resourcepack or other.resourcepack;
         usage.shaderpack = usage.shaderpack or other.shaderpack;
+        usage.server = usage.server or other.server;
     }
 };
 
@@ -250,6 +252,50 @@ pub fn build(
     target: Target,
 ) !Plan {
     return buildWithExtras(allocator, version, assets, source, target, &.{});
+}
+
+pub fn buildServer(
+    allocator: std.mem.Allocator,
+    version: metadata.Metadata,
+    source: DownloadSource,
+    target: Target,
+) !Plan {
+    try validateComponent(version.id);
+    const download = version.downloads.server orelse return error.ServerDownloadMissing;
+    const java_major_version = if (version.javaVersion) |java| blk: {
+        if (java.majorVersion == 0) return error.InvalidJavaRequirement;
+        break :blk java.majorVersion;
+    } else 8;
+    const arena = try allocator.create(std.heap.ArenaAllocator);
+    errdefer allocator.destroy(arena);
+    arena.* = std.heap.ArenaAllocator.init(allocator);
+    errdefer arena.deinit();
+    const plan_allocator = arena.allocator();
+    var builder: Builder = .{
+        .allocator = plan_allocator,
+        .source = source,
+    };
+    _ = try builder.addFile(
+        "server.jar",
+        download.url,
+        download.sha1,
+        download.size,
+        .{ .server = true },
+    );
+    return .{
+        .arena = arena,
+        .value = .{
+            .version_id = try plan_allocator.dupe(u8, version.id),
+            .source = source,
+            .target = target,
+            .files = try builder.files.toOwnedSlice(plan_allocator),
+            .classpath = &.{},
+            .native_extractions = &.{},
+            .asset_projections = &.{},
+            .total_download_size = builder.total_download_size,
+            .java_major_version = java_major_version,
+        },
+    };
 }
 
 pub fn buildWithExtras(
@@ -559,6 +605,84 @@ test "builds a mirrored plan with classpath and legacy natives" {
         plan.value.files[2].fallback_url.?,
     );
     try std.testing.expectEqual(@as(u64, 150), plan.value.total_download_size);
+}
+
+test "builds a verified dedicated server plan" {
+    const source =
+        \\{
+        \\  "id":"1.21.4",
+        \\  "type":"release",
+        \\  "mainClass":"net.minecraft.server.Main",
+        \\  "downloads":{"client":{"sha1":"2222222222222222222222222222222222222222","size":84,"url":"https://piston-data.mojang.com/v1/objects/client/client.jar"},"server":{"sha1":"1111111111111111111111111111111111111111","size":42,"url":"https://piston-data.mojang.com/v1/objects/server/server.jar"}},
+        \\  "javaVersion":{"component":"java-runtime-delta","majorVersion":21},
+        \\  "libraries":[]
+        \\}
+    ;
+    var parsed = try metadata.parse(std.testing.allocator, source);
+    defer parsed.deinit();
+    var plan = try buildServer(
+        std.testing.allocator,
+        parsed.value,
+        .bmclapi,
+        .{ .os = .linux, .arch = .arm64 },
+    );
+    defer plan.deinit();
+    try std.testing.expectEqualStrings("1.21.4", plan.value.version_id);
+    try std.testing.expectEqual(DownloadSource.bmclapi, plan.value.source);
+    try std.testing.expectEqual(@as(usize, 1), plan.value.files.len);
+    try std.testing.expectEqualStrings("server.jar", plan.value.files[0].path);
+    try std.testing.expect(plan.value.files[0].usage.server);
+    try std.testing.expectEqual(@as(u64, 42), plan.value.total_download_size);
+    try std.testing.expectEqual(@as(u16, 21), plan.value.java_major_version);
+    try std.testing.expectEqualStrings(
+        "https://piston-data.mojang.com/v1/objects/server/server.jar",
+        plan.value.files[0].fallback_url.?,
+    );
+}
+
+test "dedicated server plans default legacy metadata to Java 8" {
+    const source =
+        \\{
+        \\  "id":"1.12.2",
+        \\  "type":"release",
+        \\  "mainClass":"net.minecraft.server.MinecraftServer",
+        \\  "downloads":{"client":{"sha1":"2222222222222222222222222222222222222222","size":84,"url":"https://piston-data.mojang.com/v1/objects/client/client.jar"},"server":{"sha1":"1111111111111111111111111111111111111111","size":42,"url":"https://piston-data.mojang.com/v1/objects/server/server.jar"}},
+        \\  "libraries":[]
+        \\}
+    ;
+    var parsed = try metadata.parse(std.testing.allocator, source);
+    defer parsed.deinit();
+    var plan = try buildServer(
+        std.testing.allocator,
+        parsed.value,
+        .official,
+        .{ .os = .linux, .arch = .x86_64 },
+    );
+    defer plan.deinit();
+    try std.testing.expectEqual(@as(u16, 8), plan.value.java_major_version);
+}
+
+test "rejects metadata without a dedicated server download" {
+    const source =
+        \\{
+        \\  "id":"1.21.4",
+        \\  "type":"release",
+        \\  "mainClass":"net.minecraft.client.Main",
+        \\  "downloads":{"client":{"sha1":"2222222222222222222222222222222222222222","size":84,"url":"https://piston-data.mojang.com/v1/objects/client/client.jar"}},
+        \\  "libraries":[]
+        \\}
+    ;
+    var parsed = try metadata.parse(std.testing.allocator, source);
+    defer parsed.deinit();
+    try std.testing.expectError(
+        error.ServerDownloadMissing,
+        buildServer(
+            std.testing.allocator,
+            parsed.value,
+            .official,
+            .{ .os = .linux, .arch = .x86_64 },
+        ),
+    );
 }
 
 test "library rules use last matching action" {

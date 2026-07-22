@@ -177,9 +177,17 @@ on Linux:
 | `server.list` | `directory` | — | `{servers[]}` sorted by id |
 | `server.get` | `directory`, `id` | — | one server manifest; `SERVER_NOT_FOUND` |
 | `server.delete` | `directory`, `id` | — | removes the whole server instance directory |
+| `server.install` | `directory`, `id`, `accept_eula:true` | `store_directory`, `workers`, `retries`, `java_paths[]` | vanilla only; emits standard download progress; selects a compatible Java runtime; writes `server.jar`, `eula.txt`, defaults, and completion state |
+| `server.properties.get` | `directory`, `id` | — | returns the full string-valued `properties` object |
+| `server.properties.set` | `directory`, `id`, non-empty `properties` object | — | merges string-valued keys and atomically rewrites the file; returns the full resulting object |
 
-Phase 1 records server identity only. Installation, properties, and process
-lifecycle methods are not yet available.
+`server.create`, `server.list`, and `server.get` include `installed`. Treat it
+as authoritative; absent, malformed, or identity-mismatched completion state
+returns `false`. `server.install` currently rejects loader-bearing manifests
+with `SERVER_LOADER_UNSUPPORTED`. It requires explicit `accept_eula:true`;
+the core never accepts Mojang's EULA implicitly. A manifest-level `java_path`
+wins over request `java_paths`. Properties are strings, including numeric and
+boolean-looking values.
 
 Content methods exist for three kinds with identical shapes:
 `mods.*`, `resourcepacks.*`, `shaderpacks.*`.

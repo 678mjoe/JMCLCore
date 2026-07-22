@@ -211,15 +211,47 @@ most one loader field online before atomically writing
 `servers/<id>/server.json`:
 
 ```json
-{"protocol":1,"id":"sc-1","method":"server.create","params":{"directory":"/path/to/servers","id":"vanilla-1-21-4","name":"Vanilla 1.21.4","version_id":"1.21.4","accept_eula":true,"java_path":"/usr/bin/java"}}
+{"protocol":1,"id":"sc-1","method":"server.create","params":{"directory":"/path/to/servers","id":"vanilla-1-21-4","name":"Vanilla 1.21.4","version_id":"1.21.4","java_path":"/usr/bin/java"}}
 ```
 
 Manifest results contain `id`, `name`, `version_id`, `fabric_loader`,
-`neoforge_version`, `forge_version`, `source`, `accept_eula`, and
-`java_path`. Lists are sorted by id. `server.get` and `server.delete` return
+`neoforge_version`, `forge_version`, `source`, `accept_eula`, `java_path`,
+and `installed`. Lists are sorted by id. `installed:true` requires a matching
+completed-install marker and `server.jar`; missing, malformed, or mismatched
+state yields `false`. `server.get` and `server.delete` return
 `SERVER_NOT_FOUND` when absent; create returns `SERVER_EXISTS` when the id is
-taken. Phase 1 stores identity only: server installation, `eula.txt`,
-properties, and process lifecycle are not created by these methods.
+taken.
+
+`server.install` currently installs vanilla servers. It requires explicit
+`accept_eula:true`; false or absent returns `EULA_NOT_ACCEPTED`. Optional
+`store_directory`, `workers` (1–32), `retries` (0–5), and `java_paths` match
+the client install pipeline. A manifest `java_path` takes precedence over
+request candidates. Loader-bearing manifests return
+`SERVER_LOADER_UNSUPPORTED`.
+
+```json
+{"protocol":1,"id":"si-1","method":"server.install","params":{"directory":"/path/to/servers","id":"vanilla-1-21-4","accept_eula":true,"store_directory":".jmclcore","java_paths":["/usr/bin/java"],"workers":8,"retries":2}}
+```
+
+The method emits the standard `started`, `file`, `retry`, and byte-level
+`progress` events, then returns the Java selection, download summary, and
+`properties_created`. It downloads Mojang's dedicated server artifact with
+exact size+SHA-1 verification, materializes `server.jar` through the shared
+artifact store, writes `eula.txt`, creates conservative default properties
+only when absent, and atomically records `.jmcl/install.json`. Reinstall is
+idempotent and reuses the verified cache object.
+
+`server.properties.get` returns all decoded values as strings.
+`server.properties.set` requires a non-empty `properties` object whose values
+are strings, merges those keys, and atomically rewrites the file:
+
+```json
+{"protocol":1,"id":"sp-1","method":"server.properties.set","params":{"directory":"/path/to/servers","id":"vanilla-1-21-4","properties":{"motd":"JMCL Core Server","difficulty":"hard","server-port":"25566"}}}
+```
+
+Both property methods return the complete resulting `properties` object.
+They preserve Java properties escaping and continuation semantics; a missing
+file returns `SERVER_PROPERTIES_NOT_FOUND`.
 
 ## Modpack Installation
 

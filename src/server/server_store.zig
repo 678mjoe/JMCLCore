@@ -5,6 +5,9 @@ pub const schema_version: u32 = 1;
 pub const default_root = "servers";
 const max_manifest_bytes = 64 * 1024;
 const max_servers = 4096;
+pub const installation_schema_version: u32 = 1;
+pub const installation_relative_path = ".jmcl/install.json";
+const max_installation_bytes = 16 * 1024;
 
 pub const Manifest = struct {
     schema_version: u32 = schema_version,
@@ -17,6 +20,17 @@ pub const Manifest = struct {
     source: DownloadSource = .official,
     accept_eula: bool = false,
     java_path: ?[]const u8 = null,
+};
+
+pub const Installation = struct {
+    schema_version: u32 = installation_schema_version,
+    version_id: []const u8,
+    fabric_loader: ?[]const u8 = null,
+    neoforge_version: ?[]const u8 = null,
+    forge_version: ?[]const u8 = null,
+    source: DownloadSource = .official,
+    server_sha1: []const u8,
+    server_size: u64,
 };
 
 pub const Document = std.json.Parsed(Manifest);
@@ -54,11 +68,26 @@ pub fn openRoot(io: std.Io, path: []const u8) !std.Io.Dir {
     });
 }
 
+pub fn openServer(io: std.Io, root: std.Io.Dir, id: []const u8) !std.Io.Dir {
+    try validateId(id);
+    return root.openDir(io, id, .{
+        .iterate = true,
+        .follow_symlinks = false,
+    });
+}
+
 pub fn create(io: std.Io, root: std.Io.Dir, manifest: Manifest) !void {
     try validateManifest(manifest);
     try root.createDir(io, manifest.id, .default_dir);
     errdefer root.deleteTree(io, manifest.id) catch {};
     const server_dir = try root.openDir(io, manifest.id, .{ .follow_symlinks = false });
+    defer server_dir.close(io);
+    try writeManifest(io, server_dir, manifest);
+}
+
+pub fn update(io: std.Io, root: std.Io.Dir, manifest: Manifest) !void {
+    try validateManifest(manifest);
+    const server_dir = try openServer(io, root, manifest.id);
     defer server_dir.close(io);
     try writeManifest(io, server_dir, manifest);
 }
@@ -126,6 +155,78 @@ pub fn delete(allocator: std.mem.Allocator, io: std.Io, root: std.Io.Dir, id: []
     try root.deleteTree(io, id);
 }
 
+pub fn recordCompletedInstallation(
+    io: std.Io,
+    server_dir: std.Io.Dir,
+    manifest: Manifest,
+    server_sha1: []const u8,
+    server_size: u64,
+) !void {
+    const installation: Installation = .{
+        .version_id = manifest.version_id,
+        .fabric_loader = manifest.fabric_loader,
+        .neoforge_version = manifest.neoforge_version,
+        .forge_version = manifest.forge_version,
+        .source = manifest.source,
+        .server_sha1 = server_sha1,
+        .server_size = server_size,
+    };
+    try validateInstallation(installation);
+    var atomic_file = try server_dir.createFileAtomic(io, installation_relative_path, .{
+        .make_path = true,
+        .replace = true,
+    });
+    defer atomic_file.deinit(io);
+    var buffer: [4096]u8 = undefined;
+    var writer: std.Io.File.Writer = .init(atomic_file.file, io, &buffer);
+    var json: std.json.Stringify = .{ .writer = &writer.interface };
+    try json.write(installation);
+    try writer.interface.writeByte('\n');
+    try writer.interface.flush();
+    try atomic_file.file.sync(io);
+    try atomic_file.replace(io);
+}
+
+pub fn isInstalled(
+    allocator: std.mem.Allocator,
+    io: std.Io,
+    server_dir: std.Io.Dir,
+    manifest: Manifest,
+) !bool {
+    const bytes = server_dir.readFileAlloc(
+        io,
+        installation_relative_path,
+        allocator,
+        .limited(max_installation_bytes + 1),
+    ) catch |err| switch (err) {
+        error.FileNotFound, error.StreamTooLong => return false,
+        else => |other| return other,
+    };
+    defer allocator.free(bytes);
+    if (bytes.len > max_installation_bytes) return false;
+    var document = std.json.parseFromSlice(Installation, allocator, bytes, .{
+        .allocate = .alloc_always,
+        .ignore_unknown_fields = true,
+        .max_value_len = max_installation_bytes,
+    }) catch return false;
+    defer document.deinit();
+    validateInstallation(document.value) catch return false;
+    const installation = document.value;
+    if (!std.mem.eql(u8, installation.version_id, manifest.version_id) or
+        !optionalEql(installation.fabric_loader, manifest.fabric_loader) or
+        !optionalEql(installation.neoforge_version, manifest.neoforge_version) or
+        !optionalEql(installation.forge_version, manifest.forge_version) or
+        installation.source != manifest.source)
+    {
+        return false;
+    }
+    const stat = server_dir.statFile(io, "server.jar", .{}) catch |err| switch (err) {
+        error.FileNotFound => return false,
+        else => |other| return other,
+    };
+    return stat.kind == .file and stat.size == installation.server_size;
+}
+
 fn writeManifest(io: std.Io, server_dir: std.Io.Dir, manifest: Manifest) !void {
     var atomic_file = try server_dir.createFileAtomic(io, "server.json", .{ .replace = true });
     defer atomic_file.deinit(io);
@@ -162,6 +263,29 @@ fn validateManifest(manifest: Manifest) !void {
             return error.InvalidJavaPath;
         }
     }
+}
+
+fn validateInstallation(installation: Installation) !void {
+    if (installation.schema_version != installation_schema_version) {
+        return error.UnsupportedInstallationSchema;
+    }
+    if (installation.version_id.len == 0 or installation.version_id.len > 256) {
+        return error.InvalidVersionId;
+    }
+    const loader_count: u8 = @as(u8, @intFromBool(installation.fabric_loader != null)) +
+        @intFromBool(installation.neoforge_version != null) +
+        @intFromBool(installation.forge_version != null);
+    if (loader_count > 1) return error.LoaderConflict;
+    if (installation.server_size == 0) return error.InvalidServerSize;
+    if (installation.server_sha1.len != 40) return error.InvalidServerSha1;
+    for (installation.server_sha1) |byte| {
+        if (!std.ascii.isHex(byte)) return error.InvalidServerSha1;
+    }
+}
+
+fn optionalEql(left: ?[]const u8, right: ?[]const u8) bool {
+    if (left == null or right == null) return left == null and right == null;
+    return std.mem.eql(u8, left.?, right.?);
 }
 
 fn isLowerAlphaNumeric(byte: u8) bool {
@@ -240,4 +364,62 @@ test "rejects conflicting loaders and invalid Java overrides" {
         .version_id = "1.21.4",
         .java_path = "",
     }));
+}
+
+test "installation marker matches only the completed server identity" {
+    const io = std.testing.io;
+    var temporary = std.testing.tmpDir(.{});
+    defer temporary.cleanup();
+    const manifest: Manifest = .{
+        .id = "vanilla",
+        .name = "Vanilla",
+        .version_id = "1.21.4",
+        .source = .official,
+        .accept_eula = true,
+    };
+    const server_file = try temporary.dir.createFile(io, "server.jar", .{});
+    try server_file.writeStreamingAll(io, "jar");
+    server_file.close(io);
+    try std.testing.expect(!try isInstalled(
+        std.testing.allocator,
+        io,
+        temporary.dir,
+        manifest,
+    ));
+    try recordCompletedInstallation(
+        io,
+        temporary.dir,
+        manifest,
+        "1111111111111111111111111111111111111111",
+        3,
+    );
+    try std.testing.expect(try isInstalled(
+        std.testing.allocator,
+        io,
+        temporary.dir,
+        manifest,
+    ));
+    var changed = manifest;
+    changed.version_id = "1.21.5";
+    try std.testing.expect(!try isInstalled(
+        std.testing.allocator,
+        io,
+        temporary.dir,
+        changed,
+    ));
+    changed = manifest;
+    changed.source = .bmclapi;
+    try std.testing.expect(!try isInstalled(
+        std.testing.allocator,
+        io,
+        temporary.dir,
+        changed,
+    ));
+    try temporary.dir.deleteFile(io, "server.jar");
+    try std.testing.expect(!try isInstalled(
+        std.testing.allocator,
+        io,
+        temporary.dir,
+        manifest,
+    ));
 }
