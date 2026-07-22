@@ -414,15 +414,27 @@ After planning succeeds, the request emits a `started` event:
 {"protocol":1,"id":"install-1","event":"started","source":"bmclapi","started":{"stage":"download","version_id":"1.21.11","files_total":5000,"bytes_total":600000000}}
 ```
 
-It then emits `file`, `retry`, and aggregate `progress` events. Exactly one
-terminal `result` or `error` event follows.
+It then emits `file`, `retry`, and aggregate `progress` events. While a
+response body is streaming, `progress` is emitted after at least 256 KiB of
+additional input and no more often than once per 100 ms across all workers.
+Exactly one terminal `result` or `error` event follows.
 
 ```json
 {"protocol":1,"id":"install-1","event":"file","source":"bmclapi","file":{"path":"libraries/example.jar","status":"downloaded","placement":"hard_link","size":1234,"attempts":1}}
 {"protocol":1,"id":"install-1","event":"retry","source":"bmclapi","retry":{"path":"assets/objects/ab/abcdef","attempt":1,"max_attempts":3,"error":"UnsuccessfulHttpStatus"}}
-{"protocol":1,"id":"install-1","event":"progress","source":"bmclapi","progress":{"files_completed":100,"files_total":5000,"bytes_verified":12000000,"bytes_total":600000000,"bytes_transferred":8000000}}
+{"protocol":1,"id":"install-1","event":"progress","source":"bmclapi","progress":{"files_completed":100,"files_total":5000,"bytes_verified":12000000,"bytes_processed":12862144,"bytes_total":600000000,"bytes_transferred":8000000}}
 {"protocol":1,"id":"install-1","event":"result","source":"bmclapi","result":{"stage":"download","version_id":"1.21.11","files_total":5000,"files_downloaded":4500,"files_cached":500,"files_hard_linked":4990,"files_copied":10,"bytes_verified":600000000,"bytes_transferred":550000000}}
 ```
+
+`bytes_processed` is the smooth overall-progress numerator: the sum of the
+greatest byte count observed for each file across all retry attempts. It is
+monotonic, never exceeds `bytes_total`, advances while large downloads are in
+flight, and jumps for cache hits when their verification completes. Use
+`bytes_processed / bytes_total` for the primary progress bar.
+`bytes_verified` counts only fully verified/materialized files, while
+`bytes_transferred` counts bytes in successfully completed network downloads.
+The byte-level events also apply to content and modpack installs because they
+share the verified installer pipeline.
 
 Only after every planned file and loader processor succeeds,
 `install.execute` atomically records `.jmcl/install.json`. Instance

@@ -58,9 +58,17 @@ Events:
 {"protocol":1,"id":"i-1","event":"started","source":"official","started":{"stage":"download","version_id":"1.21.4","files_total":320,"bytes_total":52428800}}
 {"protocol":1,"id":"i-1","event":"file","source":"official","file":{"path":"mods/sodium.jar","status":"downloaded","placement":"hard_link","size":1306799,"attempts":1}}
 {"protocol":1,"id":"i-1","event":"retry","source":"official","retry":{"path":"assets/objects/ab/abcd","attempt":1,"max_attempts":3,"error":"UnsuccessfulHttpStatus"}}
-{"protocol":1,"id":"i-1","event":"progress","source":"official","progress":{"files_completed":12,"files_total":320,"bytes_verified":4194304,"bytes_total":52428800,"bytes_transferred":2097152}}
+{"protocol":1,"id":"i-1","event":"progress","source":"official","progress":{"files_completed":12,"files_total":320,"bytes_verified":4194304,"bytes_processed":4456448,"bytes_total":52428800,"bytes_transferred":2097152}}
 {"protocol":1,"id":"i-1","event":"processor_started","source":"official","processor_started":{"stage":"processor","index":2,"total":4,"name":"net.neoforged:installertools:2.1.3"}}
 ```
+
+For the main progress bar use `bytes_processed / bytes_total`.
+`bytes_processed` advances during response streaming (256 KiB byte threshold,
+globally throttled to at most one event per 100 ms), is monotonic across
+parallel workers and retries, and never exceeds `bytes_total`.
+`bytes_verified` advances only after full hash verification and
+materialization; `bytes_transferred` counts successful network downloads.
+Cache hits jump `bytes_processed` when verification completes.
 
 - `launch.execute` additionally emits `started` (with `pid` + redacted argv),
   `stdout`/`stderr` (`{"sequence":N,"encoding":"base64","end":"newline|more","data":"…"}`),

@@ -6,6 +6,9 @@ const install_plan = @import("plan.zig");
 
 const Sha1 = std.crypto.hash.Sha1;
 
+pub const progress_byte_interval: u64 = 256 * 1024;
+pub const progress_time_interval_ms: i64 = 100;
+
 pub const Options = struct {
     workers: u8 = 8,
     retries: u8 = 2,
@@ -36,6 +39,7 @@ pub const Progress = struct {
     files_completed: usize,
     files_total: usize,
     bytes_verified: u64,
+    bytes_processed: u64,
     bytes_total: u64,
     bytes_transferred: u64,
 };
@@ -70,17 +74,38 @@ const SinkFailure = enum {
     downstream,
 };
 
+const ByteProgressReporter = struct {
+    context: *anyopaque,
+    callback: *const fn (context: *anyopaque, received: u64) void,
+    received: u64 = 0,
+    last_reported: u64 = 0,
+
+    fn add(reporter: *ByteProgressReporter, count: usize) void {
+        reporter.received += count;
+        if (reporter.received - reporter.last_reported < progress_byte_interval) return;
+        reporter.last_reported = reporter.received;
+        reporter.callback(reporter.context, reporter.received);
+    }
+};
+
 const LimitedWriter = struct {
     out: *std.Io.Writer,
     remaining: usize,
+    progress: *ByteProgressReporter,
     failure: ?SinkFailure = null,
     interface: std.Io.Writer,
 
-    fn init(out: *std.Io.Writer, backing: []u8, max_bytes: usize) LimitedWriter {
+    fn init(
+        out: *std.Io.Writer,
+        backing: []u8,
+        max_bytes: usize,
+        progress: *ByteProgressReporter,
+    ) LimitedWriter {
         std.debug.assert(backing.len != 0);
         return .{
             .out = out,
             .remaining = max_bytes,
+            .progress = progress,
             .interface = .{
                 .vtable = &.{ .drain = drain },
                 .buffer = backing[0..@min(backing.len, max_bytes +| 1)],
@@ -113,6 +138,7 @@ const LimitedWriter = struct {
             };
             consumeBuffered(io_writer, written);
             self.remaining -= written;
+            self.progress.add(written);
             if (written < allowed) return 0;
             if (io_writer.end != 0) {
                 self.failure = .too_long;
@@ -139,6 +165,7 @@ const LimitedWriter = struct {
             return error.WriteFailed;
         };
         self.remaining -= written;
+        self.progress.add(written);
         if (written == allowed and allowed < bytes.len) {
             self.failure = .too_long;
             return error.WriteFailed;
@@ -149,10 +176,13 @@ const LimitedWriter = struct {
 
 const Shared = struct {
     mutex: std.Io.Mutex = .init,
+    progress_mutex: std.Io.Mutex = .init,
     next_index: usize = 0,
     failure: ?anyerror = null,
     summary: Summary,
     progress: Progress,
+    file_progress: []u64,
+    last_stream_report: ?std.Io.Timestamp = null,
     allocator: std.mem.Allocator,
     io: std.Io,
     root: std.Io.Dir,
@@ -176,14 +206,44 @@ const Shared = struct {
         if (shared.failure == null) shared.failure = failure;
     }
 
+    fn reportBytes(shared: *Shared, index: usize, received: u64) void {
+        shared.progress_mutex.lockUncancelable(shared.io);
+        defer shared.progress_mutex.unlock(shared.io);
+        shared.mutex.lockUncancelable(shared.io);
+        const advanced = advanceFileProgress(
+            &shared.file_progress[index],
+            &shared.progress.bytes_processed,
+            received,
+        );
+        const progress = shared.progress;
+        shared.mutex.unlock(shared.io);
+        if (!advanced) return;
+
+        const now = std.Io.Clock.awake.now(shared.io);
+        if (shared.last_stream_report) |last| {
+            if (last.durationTo(now).nanoseconds <
+                @as(i96, progress_time_interval_ms) * std.time.ns_per_ms) return;
+        }
+        shared.last_stream_report = now;
+        Reporter.emit(shared.reporter, .{ .progress = progress });
+    }
+
     fn complete(
         shared: *Shared,
+        index: usize,
         file: install_plan.File,
         status: FileStatus,
         placement: artifact_store.Placement,
         attempts: u8,
     ) void {
+        shared.progress_mutex.lockUncancelable(shared.io);
+        defer shared.progress_mutex.unlock(shared.io);
         shared.mutex.lockUncancelable(shared.io);
+        _ = advanceFileProgress(
+            &shared.file_progress[index],
+            &shared.progress.bytes_processed,
+            file.size,
+        );
         if (status == .cached) {
             shared.summary.files_cached += 1;
         } else {
@@ -201,6 +261,7 @@ const Shared = struct {
         const progress = shared.progress;
         shared.mutex.unlock(shared.io);
 
+        shared.last_stream_report = std.Io.Clock.awake.now(shared.io);
         Reporter.emit(shared.reporter, .{ .file = .{
             .path = file.path,
             .status = status,
@@ -211,6 +272,13 @@ const Shared = struct {
         Reporter.emit(shared.reporter, .{ .progress = progress });
     }
 };
+
+fn advanceFileProgress(current: *u64, aggregate: *u64, observed: u64) bool {
+    if (observed <= current.*) return false;
+    aggregate.* += observed - current.*;
+    current.* = observed;
+    return true;
+}
 
 pub fn openRoot(io: std.Io, path: []const u8) !std.Io.Dir {
     if (path.len == 0) return error.EmptyInstallRoot;
@@ -239,6 +307,10 @@ pub fn execute(
         .bytes_transferred = 0,
     };
 
+    const file_progress = try allocator.alloc(u64, plan.files.len);
+    defer allocator.free(file_progress);
+    @memset(file_progress, 0);
+
     var shared: Shared = .{
         .summary = .{
             .files_total = plan.files.len,
@@ -253,9 +325,11 @@ pub fn execute(
             .files_completed = 0,
             .files_total = plan.files.len,
             .bytes_verified = 0,
+            .bytes_processed = 0,
             .bytes_total = plan.total_download_size,
             .bytes_transferred = 0,
         },
+        .file_progress = file_progress,
         .allocator = allocator,
         .io = io,
         .root = root,
@@ -286,6 +360,16 @@ pub fn execute(
     if (shared.failure) |failure| return failure;
     return shared.summary;
 }
+
+const DownloadProgressContext = struct {
+    shared: *Shared,
+    index: usize,
+
+    fn callback(raw_context: *anyopaque, received: u64) void {
+        const context: *DownloadProgressContext = @ptrCast(@alignCast(raw_context));
+        context.shared.reportBytes(context.index, received);
+    }
+};
 
 fn worker(shared: *Shared) void {
     var proxy_arena = std.heap.ArenaAllocator.init(shared.allocator);
@@ -354,7 +438,23 @@ fn worker(shared: *Shared) void {
                         file.fallback_url.?
                     else
                         file.url;
-                    downloadOnce(&client, shared.store, object_path, file, url, shared.options.sync_files) catch |err| {
+                    var progress_context: DownloadProgressContext = .{
+                        .shared = shared,
+                        .index = index,
+                    };
+                    var byte_reporter: ByteProgressReporter = .{
+                        .context = &progress_context,
+                        .callback = DownloadProgressContext.callback,
+                    };
+                    downloadOnce(
+                        &client,
+                        shared.store,
+                        object_path,
+                        file,
+                        url,
+                        shared.options.sync_files,
+                        &byte_reporter,
+                    ) catch |err| {
                         if (attempt + 1 < max_attempts) {
                             Reporter.emit(shared.reporter, .{ .retry = .{
                                 .path = file.path,
@@ -394,7 +494,7 @@ fn worker(shared: *Shared) void {
             shared.fail(err);
             break;
         };
-        shared.complete(file, if (downloaded) .downloaded else .cached, placement, attempts);
+        shared.complete(index, file, if (downloaded) .downloaded else .cached, placement, attempts);
     }
 }
 
@@ -405,6 +505,7 @@ fn downloadOnce(
     expected: install_plan.File,
     url: []const u8,
     sync_file: bool,
+    progress: *ByteProgressReporter,
 ) !void {
     var atomic_file = try root.createFileAtomic(client.io, destination_path, .{
         .make_path = true,
@@ -421,7 +522,7 @@ fn downloadOnce(
     );
     var limit_buffer: [64 * 1024]u8 = undefined;
     const maximum = std.math.cast(usize, expected.size) orelse return error.FileTooLarge;
-    var limited = LimitedWriter.init(&hashed.writer, &limit_buffer, maximum);
+    var limited = LimitedWriter.init(&hashed.writer, &limit_buffer, maximum, progress);
 
     const status: std.http.Status = blk: {
         const result = client.fetch(.{
@@ -535,6 +636,7 @@ const TestHttpServer = struct {
     io: std.Io,
     server: *std.Io.net.Server,
     failed: std.atomic.Value(bool) = .init(false),
+    body: []const u8 = "abc",
 
     fn serveOnce(context: *TestHttpServer) void {
         var stream = context.server.accept(context.io) catch {
@@ -552,7 +654,7 @@ const TestHttpServer = struct {
             context.failed.store(true, .release);
             return;
         };
-        request.respond("abc", .{ .keep_alive = false }) catch {
+        request.respond(context.body, .{ .keep_alive = false }) catch {
             context.failed.store(true, .release);
         };
     }
@@ -642,4 +744,141 @@ test "streams a download through hash verification and atomic publication" {
     try std.testing.expectEqual(object_stat.inode, first_stat.inode);
     try std.testing.expectEqual(object_stat.inode, second_stat.inode);
     try std.testing.expect(object_stat.nlink >= 3);
+}
+
+test "emits byte-level progress before a large file completes" {
+    const io = std.testing.io;
+    const allocator = std.testing.allocator;
+    const body_size: usize = @intCast(progress_byte_interval * 2 + 1234);
+    const body = try allocator.alloc(u8, body_size);
+    defer allocator.free(body);
+    @memset(body, 'x');
+    var digest: [Sha1.digest_length]u8 = undefined;
+    Sha1.hash(body, &digest, .{});
+    const sha1 = std.fmt.bytesToHex(digest, .lower);
+
+    var address = try std.Io.net.IpAddress.parse("127.0.0.1", 0);
+    var server = try address.listen(io, .{ .reuse_address = true });
+    defer server.deinit(io);
+    var server_context: TestHttpServer = .{
+        .io = io,
+        .server = &server,
+        .body = body,
+    };
+    const server_thread = try std.Thread.spawn(.{}, TestHttpServer.serveOnce, .{&server_context});
+    const url = try std.fmt.allocPrint(
+        allocator,
+        "http://127.0.0.1:{d}/file",
+        .{server.socket.address.getPort()},
+    );
+    defer allocator.free(url);
+
+    var temporary = std.testing.tmpDir(.{});
+    defer temporary.cleanup();
+    try temporary.dir.createDir(io, "instance", .default_dir);
+    try temporary.dir.createDir(io, "store", .default_dir);
+    const instance = try temporary.dir.openDir(io, "instance", .{});
+    defer instance.close(io);
+    const store = try temporary.dir.openDir(io, "store", .{});
+    defer store.close(io);
+    const files = [_]install_plan.File{.{
+        .path = "libraries/example/large.jar",
+        .url = url,
+        .fallback_url = null,
+        .sha1 = &sha1,
+        .size = body.len,
+        .usage = .{ .library = true },
+    }};
+    const plan: install_plan.Data = .{
+        .version_id = "test",
+        .source = .official,
+        .target = .{ .os = .linux, .arch = .x86_64 },
+        .files = &files,
+        .classpath = &.{},
+        .native_extractions = &.{},
+        .asset_projections = &.{},
+        .total_download_size = body.len,
+    };
+    const Collector = struct {
+        previous: u64 = 0,
+        monotonic: bool = true,
+        saw_streaming: bool = false,
+        saw_complete: bool = false,
+
+        fn callback(raw_context: *anyopaque, event: Event) void {
+            const collector: *@This() = @ptrCast(@alignCast(raw_context));
+            switch (event) {
+                .progress => |progress| {
+                    if (progress.bytes_processed < collector.previous) collector.monotonic = false;
+                    collector.previous = progress.bytes_processed;
+                    if (progress.files_completed == 0 and
+                        progress.bytes_processed >= progress_byte_interval and
+                        progress.bytes_processed < progress.bytes_total)
+                    {
+                        collector.saw_streaming = true;
+                    }
+                    if (progress.files_completed == 1 and
+                        progress.bytes_processed == progress.bytes_total)
+                    {
+                        collector.saw_complete = true;
+                    }
+                },
+                else => {},
+            }
+        }
+    };
+    var collector: Collector = .{};
+    const summary = try execute(
+        allocator,
+        io,
+        null,
+        instance,
+        store,
+        plan,
+        .{ .workers = 1, .retries = 0 },
+        .{ .context = &collector, .callback = Collector.callback },
+    );
+    server_thread.join();
+
+    try std.testing.expect(!server_context.failed.load(.acquire));
+    try std.testing.expectEqual(@as(usize, 1), summary.files_downloaded);
+    try std.testing.expect(collector.monotonic);
+    try std.testing.expect(collector.saw_streaming);
+    try std.testing.expect(collector.saw_complete);
+}
+
+test "byte reporter and retry progress are thresholded and monotonic" {
+    const Collector = struct {
+        reports: [4]u64 = undefined,
+        len: usize = 0,
+
+        fn callback(raw_context: *anyopaque, received: u64) void {
+            const collector: *@This() = @ptrCast(@alignCast(raw_context));
+            collector.reports[collector.len] = received;
+            collector.len += 1;
+        }
+    };
+
+    var collector: Collector = .{};
+    var reporter: ByteProgressReporter = .{
+        .context = &collector,
+        .callback = Collector.callback,
+    };
+    reporter.add(@intCast(progress_byte_interval - 1));
+    try std.testing.expectEqual(@as(usize, 0), collector.len);
+    reporter.add(1);
+    reporter.add(@intCast(progress_byte_interval / 2));
+    try std.testing.expectEqual(@as(usize, 1), collector.len);
+    reporter.add(@intCast(progress_byte_interval / 2));
+    try std.testing.expectEqual(@as(usize, 2), collector.len);
+    try std.testing.expectEqual(progress_byte_interval, collector.reports[0]);
+    try std.testing.expectEqual(progress_byte_interval * 2, collector.reports[1]);
+
+    var current: u64 = 0;
+    var aggregate: u64 = 0;
+    try std.testing.expect(advanceFileProgress(&current, &aggregate, 700_000));
+    try std.testing.expect(!advanceFileProgress(&current, &aggregate, 300_000));
+    try std.testing.expectEqual(@as(u64, 700_000), aggregate);
+    try std.testing.expect(advanceFileProgress(&current, &aggregate, 900_000));
+    try std.testing.expectEqual(@as(u64, 900_000), aggregate);
 }

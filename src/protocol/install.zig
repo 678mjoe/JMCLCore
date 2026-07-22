@@ -555,6 +555,28 @@ test "processor progress event preserves CLI fields" {
     );
 }
 
+test "download progress exposes byte-level processed progress" {
+    var output: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer output.deinit();
+    try writeInstallProgressEvent(
+        &output.writer,
+        "install-1",
+        .official,
+        .{ .progress = .{
+            .files_completed = 2,
+            .files_total = 10,
+            .bytes_verified = 1_000,
+            .bytes_processed = 1_262_144,
+            .bytes_total = 5_000_000,
+            .bytes_transferred = 1_000,
+        } },
+    );
+    try std.testing.expectEqualStrings(
+        "{\"protocol\":1,\"id\":\"install-1\",\"event\":\"progress\",\"source\":\"official\",\"progress\":{\"files_completed\":2,\"files_total\":10,\"bytes_verified\":1000,\"bytes_processed\":1262144,\"bytes_total\":5000000,\"bytes_transferred\":1000}}\n",
+        output.written(),
+    );
+}
+
 fn writeInstallPlanningError(
     writer: *std.Io.Writer,
     request_id: []const u8,
