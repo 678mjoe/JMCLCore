@@ -264,7 +264,7 @@ fn validateInstallation(installation: Installation) !void {
             if (value.len == 0 or value.len > 256) return error.InvalidLoaderVersion;
         }
     }
-    const loader_count: u8 = @intFromBool(installation.fabric_loader != null) +
+    const loader_count: u8 = @as(u8, @intFromBool(installation.fabric_loader != null)) +
         @intFromBool(installation.neoforge_version != null) +
         @intFromBool(installation.forge_version != null);
     if (loader_count > 1) return error.LoaderConflict;

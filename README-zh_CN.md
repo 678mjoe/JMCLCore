@@ -87,6 +87,7 @@ RPC 模式从标准输入逐行读取 JSON 请求，并将 JSON 事件逐行写�
 Java 选择见 `docs/java.md`。
 启动参数生成见 `docs/launch.md`。
 实例管理见 `docs/instances.md`。
+Linux 优先的服务器管理功能见 `docs/server.md`。
 共享制品存储见 `docs/artifact-store.md`。
 基于内容寻址的硬链接存储架构见 `docs/content-addressed-storage.md`。
 Fabric Loader 支持见 `docs/fabric.md`。

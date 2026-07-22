@@ -201,6 +201,26 @@ marker was introduced—or loader instances recorded by affected older
 builds—can be reinstalled idempotently; verified artifact-store objects and
 hard-link materialization avoid duplicate downloads and storage.
 
+## Server Instance Management
+
+`server.create`, `server.list`, `server.get`, and `server.delete` manage
+server instances under a separate servers root (`directory`). Every
+`server.*` method returns `UNSUPPORTED_PLATFORM` when the core is not running
+on Linux. `server.create` resolves the requested Minecraft version and at
+most one loader field online before atomically writing
+`servers/<id>/server.json`:
+
+```json
+{"protocol":1,"id":"sc-1","method":"server.create","params":{"directory":"/path/to/servers","id":"vanilla-1-21-4","name":"Vanilla 1.21.4","version_id":"1.21.4","accept_eula":true,"java_path":"/usr/bin/java"}}
+```
+
+Manifest results contain `id`, `name`, `version_id`, `fabric_loader`,
+`neoforge_version`, `forge_version`, `source`, `accept_eula`, and
+`java_path`. Lists are sorted by id. `server.get` and `server.delete` return
+`SERVER_NOT_FOUND` when absent; create returns `SERVER_EXISTS` when the id is
+taken. Phase 1 stores identity only: server installation, `eula.txt`,
+properties, and process lifecycle are not created by these methods.
+
 ## Modpack Installation
 
 `modpack.install` creates a new instance from a Modrinth `.mrpack` or

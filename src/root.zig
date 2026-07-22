@@ -29,6 +29,7 @@ pub const launch_plan = @import("launch/plan.zig");
 pub const game_process = @import("launch/process.zig");
 pub const launch_executor = @import("launch/executor.zig");
 pub const instance_store = @import("instance_store.zig");
+pub const server_store = @import("server/server_store.zig");
 pub const artifact_store = @import("install/artifact_store.zig");
 pub const hard_link = @import("install/hard_link.zig");
 pub const version_manifest = @import("install/version_manifest.zig");
@@ -63,6 +64,7 @@ test {
     _ = game_process;
     _ = launch_executor;
     _ = instance_store;
+    _ = server_store;
     _ = artifact_store;
     _ = hard_link;
     _ = version_manifest;

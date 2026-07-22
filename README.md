@@ -115,6 +115,7 @@ Runtime preparation is documented in `docs/preparer.md`.
 Java selection is documented in `docs/java.md`.
 Launch argument generation is documented in `docs/launch.md`.
 Instance management is documented in `docs/instances.md`.
+Linux-first server management is documented in `docs/server.md`.
 Shared artifact storage is documented in `docs/artifact-store.md`.
 The content-addressed hard-link storage architecture is documented in
 `docs/content-addressed-storage.md`.

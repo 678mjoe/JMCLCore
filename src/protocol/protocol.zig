@@ -7,6 +7,7 @@ const java = @import("java.zig");
 const launch = @import("launch.zig");
 const content = @import("content.zig");
 const instance = @import("instance.zig");
+const server = @import("server.zig");
 const modpack = @import("modpack.zig");
 const store = @import("store.zig");
 const version = @import("version.zig");
@@ -155,6 +156,14 @@ pub fn handleLine(
         try instance.writeGetResult(service, writer, request.id, request.params);
     } else if (std.mem.eql(u8, request.method, "instance.delete")) {
         try instance.writeDeleteResult(service, writer, request.id, request.params);
+    } else if (std.mem.eql(u8, request.method, "server.create")) {
+        try server.writeCreateResult(service, writer, request.id, request.params);
+    } else if (std.mem.eql(u8, request.method, "server.list")) {
+        try server.writeListResult(service, writer, request.id, request.params);
+    } else if (std.mem.eql(u8, request.method, "server.get")) {
+        try server.writeGetResult(service, writer, request.id, request.params);
+    } else if (std.mem.eql(u8, request.method, "server.delete")) {
+        try server.writeDeleteResult(service, writer, request.id, request.params);
     } else if (std.mem.eql(u8, request.method, "java.detect")) {
         try java.writeDetectResult(service, writer, request.id, request.params);
     } else if (std.mem.eql(u8, request.method, "java.select")) {
@@ -507,11 +516,35 @@ test "account registry validation never stores or echoes credentials" {
     try std.testing.expect(std.mem.indexOf(u8, output.written(), "must-not-persist") == null);
 }
 
+test "server methods reject non-Linux hosts" {
+    if (@import("builtin").os.tag == .linux) return error.SkipZigTest;
+    const methods = [_][]const u8{
+        "server.create",
+        "server.list",
+        "server.get",
+        "server.delete",
+    };
+    for (methods) |method| {
+        var output: std.Io.Writer.Allocating = .init(std.testing.allocator);
+        defer output.deinit();
+        var service = core.Service.init(std.testing.allocator, std.testing.io, null);
+        const request = try std.fmt.allocPrint(
+            std.testing.allocator,
+            "{{\"protocol\":1,\"id\":\"server-gate\",\"method\":\"{s}\"}}",
+            .{method},
+        );
+        defer std.testing.allocator.free(request);
+        try handleLine(&service, request, &output.writer);
+        try std.testing.expect(std.mem.indexOf(u8, output.written(), "UNSUPPORTED_PLATFORM") != null);
+    }
+}
+
 test {
     _ = auth;
     _ = content;
     _ = install;
     _ = instance;
+    _ = server;
     _ = java;
     _ = launch;
     _ = modpack;

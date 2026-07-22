@@ -1,9 +1,10 @@
-# Server Management (Roadmap)
+# Server Management
 
-Status: design agreed, not yet implemented. Target: multi-instance Minecraft
-**server** management by JMCL Core, **Linux first** — other platforms are
-explicitly deferred and return `UNSUPPORTED_PLATFORM`. The GUI talks to a
-server-side `jmcl-core` over SSH.
+Status: Phase 1 server instance storage and RPC CRUD are implemented. Phases
+2–6 remain the roadmap. Multi-instance Minecraft server management is
+**Linux first**—other platforms are explicitly deferred and every `server.*`
+method returns `UNSUPPORTED_PLATFORM`. The GUI talks to a server-side
+`jmcl-core` over SSH.
 
 ## Transport And Process Model
 
@@ -45,13 +46,12 @@ connection dies, its process group dies. Therefore:
 Server instances are separate from client instances:
 
 ```text
-servers/<id>/server.json        identity: id, name, version_id, loader,
-                                eula acceptance, optional java override
-servers/<id>/server.jar         hard link into the artifact store
-servers/<id>/eula.txt
-servers/<id>/server.properties
-servers/<id>/world/ logs/ mods/ config/
-```
+servers/<id>/server.json        identity: id, name, version_id, loader fields,
+                                source, accept_eula, optional java_path
+servers/<id>/server.jar         hard link into the artifact store (Phase 2)
+servers/<id>/eula.txt           Phase 2
+servers/<id>/server.properties Phase 2
+servers/<id>/world/ logs/ mods/ config/   later phases
 
 Mojang requires explicit EULA acceptance: install operations require
 `"accept_eula": true` and record it; without it they fail with
@@ -59,7 +59,7 @@ Mojang requires explicit EULA acceptance: install operations require
 
 ## Phases
 
-### Phase 1 — Server instance store
+### Phase 1 — Server instance store (implemented)
 
 - `src/server/server_store.zig`: manifest CRUD with the same discipline as
   `instance_store.zig` (schema version, atomic writes, id validation).

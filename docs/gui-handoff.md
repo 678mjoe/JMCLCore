@@ -166,6 +166,21 @@ links.
 no Windows reserved stems. At most one loader field (`fabric_loader`,
 `neoforge_version`, `forge_version`).
 
+Server instances use a separate root and are Linux-only. A remote GUI starts
+`ssh user@host jmcl-core rpc` and uses the same JSON Lines protocol. Every
+`server.*` call returns `UNSUPPORTED_PLATFORM` when the core is not running
+on Linux:
+
+| Method | Required params | Optional params | Notes |
+|---|---|---|---|
+| `server.create` | `directory`, `id`, `version_id` | `name`, one loader field, `source`, `accept_eula` (default false), `java_path` | resolves version+loader online; writes `servers/<id>/server.json`; `SERVER_EXISTS` if taken |
+| `server.list` | `directory` | — | `{servers[]}` sorted by id |
+| `server.get` | `directory`, `id` | — | one server manifest; `SERVER_NOT_FOUND` |
+| `server.delete` | `directory`, `id` | — | removes the whole server instance directory |
+
+Phase 1 records server identity only. Installation, properties, and process
+lifecycle methods are not yet available.
+
 Content methods exist for three kinds with identical shapes:
 `mods.*`, `resourcepacks.*`, `shaderpacks.*`.
 
