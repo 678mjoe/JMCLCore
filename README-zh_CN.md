@@ -2,7 +2,7 @@
 
 [English](README.md) | 简体中文
 
-JMCL Core 是一个使用 Zig 编写的 Minecraft: Java Edition 启动器核心。它被设计为通过带版本号的命令行协议，由独立的图形界面进行驱动。
+JMCL Core 是一个使用 Zig 编写的 Minecraft: Java Edition 启动器核心。它被设计为由独立的图形界面通过基于标准输入和标准输出的版本化 JSON Lines RPC 协议进行驱动。
 
 项目目前提供协议和 CLI 基础、Mojang 元数据解析、完整的静态安装、基于内容寻址的硬链接存储、并发且经过校验的下载、安全的原生库解压、旧版资源映射、Java 运行时选择、启动规划，以及受监督的游戏进程执行。项目还提供可配置的 Microsoft 身份验证和不保存凭据的公开账户注册表；多版本 Java 的下载与管理计划在未来实现。
 
