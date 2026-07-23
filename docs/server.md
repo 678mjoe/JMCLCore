@@ -72,7 +72,6 @@ Mojang requires explicit EULA acceptance: install operations require
 - RPC `server.create | server.list | server.get | server.delete`.
 - Platform gate: every `server.*` method returns `UNSUPPORTED_PLATFORM`
   off Linux.
-- E2E: create/list/get/delete round-trip.
 
 ### Phase 2 — Vanilla installation and configuration (implemented)
 
@@ -95,8 +94,6 @@ Mojang requires explicit EULA acceptance: install operations require
   reusing the verified cached jar.
 - Phase 2 is vanilla-only. Loader-bearing manifests return
   `SERVER_LOADER_UNSUPPORTED` until Phase 4.
-- Linux ARM64 E2E verified create → download Minecraft 1.21.4 → properties
-  get/set → installed status → idempotent cache-hit reinstall.
 
 ### Phase 3 — Process lifecycle (implemented)
 
@@ -124,9 +121,6 @@ Mojang requires explicit EULA acceptance: install operations require
   refuse a running server, preventing replacement or removal beneath a live
   Java process. The log pipes and console FIFO are OS channels; no RPC process
   owns or keeps an in-memory handle to a running server.
-- Linux ARM64 container E2E verified RPC start → independent RPC exit →
-  status → command → cursor-based logs → restart → graceful stop, plus a
-  stubborn process that required SIGTERM/SIGKILL escalation.
 
 ### Phase 4 — Modded servers
 
@@ -136,12 +130,10 @@ Mojang requires explicit EULA acceptance: install operations require
   processor-chain executors; layout `libraries/`, `run.sh`,
   `user_jvm_args.txt`.
 - Legacy Forge (1.7.10–1.12.2) server support evaluated separately.
-- E2E: Fabric server with one mod (via `mods.install` pointed at the
-  server directory) boots to `Done`.
 
 ### Phase 5 — Server content management
 
-- Document and E2E the content-ops-on-server-directory pattern
+- Apply and document the content-ops-on-server-directory pattern
   (`mods.list/install/set-version/enable/disable/remove/adopt` with
   `directory` = server instance root).
 - Optional: `datapack` as a fourth content kind (`world/datapacks/*.zip`).
