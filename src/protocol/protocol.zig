@@ -166,6 +166,18 @@ pub fn handleLine(
         try server.writeDeleteResult(service, writer, request.id, request.params);
     } else if (std.mem.eql(u8, request.method, "server.install")) {
         try server.writeInstallResult(service, writer, request.id, request.params);
+    } else if (std.mem.eql(u8, request.method, "server.start")) {
+        try server.writeStartResult(service, writer, request.id, request.params);
+    } else if (std.mem.eql(u8, request.method, "server.stop")) {
+        try server.writeStopResult(service, writer, request.id, request.params);
+    } else if (std.mem.eql(u8, request.method, "server.restart")) {
+        try server.writeRestartResult(service, writer, request.id, request.params);
+    } else if (std.mem.eql(u8, request.method, "server.status")) {
+        try server.writeStatusResult(service, writer, request.id, request.params);
+    } else if (std.mem.eql(u8, request.method, "server.logs")) {
+        try server.writeLogsResult(service, writer, request.id, request.params);
+    } else if (std.mem.eql(u8, request.method, "server.command")) {
+        try server.writeCommandResult(service, writer, request.id, request.params);
     } else if (std.mem.eql(u8, request.method, "server.properties.get")) {
         try server.writePropertiesGetResult(service, writer, request.id, request.params);
     } else if (std.mem.eql(u8, request.method, "server.properties.set")) {
@@ -530,6 +542,12 @@ test "server methods reject non-Linux hosts" {
         "server.get",
         "server.delete",
         "server.install",
+        "server.start",
+        "server.stop",
+        "server.restart",
+        "server.status",
+        "server.logs",
+        "server.command",
         "server.properties.get",
         "server.properties.set",
     };

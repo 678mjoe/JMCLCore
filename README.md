@@ -108,6 +108,12 @@ Mojang's official service is the default. Pass `--source bmclapi`, or use
 `"source":"bmclapi"` in RPC parameters, to use BMCLAPI for users in mainland
 China. BMCLAPI responses are still checked against Mojang-provided SHA-1 values.
 
+Linux server management includes isolated server manifests, verified vanilla
+installation, atomic `server.properties` management, and detached
+start/stop/restart/status/log/command RPCs. A running server is supervised
+outside the SSH/JSON Lines session, with PID-identity verification, a console
+FIFO, bounded log rotation, and graceful-to-SIGKILL stop escalation.
+
 See `docs/mvp.md` and `docs/protocol.md` for the current scope and protocol.
 The install-plan format is documented in `docs/install-plan.md`.
 Download execution is documented in `docs/installer.md`.

@@ -1,7 +1,7 @@
 # Server Management
 
-Status: Phase 1 server instance storage and RPC CRUD plus Phase 2 vanilla
-installation and properties management are implemented. Phases 3–6 remain
+Status: Phases 1–3 are implemented: server instance storage, vanilla
+installation/properties, and detached process lifecycle. Phases 4–6 remain
 the roadmap. Multi-instance Minecraft server management is
 **Linux first**—other platforms are explicitly deferred and every `server.*`
 method returns `UNSUPPORTED_PLATFORM`. The GUI talks to a server-side
@@ -50,10 +50,14 @@ Server instances are separate from client instances:
 servers/<id>/server.json        identity: id, name, version_id, loader fields,
                                 source, accept_eula, optional java_path
 servers/<id>/server.jar         verified hard link into the artifact store
-servers/<id>/.jmcl/install.json completed-install identity and server digest
+servers/<id>/.jmcl/install.json completed-install identity, server digest,
+                                and required Java major version
+servers/<id>/.jmcl/server.pid   validated detached-process state
+servers/<id>/.jmcl/console.fifo bounded single-line console command channel
+servers/<id>/logs/console.log   merged stdout/stderr with bounded rotation
 servers/<id>/eula.txt           recorded EULA acceptance
 servers/<id>/server.properties atomically managed key/value configuration
-servers/<id>/world/ logs/ mods/ config/   later phases
+servers/<id>/world/ mods/ config/   later phases
 
 Mojang requires explicit EULA acceptance: install operations require
 `"accept_eula": true` and record it; without it they fail with
@@ -83,27 +87,46 @@ Mojang requires explicit EULA acceptance: install operations require
   `server.properties.set` merges string-valued keys and atomically rewrites
   the file. Java properties escapes, continuations, Unicode escapes, and
   duplicate-key last-write semantics are supported.
-- Successful installation writes `.jmcl/install.json`. `server.get` and
-  `server.list` report `installed:true` only when its version, loader, source,
-  server file size, and current manifest still match. Missing or malformed
-  state returns `false`.
+- Successful installation writes `.jmcl/install.json`, including the required
+  Java major used by lifecycle start. `server.get` and `server.list` report
+  `installed:true` only when its version, loader, source, server file size,
+  and current manifest still match. Missing, malformed, or pre-Phase-3
+  markers return `false`; one idempotent reinstall upgrades the marker while
+  reusing the verified cached jar.
 - Phase 2 is vanilla-only. Loader-bearing manifests return
   `SERVER_LOADER_UNSUPPORTED` until Phase 4.
 - Linux ARM64 E2E verified create → download Minecraft 1.21.4 → properties
   get/set → installed status → idempotent cache-hit reinstall.
 
-### Phase 3 — Process lifecycle
+### Phase 3 — Process lifecycle (implemented)
 
-- `server.start`: refuse when already running; `setsid` detach; console to
-  `logs/console.log` (append, bounded rotation); stdin FIFO at
-  `.jmcl/console.fifo`; write `.jmcl/server.pid`.
-- `server.stop`: write `stop` to the FIFO, wait a bounded grace period,
-  escalate SIGTERM → SIGKILL; clean pid file.
-- `server.restart`, `server.status` (pid alive + `/proc` cmdline
-  verification, uptime), `server.logs` (tail with offset cursor),
-  `server.command` (write one line to the FIFO).
-- E2E on a Linux host/container: start → status → command → logs →
-  restart → stop; kill -9 resilience (status detects stale pid file).
+- `server.start` requires a matching completed installation, selects the
+  recorded Java major version, refuses a live server, and launches through a
+  short-lived `setsid` bootstrap. A detached supervisor is reparented outside
+  the RPC session and owns the Java child until it exits; disconnecting SSH or
+  ending `jmcl-core rpc` does not stop the server.
+- `.jmcl/server.pid` atomically records the Java PID, supervisor PID, random
+  launch identity, Java path, and wall-clock start time. Status and every
+  mutating lifecycle operation validate both `/proc/<pid>/cmdline` and the
+  random `-Djmcl.server.identity=...` JVM argument before trusting the PID.
+  Missing, malformed, dead, or reused-PID state is treated as stopped and
+  cleaned without signaling an unrelated process.
+- Java stdout and stderr are merged into `logs/console.log`. The supervisor
+  appends across restarts and rotates at 16 MiB, retaining `.1` and `.2`.
+  `server.logs` tails by default or resumes from `cursor` plus `file_id`;
+  replacement, rotation, or an out-of-range cursor resets safely to a tail.
+- Java stdin is connected to `.jmcl/console.fifo`. `server.command` accepts
+  one non-empty UTF-8 line up to 4095 bytes. `server.stop` sends `stop`, waits
+  `grace_ms`, then escalates to SIGTERM and SIGKILL. `server.restart` performs
+  the same bounded stop before launching a newly validated Java process.
+- Lifecycle operations use an advisory per-server file lock so separate SSH
+  RPC processes cannot race. Installation and deletion take the same lock and
+  refuse a running server, preventing replacement or removal beneath a live
+  Java process. The log pipes and console FIFO are OS channels; no RPC process
+  owns or keeps an in-memory handle to a running server.
+- Linux ARM64 container E2E verified RPC start → independent RPC exit →
+  status → command → cursor-based logs → restart → graceful stop, plus a
+  stubborn process that required SIGTERM/SIGKILL escalation.
 
 ### Phase 4 — Modded servers
 

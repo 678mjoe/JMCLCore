@@ -80,6 +80,11 @@ RPC 模式从标准输入逐行读取 JSON 请求，并将 JSON 事件逐行写�
 
 默认使用 Mojang 官方服务。中国大陆用户可以传递 `--source bmclapi`，或在 RPC 参数中使用 `"source":"bmclapi"` 来使用 BMCLAPI。BMCLAPI 返回的内容仍会根据 Mojang 提供的 SHA-1 值进行校验。
 
+Linux 服务器管理现已支持独立服务器清单、经过校验的原版服务端安装、原子化
+`server.properties` 管理，以及分离式启动、停止、重启、状态、日志和命令
+RPC。运行中的服务器由 SSH/JSON Lines 会话之外的监督进程管理，并提供 PID
+身份校验、控制台 FIFO、有限日志轮换以及从优雅停止到 SIGKILL 的升级机制。
+
 当前范围和协议说明请参阅 `docs/mvp.md` 与 `docs/protocol.md`。
 安装计划格式见 `docs/install-plan.md`。
 下载执行流程见 `docs/installer.md`。

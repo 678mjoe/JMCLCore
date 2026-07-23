@@ -176,8 +176,14 @@ on Linux:
 | `server.create` | `directory`, `id`, `version_id` | `name`, one loader field, `source`, `accept_eula` (default false), `java_path` | resolves version+loader online; writes `servers/<id>/server.json`; `SERVER_EXISTS` if taken |
 | `server.list` | `directory` | — | `{servers[]}` sorted by id |
 | `server.get` | `directory`, `id` | — | one server manifest; `SERVER_NOT_FOUND` |
-| `server.delete` | `directory`, `id` | — | removes the whole server instance directory |
-| `server.install` | `directory`, `id`, `accept_eula:true` | `store_directory`, `workers`, `retries`, `java_paths[]` | vanilla only; emits standard download progress; selects a compatible Java runtime; writes `server.jar`, `eula.txt`, defaults, and completion state |
+| `server.delete` | `directory`, `id` | — | removes the whole stopped server instance directory; `SERVER_ALREADY_RUNNING` while live |
+| `server.install` | `directory`, `id`, `accept_eula:true` | `store_directory`, `workers`, `retries`, `java_paths[]` | stopped servers only; vanilla install with progress and compatible Java selection; writes `server.jar`, `eula.txt`, defaults, and completion state |
+| `server.start` | `directory`, `id` | `java_paths[]` | requires a matching completed install; returns detached Java/supervisor PIDs, start time, and selected Java |
+| `server.stop` | `directory`, `id` | `grace_ms` (default 10000, max 120000) | Minecraft `stop`, then bounded SIGTERM/SIGKILL escalation; returns `termination` |
+| `server.restart` | `directory`, `id` | `java_paths[]`, `grace_ms` | bounded stop followed by a fresh detached start |
+| `server.status` | `directory`, `id` | — | returns validated `running`, `stale_state`, PIDs, Java path, start time, and uptime |
+| `server.logs` | `directory`, `id` | `cursor`, `file_id`, `max_bytes` (default 65536, max 1048576) | merged console tail; resume with the preceding `next_cursor` + `file_id`; honor `reset` |
+| `server.command` | `directory`, `id`, one UTF-8 `command` line | — | writes to the console FIFO; returns `accepted:true` and the validated PID |
 | `server.properties.get` | `directory`, `id` | — | returns the full string-valued `properties` object |
 | `server.properties.set` | `directory`, `id`, non-empty `properties` object | — | merges string-valued keys and atomically rewrites the file; returns the full resulting object |
 
@@ -188,6 +194,16 @@ with `SERVER_LOADER_UNSUPPORTED`. It requires explicit `accept_eula:true`;
 the core never accepts Mojang's EULA implicitly. A manifest-level `java_path`
 wins over request `java_paths`. Properties are strings, including numeric and
 boolean-looking values.
+
+Running servers are detached from `jmcl-core rpc`; ending or reconnecting SSH
+must not be treated as a stop. Keep the `next_cursor` and `file_id` from every
+`server.logs` result. If `reset:true`, discard any GUI-side partial stream and
+continue from the returned `start_cursor`; `truncated:true` means the initial
+tail omitted older bytes. `stale_state:true` means the core removed a dead or
+identity-mismatched PID file. Start/restart errors the GUI should surface
+distinctly include `SERVER_NOT_INSTALLED`, `SERVER_ALREADY_RUNNING`,
+`JAVA_NOT_FOUND`, and `JAVA_INCOMPATIBLE`; stop/command while stopped return
+`SERVER_NOT_RUNNING`.
 
 Content methods exist for three kinds with identical shapes:
 `mods.*`, `resourcepacks.*`, `shaderpacks.*`.

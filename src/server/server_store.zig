@@ -5,7 +5,7 @@ pub const schema_version: u32 = 1;
 pub const default_root = "servers";
 const max_manifest_bytes = 64 * 1024;
 const max_servers = 4096;
-pub const installation_schema_version: u32 = 1;
+pub const installation_schema_version: u32 = 2;
 pub const installation_relative_path = ".jmcl/install.json";
 const max_installation_bytes = 16 * 1024;
 
@@ -31,6 +31,7 @@ pub const Installation = struct {
     source: DownloadSource = .official,
     server_sha1: []const u8,
     server_size: u64,
+    java_major_version: u16,
 };
 
 pub const Document = std.json.Parsed(Manifest);
@@ -161,6 +162,7 @@ pub fn recordCompletedInstallation(
     manifest: Manifest,
     server_sha1: []const u8,
     server_size: u64,
+    java_major_version: u16,
 ) !void {
     const installation: Installation = .{
         .version_id = manifest.version_id,
@@ -170,6 +172,7 @@ pub fn recordCompletedInstallation(
         .source = manifest.source,
         .server_sha1 = server_sha1,
         .server_size = server_size,
+        .java_major_version = java_major_version,
     };
     try validateInstallation(installation);
     var atomic_file = try server_dir.createFileAtomic(io, installation_relative_path, .{
@@ -193,24 +196,33 @@ pub fn isInstalled(
     server_dir: std.Io.Dir,
     manifest: Manifest,
 ) !bool {
+    return (try installedJavaMajor(allocator, io, server_dir, manifest)) != null;
+}
+
+pub fn installedJavaMajor(
+    allocator: std.mem.Allocator,
+    io: std.Io,
+    server_dir: std.Io.Dir,
+    manifest: Manifest,
+) !?u16 {
     const bytes = server_dir.readFileAlloc(
         io,
         installation_relative_path,
         allocator,
         .limited(max_installation_bytes + 1),
     ) catch |err| switch (err) {
-        error.FileNotFound, error.StreamTooLong => return false,
+        error.FileNotFound, error.StreamTooLong => return null,
         else => |other| return other,
     };
     defer allocator.free(bytes);
-    if (bytes.len > max_installation_bytes) return false;
+    if (bytes.len > max_installation_bytes) return null;
     var document = std.json.parseFromSlice(Installation, allocator, bytes, .{
         .allocate = .alloc_always,
         .ignore_unknown_fields = true,
         .max_value_len = max_installation_bytes,
-    }) catch return false;
+    }) catch return null;
     defer document.deinit();
-    validateInstallation(document.value) catch return false;
+    validateInstallation(document.value) catch return null;
     const installation = document.value;
     if (!std.mem.eql(u8, installation.version_id, manifest.version_id) or
         !optionalEql(installation.fabric_loader, manifest.fabric_loader) or
@@ -218,13 +230,14 @@ pub fn isInstalled(
         !optionalEql(installation.forge_version, manifest.forge_version) or
         installation.source != manifest.source)
     {
-        return false;
+        return null;
     }
     const stat = server_dir.statFile(io, "server.jar", .{}) catch |err| switch (err) {
-        error.FileNotFound => return false,
+        error.FileNotFound => return null,
         else => |other| return other,
     };
-    return stat.kind == .file and stat.size == installation.server_size;
+    if (stat.kind != .file or stat.size != installation.server_size) return null;
+    return installation.java_major_version;
 }
 
 fn writeManifest(io: std.Io, server_dir: std.Io.Dir, manifest: Manifest) !void {
@@ -281,6 +294,7 @@ fn validateInstallation(installation: Installation) !void {
     for (installation.server_sha1) |byte| {
         if (!std.ascii.isHex(byte)) return error.InvalidServerSha1;
     }
+    if (installation.java_major_version == 0) return error.InvalidJavaRequirement;
 }
 
 fn optionalEql(left: ?[]const u8, right: ?[]const u8) bool {
@@ -392,8 +406,15 @@ test "installation marker matches only the completed server identity" {
         manifest,
         "1111111111111111111111111111111111111111",
         3,
+        21,
     );
     try std.testing.expect(try isInstalled(
+        std.testing.allocator,
+        io,
+        temporary.dir,
+        manifest,
+    ));
+    try std.testing.expectEqual(@as(?u16, 21), try installedJavaMajor(
         std.testing.allocator,
         io,
         temporary.dir,

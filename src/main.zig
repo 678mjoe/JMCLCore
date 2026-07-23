@@ -33,6 +33,13 @@ fn run(
     stdout: *std.Io.Writer,
     stderr: *std.Io.Writer,
 ) !u8 {
+    if (args.len >= 2 and std.mem.eql(u8, args[1], "__server_bootstrap")) {
+        std.process.exit(jmcl.server_lifecycle.runBootstrap(init, args[2..]));
+    }
+    if (args.len >= 2 and std.mem.eql(u8, args[1], "__server_supervisor")) {
+        std.process.exit(jmcl.server_lifecycle.runSupervisor(init, args[2..]));
+    }
+
     var service = jmcl.Service.init(init.gpa, init.io, init.environ_map);
 
     if (args.len < 2 or std.mem.eql(u8, args[1], "help") or std.mem.eql(u8, args[1], "--help")) {

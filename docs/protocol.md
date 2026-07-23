@@ -220,14 +220,15 @@ and `installed`. Lists are sorted by id. `installed:true` requires a matching
 completed-install marker and `server.jar`; missing, malformed, or mismatched
 state yields `false`. `server.get` and `server.delete` return
 `SERVER_NOT_FOUND` when absent; create returns `SERVER_EXISTS` when the id is
-taken.
+taken. Deleting a running server returns `SERVER_ALREADY_RUNNING`.
 
 `server.install` currently installs vanilla servers. It requires explicit
 `accept_eula:true`; false or absent returns `EULA_NOT_ACCEPTED`. Optional
 `store_directory`, `workers` (1–32), `retries` (0–5), and `java_paths` match
 the client install pipeline. A manifest `java_path` takes precedence over
 request candidates. Loader-bearing manifests return
-`SERVER_LOADER_UNSUPPORTED`.
+`SERVER_LOADER_UNSUPPORTED`; installing while running returns
+`SERVER_ALREADY_RUNNING`.
 
 ```json
 {"protocol":1,"id":"si-1","method":"server.install","params":{"directory":"/path/to/servers","id":"vanilla-1-21-4","accept_eula":true,"store_directory":".jmclcore","java_paths":["/usr/bin/java"],"workers":8,"retries":2}}
@@ -239,7 +240,10 @@ The method emits the standard `started`, `file`, `retry`, and byte-level
 exact size+SHA-1 verification, materializes `server.jar` through the shared
 artifact store, writes `eula.txt`, creates conservative default properties
 only when absent, and atomically records `.jmcl/install.json`. Reinstall is
-idempotent and reuses the verified cache object.
+idempotent and reuses the verified cache object. Completion markers written
+before Phase 3 do not record the required Java major and therefore report
+`installed:false`; reinstall once to migrate them without redownloading the
+verified server jar.
 
 `server.properties.get` returns all decoded values as strings.
 `server.properties.set` requires a non-empty `properties` object whose values
@@ -252,6 +256,63 @@ are strings, merges those keys, and atomically rewrites the file:
 Both property methods return the complete resulting `properties` object.
 They preserve Java properties escaping and continuation semantics; a missing
 file returns `SERVER_PROPERTIES_NOT_FOUND`.
+
+### Detached Server Lifecycle
+
+The lifecycle methods operate on a detached supervisor, not on a child owned
+by the JSON Lines session. A remote GUI may close and reopen
+`ssh user@host jmcl-core rpc` without stopping the Java process.
+
+| Method | Required params | Optional params |
+|---|---|---|
+| `server.start` | `directory`, `id` | `java_paths[]` |
+| `server.stop` | `directory`, `id` | `grace_ms` (default 10000, max 120000) |
+| `server.restart` | `directory`, `id` | `java_paths[]`, `grace_ms` |
+| `server.status` | `directory`, `id` | — |
+| `server.logs` | `directory`, `id` | `cursor`, `file_id`, `max_bytes` (default 65536, max 1048576) |
+| `server.command` | `directory`, `id`, `command` | — |
+
+`server.start` and `server.restart` require `installed:true`, use the Java
+major version recorded by the completed-install marker, and honor manifest
+`java_path` before request `java_paths`. Their result contains `running:true`,
+`pid`, `supervisor_pid`, `started_at_ms`, and `java_path`:
+
+```json
+{"protocol":1,"id":"ss-1","method":"server.start","params":{"directory":"/path/to/servers","id":"vanilla-1-21-4","java_paths":["/usr/bin/java"]}}
+```
+
+`server.status` returns `running`, `stale_state`, both PIDs, the selected Java
+path, start time, and non-negative `uptime_ms`. The core trusts a PID
+only when `/proc/<pid>/cmdline` contains the random identity recorded in
+`.jmcl/server.pid`; dead, malformed, or reused-PID state is removed and
+reported as `running:false`. `stale_state:true` tells the GUI that cleanup
+occurred during this request.
+
+`server.command` accepts exactly one non-empty UTF-8 line up to 4095 bytes and
+returns `accepted:true` plus the validated Java PID. `server.stop` writes the
+Minecraft `stop` command, waits the requested grace period, and escalates to
+SIGTERM then SIGKILL. Its `termination` is `graceful`, `terminated`, or
+`killed`; calling it while stopped returns `SERVER_NOT_RUNNING`.
+`server.restart` applies the same bounded shutdown before starting a new
+detached process.
+
+`server.logs` reads merged stdout/stderr from `logs/console.log`. With no
+cursor it returns the newest `max_bytes`. To resume, pass both `next_cursor`
+and `file_id` from the preceding result:
+
+```json
+{"protocol":1,"id":"sl-2","method":"server.logs","params":{"directory":"/path/to/servers","id":"vanilla-1-21-4","cursor":8192,"file_id":123456,"max_bytes":65536}}
+```
+
+The result contains `text`, `file_id`, `start_cursor`, `next_cursor`, `eof`,
+`reset`, and `truncated`. Rotation, replacement, or an out-of-range cursor
+sets `reset:true` and safely returns a fresh tail. The supervisor appends
+across restarts and retains two 16 MiB rotations.
+
+Lifecycle-specific stable errors include `SERVER_NOT_INSTALLED`,
+`SERVER_ALREADY_RUNNING`, `SERVER_NOT_RUNNING`, `SERVER_LOGS_NOT_FOUND`,
+`JAVA_NOT_FOUND`, and `JAVA_INCOMPATIBLE`; malformed ranges or commands return
+`INVALID_PARAMS`. All six methods return `UNSUPPORTED_PLATFORM` off Linux.
 
 ## Modpack Installation
 

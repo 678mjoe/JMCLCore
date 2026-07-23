@@ -45,6 +45,57 @@ const ServerPropertiesSetParams = struct {
     properties: std.json.Value,
 };
 
+const ServerStartParams = struct {
+    directory: []const u8,
+    id: []const u8,
+    java_paths: []const []const u8 = &.{},
+};
+
+const ServerRestartParams = struct {
+    directory: []const u8,
+    id: []const u8,
+    java_paths: []const []const u8 = &.{},
+    grace_ms: u32 = core.server_lifecycle.default_grace_ms,
+};
+
+const ServerStopParams = struct {
+    directory: []const u8,
+    id: []const u8,
+    grace_ms: u32 = core.server_lifecycle.default_grace_ms,
+};
+
+const ServerLogsParams = struct {
+    directory: []const u8,
+    id: []const u8,
+    cursor: ?u64 = null,
+    file_id: ?u64 = null,
+    max_bytes: usize = core.server_lifecycle.default_log_read_bytes,
+};
+
+const ServerCommandParams = struct {
+    directory: []const u8,
+    id: []const u8,
+    command: []const u8,
+};
+
+const OpenedServer = struct {
+    root: std.Io.Dir,
+    server_dir: std.Io.Dir,
+    manifest: core.server_store.Document,
+
+    fn deinit(opened: *OpenedServer, service: *core.Service) void {
+        opened.server_dir.close(service.io);
+        opened.manifest.deinit();
+        opened.root.close(service.io);
+        opened.* = undefined;
+    }
+};
+
+const LifecycleStartOperation = enum {
+    start,
+    restart,
+};
+
 fn requireLinux(writer: *std.Io.Writer, request_id: []const u8) std.Io.Writer.Error!bool {
     if (builtin.os.tag == .linux) return true;
     try writeError(writer, request_id, "UNSUPPORTED_PLATFORM", "Server management is currently supported only on Linux");
@@ -351,6 +402,29 @@ pub fn writeDeleteResult(
         return;
     };
     defer root.close(service.io);
+    const server_dir = core.server_store.openServer(service.io, root, input.id) catch |err| switch (err) {
+        error.FileNotFound, error.InvalidServerId => {
+            try writeError(writer, request_id, "SERVER_NOT_FOUND", "No server matches the given id");
+            return;
+        },
+        else => {
+            try writeError(writer, request_id, "SERVER_ROOT_ERROR", "Failed to open the server directory");
+            return;
+        },
+    };
+    defer server_dir.close(service.io);
+    var stopped_guard = core.server_lifecycle.lockStopped(
+        service.allocator,
+        service.io,
+        server_dir,
+    ) catch |err| {
+        switch (err) {
+            error.ServerAlreadyRunning => try writeError(writer, request_id, "SERVER_ALREADY_RUNNING", "Stop the server before deleting it"),
+            else => try writeError(writer, request_id, "SERVER_STATUS_FAILED", "Failed to validate the server lifecycle status"),
+        }
+        return;
+    };
+    defer stopped_guard.deinit();
     core.server_store.delete(service.allocator, service.io, root, input.id) catch |err| switch (err) {
         error.FileNotFound, error.InvalidServerId => {
             try writeError(writer, request_id, "SERVER_NOT_FOUND", "No server matches the given id");
@@ -423,6 +497,23 @@ pub fn writeInstallResult(
     };
     defer manifest_document.deinit();
     const manifest = &manifest_document.value;
+    const server_dir = core.server_store.openServer(service.io, root, manifest.id) catch {
+        try writeError(writer, request_id, "SERVER_ROOT_ERROR", "Failed to open the server directory");
+        return;
+    };
+    defer server_dir.close(service.io);
+    var stopped_guard = core.server_lifecycle.lockStopped(
+        service.allocator,
+        service.io,
+        server_dir,
+    ) catch |err| {
+        switch (err) {
+            error.ServerAlreadyRunning => try writeError(writer, request_id, "SERVER_ALREADY_RUNNING", "Stop the server before installing it"),
+            else => try writeError(writer, request_id, "SERVER_STATUS_FAILED", "Failed to validate the server lifecycle status"),
+        }
+        return;
+    };
+    defer stopped_guard.deinit();
     if (manifest.fabric_loader != null or manifest.neoforge_version != null or manifest.forge_version != null) {
         try writeError(writer, request_id, "SERVER_LOADER_UNSUPPORTED", "Phase 2 installs vanilla servers only");
         return;
@@ -472,11 +563,6 @@ pub fn writeInstallResult(
         try writeError(writer, request_id, "JAVA_INCOMPATIBLE", "No Java runtime matches the server requirement");
         return;
     };
-    const server_dir = core.server_store.openServer(service.io, root, manifest.id) catch {
-        try writeError(writer, request_id, "SERVER_ROOT_ERROR", "Failed to open the server directory");
-        return;
-    };
-    defer server_dir.close(service.io);
     const store = core.artifact_store.openRoot(service.io, input.store_directory) catch {
         try writeError(writer, request_id, "STORE_ROOT_ERROR", "Failed to open the artifact store");
         return;
@@ -520,6 +606,7 @@ pub fn writeInstallResult(
         manifest.*,
         server_file.sha1,
         server_file.size,
+        plan.value.java_major_version,
     ) catch {
         try writeError(writer, request_id, "SERVER_STATE_ERROR", "Failed to record completed server installation");
         return;
@@ -735,6 +822,508 @@ pub fn writePropertiesSetResult(
     try json.write(input.id);
     try json.objectField("properties");
     try writePropertiesObject(&json, properties);
+    try json.endObject();
+    try json.endObject();
+    try writer.writeByte('\n');
+}
+
+fn validateServerTarget(
+    writer: *std.Io.Writer,
+    request_id: []const u8,
+    directory: []const u8,
+    id: []const u8,
+) std.Io.Writer.Error!bool {
+    if (directory.len == 0 or id.len == 0) {
+        try writeError(writer, request_id, "INVALID_PARAMS", "server directory and id must not be empty");
+        return false;
+    }
+    core.server_store.validateId(id) catch {
+        try writeError(writer, request_id, "INVALID_PARAMS", "the server id is invalid");
+        return false;
+    };
+    return true;
+}
+
+fn openServerTarget(
+    service: *core.Service,
+    writer: *std.Io.Writer,
+    request_id: []const u8,
+    directory: []const u8,
+    id: []const u8,
+) std.Io.Writer.Error!?OpenedServer {
+    const root = core.server_store.openRoot(service.io, directory) catch {
+        try writeError(writer, request_id, "SERVERS_ROOT_ERROR", "Failed to open the servers root");
+        return null;
+    };
+    var manifest = core.server_store.load(service.allocator, service.io, root, id) catch |err| switch (err) {
+        error.FileNotFound, error.InvalidServerId => {
+            root.close(service.io);
+            try writeError(writer, request_id, "SERVER_NOT_FOUND", "No server matches the given id");
+            return null;
+        },
+        else => {
+            root.close(service.io);
+            try writeError(writer, request_id, "SERVER_LOAD_FAILED", "Failed to load the server");
+            return null;
+        },
+    };
+    const server_dir = core.server_store.openServer(service.io, root, manifest.value.id) catch {
+        manifest.deinit();
+        root.close(service.io);
+        try writeError(writer, request_id, "SERVER_ROOT_ERROR", "Failed to open the server directory");
+        return null;
+    };
+    return .{
+        .root = root,
+        .server_dir = server_dir,
+        .manifest = manifest,
+    };
+}
+
+fn writeLifecycleStart(
+    operation: LifecycleStartOperation,
+    service: *core.Service,
+    writer: *std.Io.Writer,
+    request_id: []const u8,
+    directory: []const u8,
+    id: []const u8,
+    java_paths_input: []const []const u8,
+    grace_ms: u32,
+) std.Io.Writer.Error!void {
+    if (!try validateServerTarget(writer, request_id, directory, id)) return;
+    if (grace_ms > core.server_lifecycle.max_grace_ms) {
+        try writeError(writer, request_id, "INVALID_PARAMS", "server grace_ms is out of range");
+        return;
+    }
+    var opened = (try openServerTarget(service, writer, request_id, directory, id)) orelse return;
+    defer opened.deinit(service);
+    if (operation == .start) {
+        var current = core.server_lifecycle.status(
+            service.allocator,
+            service.io,
+            opened.server_dir,
+        ) catch {
+            try writeError(writer, request_id, "SERVER_STATUS_FAILED", "Failed to validate the server lifecycle status");
+            return;
+        };
+        defer current.deinit();
+        if (current.running) {
+            try writeError(writer, request_id, "SERVER_ALREADY_RUNNING", "The server is already running");
+            return;
+        }
+    }
+    const required_java_major = (core.server_store.installedJavaMajor(
+        service.allocator,
+        service.io,
+        opened.server_dir,
+        opened.manifest.value,
+    ) catch {
+        const code = if (operation == .start) "SERVER_START_FAILED" else "SERVER_RESTART_FAILED";
+        try writeError(writer, request_id, code, "Failed to read the completed server installation");
+        return;
+    }) orelse {
+        try writeError(writer, request_id, "SERVER_NOT_INSTALLED", "The server installation is incomplete or does not match its manifest");
+        return;
+    };
+    const target = core.install_plan.Target.host() catch {
+        try writeError(writer, request_id, "UNSUPPORTED_PLATFORM", "The host platform is not supported");
+        return;
+    };
+    var explicit_java: [1][]const u8 = undefined;
+    const java_paths = if (opened.manifest.value.java_path) |path| blk: {
+        explicit_java[0] = path;
+        break :blk explicit_java[0..];
+    } else java_paths_input;
+    var detection = core.java_runtime.detect(
+        service.allocator,
+        service.io,
+        service.environ_map orelse {
+            try writeError(writer, request_id, "ENVIRONMENT_UNAVAILABLE", "Process environment is unavailable");
+            return;
+        },
+        java_paths,
+    ) catch {
+        try writeError(writer, request_id, "JAVA_NOT_FOUND", "No Java executable candidates were found");
+        return;
+    };
+    defer detection.deinit();
+    const runtime = core.java_runtime.selectCompatible(
+        detection,
+        required_java_major,
+        target.arch,
+    ) catch {
+        try writeError(writer, request_id, "JAVA_INCOMPATIBLE", "No Java runtime matches the installed server requirement");
+        return;
+    };
+    const java_executable = (if (std.fs.path.isAbsolute(runtime.executable))
+        std.Io.Dir.realPathFileAbsoluteAlloc(service.io, runtime.executable, service.allocator)
+    else
+        std.Io.Dir.cwd().realPathFileAlloc(service.io, runtime.executable, service.allocator)) catch {
+        try writeError(writer, request_id, "JAVA_NOT_FOUND", "The selected Java executable could not be resolved");
+        return;
+    };
+    defer service.allocator.free(java_executable);
+    const environ_map = service.environ_map orelse {
+        try writeError(writer, request_id, "ENVIRONMENT_UNAVAILABLE", "Process environment is unavailable");
+        return;
+    };
+    const result = (if (operation == .start)
+        core.server_lifecycle.start(
+            service.allocator,
+            service.io,
+            environ_map,
+            opened.server_dir,
+            java_executable,
+        )
+    else
+        core.server_lifecycle.restart(
+            service.allocator,
+            service.io,
+            environ_map,
+            opened.server_dir,
+            java_executable,
+            grace_ms,
+        )) catch |err| {
+        switch (err) {
+            error.ServerAlreadyRunning => try writeError(writer, request_id, "SERVER_ALREADY_RUNNING", "The server is already running"),
+            error.InvalidGracePeriod, error.InvalidJavaPath => try writeError(writer, request_id, "INVALID_PARAMS", "server lifecycle parameters are invalid"),
+            else => {
+                const code = if (operation == .start) "SERVER_START_FAILED" else "SERVER_RESTART_FAILED";
+                const message = if (operation == .start) "Failed to start the server" else "Failed to restart the server";
+                try writeError(writer, request_id, code, message);
+            },
+        }
+        return;
+    };
+
+    var json: std.json.Stringify = .{ .writer = writer };
+    try writeEventHeader(&json, request_id, "result");
+    try json.objectField("result");
+    try json.beginObject();
+    try json.objectField("stage");
+    try json.write(if (operation == .start) "server.start" else "server.restart");
+    try json.objectField("id");
+    try json.write(id);
+    try json.objectField("running");
+    try json.write(true);
+    try json.objectField("pid");
+    try json.write(result.pid);
+    try json.objectField("supervisor_pid");
+    try json.write(result.supervisor_pid);
+    try json.objectField("started_at_ms");
+    try json.write(result.started_at_ms);
+    try json.objectField("java_path");
+    try json.write(java_executable);
+    try json.endObject();
+    try json.endObject();
+    try writer.writeByte('\n');
+}
+
+pub fn writeStartResult(
+    service: *core.Service,
+    writer: *std.Io.Writer,
+    request_id: []const u8,
+    params_value: ?std.json.Value,
+) std.Io.Writer.Error!void {
+    if (!try requireLinux(writer, request_id)) return;
+    const value = params_value orelse {
+        try writeError(writer, request_id, "INVALID_PARAMS", "server start requires directory and id");
+        return;
+    };
+    var params = std.json.parseFromValue(ServerStartParams, service.allocator, value, .{
+        .ignore_unknown_fields = true,
+    }) catch {
+        try writeError(writer, request_id, "INVALID_PARAMS", "server start parameters are invalid");
+        return;
+    };
+    defer params.deinit();
+    const input = params.value;
+    try writeLifecycleStart(
+        .start,
+        service,
+        writer,
+        request_id,
+        input.directory,
+        input.id,
+        input.java_paths,
+        core.server_lifecycle.default_grace_ms,
+    );
+}
+
+pub fn writeRestartResult(
+    service: *core.Service,
+    writer: *std.Io.Writer,
+    request_id: []const u8,
+    params_value: ?std.json.Value,
+) std.Io.Writer.Error!void {
+    if (!try requireLinux(writer, request_id)) return;
+    const value = params_value orelse {
+        try writeError(writer, request_id, "INVALID_PARAMS", "server restart requires directory and id");
+        return;
+    };
+    var params = std.json.parseFromValue(ServerRestartParams, service.allocator, value, .{
+        .ignore_unknown_fields = true,
+    }) catch {
+        try writeError(writer, request_id, "INVALID_PARAMS", "server restart parameters are invalid");
+        return;
+    };
+    defer params.deinit();
+    const input = params.value;
+    try writeLifecycleStart(
+        .restart,
+        service,
+        writer,
+        request_id,
+        input.directory,
+        input.id,
+        input.java_paths,
+        input.grace_ms,
+    );
+}
+
+pub fn writeStopResult(
+    service: *core.Service,
+    writer: *std.Io.Writer,
+    request_id: []const u8,
+    params_value: ?std.json.Value,
+) std.Io.Writer.Error!void {
+    if (!try requireLinux(writer, request_id)) return;
+    const value = params_value orelse {
+        try writeError(writer, request_id, "INVALID_PARAMS", "server stop requires directory and id");
+        return;
+    };
+    var params = std.json.parseFromValue(ServerStopParams, service.allocator, value, .{
+        .ignore_unknown_fields = true,
+    }) catch {
+        try writeError(writer, request_id, "INVALID_PARAMS", "server stop parameters are invalid");
+        return;
+    };
+    defer params.deinit();
+    const input = params.value;
+    if (!try validateServerTarget(writer, request_id, input.directory, input.id)) return;
+    if (input.grace_ms > core.server_lifecycle.max_grace_ms) {
+        try writeError(writer, request_id, "INVALID_PARAMS", "server grace_ms is out of range");
+        return;
+    }
+    var opened = (try openServerTarget(service, writer, request_id, input.directory, input.id)) orelse return;
+    defer opened.deinit(service);
+    const result = core.server_lifecycle.stop(
+        service.allocator,
+        service.io,
+        opened.server_dir,
+        input.grace_ms,
+    ) catch |err| {
+        switch (err) {
+            error.InvalidGracePeriod => try writeError(writer, request_id, "INVALID_PARAMS", "server grace_ms is out of range"),
+            else => try writeError(writer, request_id, "SERVER_STOP_FAILED", "Failed to stop the server"),
+        }
+        return;
+    };
+    if (result.termination == .not_running) {
+        try writeError(writer, request_id, "SERVER_NOT_RUNNING", "The server is not running");
+        return;
+    }
+
+    var json: std.json.Stringify = .{ .writer = writer };
+    try writeEventHeader(&json, request_id, "result");
+    try json.objectField("result");
+    try json.beginObject();
+    try json.objectField("stage");
+    try json.write("server.stop");
+    try json.objectField("id");
+    try json.write(input.id);
+    try json.objectField("running");
+    try json.write(false);
+    try json.objectField("termination");
+    try json.write(@tagName(result.termination));
+    try json.objectField("pid");
+    try json.write(result.pid);
+    try json.endObject();
+    try json.endObject();
+    try writer.writeByte('\n');
+}
+
+pub fn writeStatusResult(
+    service: *core.Service,
+    writer: *std.Io.Writer,
+    request_id: []const u8,
+    params_value: ?std.json.Value,
+) std.Io.Writer.Error!void {
+    if (!try requireLinux(writer, request_id)) return;
+    const value = params_value orelse {
+        try writeError(writer, request_id, "INVALID_PARAMS", "server status requires directory and id");
+        return;
+    };
+    var params = std.json.parseFromValue(ServerTargetParams, service.allocator, value, .{
+        .ignore_unknown_fields = true,
+    }) catch {
+        try writeError(writer, request_id, "INVALID_PARAMS", "server status parameters are invalid");
+        return;
+    };
+    defer params.deinit();
+    const input = params.value;
+    if (!try validateServerTarget(writer, request_id, input.directory, input.id)) return;
+    var opened = (try openServerTarget(service, writer, request_id, input.directory, input.id)) orelse return;
+    defer opened.deinit(service);
+    var status_result = core.server_lifecycle.status(
+        service.allocator,
+        service.io,
+        opened.server_dir,
+    ) catch {
+        try writeError(writer, request_id, "SERVER_STATUS_FAILED", "Failed to read the server lifecycle status");
+        return;
+    };
+    defer status_result.deinit();
+
+    var json: std.json.Stringify = .{ .writer = writer };
+    try writeEventHeader(&json, request_id, "result");
+    try json.objectField("result");
+    try json.beginObject();
+    try json.objectField("stage");
+    try json.write("server.status");
+    try json.objectField("id");
+    try json.write(input.id);
+    try json.objectField("running");
+    try json.write(status_result.running);
+    try json.objectField("stale_state");
+    try json.write(status_result.stale_state);
+    try json.objectField("pid");
+    try json.write(status_result.pid);
+    try json.objectField("supervisor_pid");
+    try json.write(status_result.supervisor_pid);
+    try json.objectField("java_path");
+    try json.write(status_result.java_path);
+    try json.objectField("started_at_ms");
+    try json.write(status_result.started_at_ms);
+    try json.objectField("uptime_ms");
+    try json.write(status_result.uptime_ms);
+    try json.endObject();
+    try json.endObject();
+    try writer.writeByte('\n');
+}
+
+pub fn writeLogsResult(
+    service: *core.Service,
+    writer: *std.Io.Writer,
+    request_id: []const u8,
+    params_value: ?std.json.Value,
+) std.Io.Writer.Error!void {
+    if (!try requireLinux(writer, request_id)) return;
+    const value = params_value orelse {
+        try writeError(writer, request_id, "INVALID_PARAMS", "server logs requires directory and id");
+        return;
+    };
+    var params = std.json.parseFromValue(ServerLogsParams, service.allocator, value, .{
+        .ignore_unknown_fields = true,
+    }) catch {
+        try writeError(writer, request_id, "INVALID_PARAMS", "server logs parameters are invalid");
+        return;
+    };
+    defer params.deinit();
+    const input = params.value;
+    if (!try validateServerTarget(writer, request_id, input.directory, input.id)) return;
+    if (input.max_bytes == 0 or input.max_bytes > core.server_lifecycle.max_log_read_bytes) {
+        try writeError(writer, request_id, "INVALID_PARAMS", "server max_bytes is out of range");
+        return;
+    }
+    var opened = (try openServerTarget(service, writer, request_id, input.directory, input.id)) orelse return;
+    defer opened.deinit(service);
+    var result = core.server_lifecycle.readLogs(
+        service.allocator,
+        service.io,
+        opened.server_dir,
+        input.cursor,
+        input.file_id,
+        input.max_bytes,
+    ) catch |err| {
+        switch (err) {
+            error.ServerLogsNotFound => try writeError(writer, request_id, "SERVER_LOGS_NOT_FOUND", "No server console log exists"),
+            error.InvalidLogReadSize => try writeError(writer, request_id, "INVALID_PARAMS", "server max_bytes is out of range"),
+            else => try writeError(writer, request_id, "SERVER_LOGS_FAILED", "Failed to read the server console log"),
+        }
+        return;
+    };
+    defer result.deinit();
+
+    var json: std.json.Stringify = .{ .writer = writer };
+    try writeEventHeader(&json, request_id, "result");
+    try json.objectField("result");
+    try json.beginObject();
+    try json.objectField("stage");
+    try json.write("server.logs");
+    try json.objectField("id");
+    try json.write(input.id);
+    try json.objectField("text");
+    try json.write(result.text);
+    try json.objectField("file_id");
+    try json.write(result.file_id);
+    try json.objectField("start_cursor");
+    try json.write(result.start_cursor);
+    try json.objectField("next_cursor");
+    try json.write(result.next_cursor);
+    try json.objectField("eof");
+    try json.write(result.eof);
+    try json.objectField("reset");
+    try json.write(result.reset);
+    try json.objectField("truncated");
+    try json.write(result.truncated);
+    try json.endObject();
+    try json.endObject();
+    try writer.writeByte('\n');
+}
+
+pub fn writeCommandResult(
+    service: *core.Service,
+    writer: *std.Io.Writer,
+    request_id: []const u8,
+    params_value: ?std.json.Value,
+) std.Io.Writer.Error!void {
+    if (!try requireLinux(writer, request_id)) return;
+    const value = params_value orelse {
+        try writeError(writer, request_id, "INVALID_PARAMS", "server command requires directory, id, and command");
+        return;
+    };
+    var params = std.json.parseFromValue(ServerCommandParams, service.allocator, value, .{
+        .ignore_unknown_fields = true,
+    }) catch {
+        try writeError(writer, request_id, "INVALID_PARAMS", "server command parameters are invalid");
+        return;
+    };
+    defer params.deinit();
+    const input = params.value;
+    if (!try validateServerTarget(writer, request_id, input.directory, input.id)) return;
+    core.server_lifecycle.validateCommand(input.command) catch {
+        try writeError(writer, request_id, "INVALID_PARAMS", "server command must be a nonempty single line within the size limit");
+        return;
+    };
+    var opened = (try openServerTarget(service, writer, request_id, input.directory, input.id)) orelse return;
+    defer opened.deinit(service);
+    const pid = core.server_lifecycle.command(
+        service.allocator,
+        service.io,
+        opened.server_dir,
+        input.command,
+    ) catch |err| {
+        switch (err) {
+            error.ServerNotRunning => try writeError(writer, request_id, "SERVER_NOT_RUNNING", "The server is not running"),
+            error.InvalidServerCommand => try writeError(writer, request_id, "INVALID_PARAMS", "server command is invalid"),
+            else => try writeError(writer, request_id, "SERVER_COMMAND_FAILED", "Failed to send the server command"),
+        }
+        return;
+    };
+
+    var json: std.json.Stringify = .{ .writer = writer };
+    try writeEventHeader(&json, request_id, "result");
+    try json.objectField("result");
+    try json.beginObject();
+    try json.objectField("stage");
+    try json.write("server.command");
+    try json.objectField("id");
+    try json.write(input.id);
+    try json.objectField("accepted");
+    try json.write(true);
+    try json.objectField("pid");
+    try json.write(pid);
     try json.endObject();
     try json.endObject();
     try writer.writeByte('\n');
