@@ -10,6 +10,7 @@ const core = @import("root.zig");
 const curseforge = @import("content/curseforge.zig");
 const fabric = @import("loaders/fabric.zig");
 const forge = @import("loaders/forge.zig");
+const forge_executor = @import("loaders/forge_executor.zig");
 const forge_legacy = @import("loaders/forge_legacy.zig");
 const https_fallback = @import("install/https_fallback.zig");
 const install_plan = @import("install/plan.zig");
@@ -20,6 +21,7 @@ const modrinth = @import("content/modrinth.zig");
 const mrpack = @import("modpack/mrpack.zig");
 const curseforge_pack = @import("modpack/curseforge_pack.zig");
 const neoforge = @import("loaders/neoforge.zig");
+const neoforge_executor = @import("loaders/neoforge_executor.zig");
 const server_lifecycle = @import("server/lifecycle.zig");
 const server_properties = @import("server/properties.zig");
 const server_store = @import("server/server_store.zig");
@@ -772,6 +774,76 @@ pub const Service = struct {
             return error.ServerPropertiesFailed;
 
         const server_file = plan.value.files[0];
+        var launch_mode: server_store.LaunchMode = .jar;
+        var launch_file: []const u8 = "server.jar";
+        var launch_sha1: []const u8 = server_file.sha1;
+        var launch_size: u64 = server_file.size;
+        var launch_file_buffer: [1024]u8 = undefined;
+        var launch_sha1_buffer: [40]u8 = undefined;
+
+        const processor_java_paths = [1][]const u8{runtime.executable};
+        switch (plan.value.loader) {
+            .neoforge, .forge => {
+                const loader_version = switch (plan.value.loader) {
+                    .neoforge => manifest.neoforge_version,
+                    else => manifest.forge_version,
+                } orelse return error.ServerInstallFailed;
+                const executor_options: neoforge_executor.Options = .{
+                    .java_paths = &processor_java_paths,
+                    .required_major = plan.value.java_major_version,
+                };
+                switch (plan.value.loader) {
+                    .neoforge => _ = neoforge_executor.runServer(
+                        self.allocator,
+                        self.io,
+                        self.environ_map,
+                        server_dir,
+                        store,
+                        loader_version,
+                        plan.value.version_id,
+                        executor_options,
+                        null,
+                    ) catch return error.ServerInstallFailed,
+                    else => _ = forge_executor.runServer(
+                        self.allocator,
+                        self.io,
+                        self.environ_map,
+                        server_dir,
+                        store,
+                        plan.value.version_id,
+                        loader_version,
+                        plan.value.version_id,
+                        executor_options,
+                        null,
+                    ) catch return error.ServerInstallFailed,
+                }
+                launch_file = switch (plan.value.loader) {
+                    .neoforge => std.fmt.bufPrint(
+                        &launch_file_buffer,
+                        "libraries/net/neoforged/neoforge/{s}/unix_args.txt",
+                        .{loader_version},
+                    ) catch return error.ServerInstallFailed,
+                    else => std.fmt.bufPrint(
+                        &launch_file_buffer,
+                        "libraries/net/minecraftforge/forge/{s}-{s}/unix_args.txt",
+                        .{ plan.value.version_id, loader_version },
+                    ) catch return error.ServerInstallFailed,
+                };
+                const args_file = server_dir.openFile(self.io, launch_file, .{}) catch
+                    return error.ServerInstallFailed;
+                defer args_file.close(self.io);
+                const args_digest = artifact_store.hashFile(args_file, self.io) catch
+                    return error.ServerInstallFailed;
+                const args_stat = args_file.stat(self.io) catch
+                    return error.ServerInstallFailed;
+                launch_sha1_buffer = std.fmt.bytesToHex(args_digest, .lower);
+                launch_sha1 = &launch_sha1_buffer;
+                launch_size = args_stat.size;
+                launch_mode = .args_file;
+            },
+            else => {},
+        }
+
         server_store.recordCompletedInstallation(
             self.io,
             server_dir,
@@ -779,10 +851,10 @@ pub const Service = struct {
             server_file.sha1,
             server_file.size,
             plan.value.java_major_version,
-            .jar,
-            "server.jar",
-            server_file.sha1,
-            server_file.size,
+            launch_mode,
+            launch_file,
+            launch_sha1,
+            launch_size,
         ) catch return error.ServerStateError;
 
         return .{
@@ -2872,6 +2944,87 @@ test "executeServerInstall rejects unsupported platforms before touching the hos
         runtime,
         null,
     ));
+}
+
+test "executeServerInstall records no marker when the server processor chain fails" {
+    if (builtin.os.tag != .linux) return;
+    const io = std.testing.io;
+    var temporary = std.testing.tmpDir(.{});
+    defer temporary.cleanup();
+    try temporary.dir.createDir(io, "server", .default_dir);
+    try temporary.dir.createDir(io, "store", .default_dir);
+    const server_dir = try temporary.dir.openDir(io, "server", .{});
+    defer server_dir.close(io);
+    const store = try temporary.dir.openDir(io, "store", .{});
+    defer store.close(io);
+
+    const server_jar = try server_dir.createFile(io, "server.jar", .{});
+    try std.Io.File.writeStreamingAll(server_jar, io, "abc");
+    server_jar.close(io);
+
+    const arena = try std.testing.allocator.create(std.heap.ArenaAllocator);
+    defer std.testing.allocator.destroy(arena);
+    arena.* = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const files = [_]install_plan.File{.{
+        .path = "server.jar",
+        .url = "https://example.invalid/server.jar",
+        .fallback_url = null,
+        .sha1 = "a9993e364706816aba3e25717850c26c9cd0d89d",
+        .size = 3,
+        .usage = .{ .server = true },
+    }};
+    const plan: install_plan.Plan = .{
+        .arena = arena,
+        .value = .{
+            .version_id = "1.21.1",
+            .source = .official,
+            .target = .{ .os = .linux, .arch = .x86_64 },
+            .files = &files,
+            .classpath = &.{},
+            .native_extractions = &.{},
+            .asset_projections = &.{},
+            .total_download_size = 3,
+            .java_major_version = 21,
+            .loader = .neoforge,
+        },
+    };
+    const runtime: java_runtime.Runtime = .{
+        .executable = "java",
+        .source = .explicit,
+        .major_version = 21,
+        .specification_version = "21",
+        .version = null,
+        .runtime_version = null,
+        .vendor = null,
+        .java_home = null,
+        .vm_name = null,
+        .os_arch = "x86_64",
+        .os_version = null,
+        .architecture = null,
+        .data_model = null,
+    };
+
+    const service = Service.init(std.testing.allocator, io, null);
+    try std.testing.expectError(error.ServerInstallFailed, service.executeServerInstall(
+        .{
+            .id = "modded",
+            .name = "Modded",
+            .version_id = "1.21.1",
+            .neoforge_version = "21.1.133",
+        },
+        server_dir,
+        plan,
+        store,
+        .{ .workers = 1 },
+        runtime,
+        null,
+    ));
+    try std.testing.expectError(
+        error.FileNotFound,
+        server_dir.statFile(io, server_store.installation_relative_path, .{}),
+    );
 }
 
 test "selectServerJava rejects unsupported platforms before touching the host" {
