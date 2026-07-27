@@ -1,6 +1,8 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const jmcl = @import("jmcl_core");
+const common = @import("common.zig");
+const install_cli = @import("install.zig");
 
 const unsupported_platform_message = "Server management is currently supported only on Linux";
 
@@ -14,7 +16,9 @@ pub fn run(
     if (args.len >= 1 and std.mem.eql(u8, args[0], "list")) return runServerList(service, args[1..], stdout, stderr);
     if (args.len >= 1 and std.mem.eql(u8, args[0], "show")) return runServerShow(service, args[1..], stdout, stderr);
     if (args.len >= 1 and std.mem.eql(u8, args[0], "delete")) return runServerDelete(service, args[1..], stdout, stderr);
-    try stderr.writeAll("usage: jmcl-core server <create|list|show|delete> [options]\n");
+    if (args.len >= 1 and std.mem.eql(u8, args[0], "install")) return runServerInstall(service, args[1..], stdout, stderr);
+    if (args.len >= 1 and std.mem.eql(u8, args[0], "properties")) return runServerProperties(service, args[1..], stdout, stderr);
+    try stderr.writeAll("usage: jmcl-core server <create|list|show|delete|install|properties> [options]\n");
     return 2;
 }
 
@@ -365,6 +369,432 @@ fn runServerDelete(
     return 0;
 }
 
+const ServerInstallOptions = struct {
+    id: []const u8,
+    accept_eula: bool = false,
+    servers_directory: []const u8 = jmcl.server_store.default_root,
+    store_directory: []const u8 = jmcl.artifact_store.default_directory,
+    workers: u8 = 8,
+    retries: u8 = 2,
+    java_paths: std.ArrayList([]const u8) = .empty,
+    json: bool = false,
+
+    fn deinit(options: *ServerInstallOptions, allocator: std.mem.Allocator) void {
+        options.java_paths.deinit(allocator);
+    }
+};
+
+fn parseServerInstallOptions(allocator: std.mem.Allocator, args: []const []const u8) !ServerInstallOptions {
+    if (args.len == 0 or args[0].len == 0) return error.InvalidArguments;
+    try jmcl.server_store.validateId(args[0]);
+    var options: ServerInstallOptions = .{ .id = args[0] };
+    errdefer options.deinit(allocator);
+    var index: usize = 1;
+    while (index < args.len) {
+        const argument = args[index];
+        if (std.mem.eql(u8, argument, "--accept-eula")) {
+            options.accept_eula = true;
+            index += 1;
+            continue;
+        }
+        if (std.mem.eql(u8, argument, "--json")) {
+            options.json = true;
+            index += 1;
+            continue;
+        }
+        if (index + 1 >= args.len or args[index + 1].len == 0) return error.InvalidArguments;
+        const value = args[index + 1];
+        if (std.mem.eql(u8, argument, "--servers-directory")) {
+            options.servers_directory = value;
+        } else if (std.mem.eql(u8, argument, "--store-directory")) {
+            options.store_directory = value;
+        } else if (std.mem.eql(u8, argument, "--workers")) {
+            options.workers = std.fmt.parseInt(u8, value, 10) catch return error.InvalidArguments;
+            if (options.workers == 0 or options.workers > 32) return error.InvalidArguments;
+        } else if (std.mem.eql(u8, argument, "--retries")) {
+            options.retries = std.fmt.parseInt(u8, value, 10) catch return error.InvalidArguments;
+            if (options.retries > 5) return error.InvalidArguments;
+        } else if (std.mem.eql(u8, argument, "--java-path")) {
+            try options.java_paths.append(allocator, value);
+        } else return error.InvalidArguments;
+        index += 2;
+    }
+    return options;
+}
+
+fn runServerInstall(
+    service: *jmcl.Service,
+    args: []const []const u8,
+    stdout: *std.Io.Writer,
+    stderr: *std.Io.Writer,
+) !u8 {
+    if (!try requireLinux(stderr)) return 1;
+    var options = parseServerInstallOptions(service.allocator, args) catch {
+        try stderr.writeAll("usage: jmcl-core server install ID --accept-eula [--servers-directory PATH] [--store-directory PATH] [--workers N] [--retries N] [--java-path PATH ...] [--json]\n");
+        return 2;
+    };
+    defer options.deinit(service.allocator);
+    if (!options.accept_eula) {
+        try stderr.writeAll("Server installation requires explicit Minecraft EULA acceptance\n");
+        return 1;
+    }
+    const root = jmcl.server_store.openRoot(service.io, options.servers_directory) catch |err| {
+        try stderr.print("failed to open servers directory: {s}\n", .{@errorName(err)});
+        return 1;
+    };
+    defer root.close(service.io);
+    var manifest_document = jmcl.server_store.load(service.allocator, service.io, root, options.id) catch |err| switch (err) {
+        error.FileNotFound, error.InvalidServerId => {
+            try stderr.writeAll("no server matches the given id\n");
+            return 1;
+        },
+        else => {
+            try stderr.print("failed to load server: {s}\n", .{@errorName(err)});
+            return 1;
+        },
+    };
+    defer manifest_document.deinit();
+    const manifest = &manifest_document.value;
+    const server_dir = jmcl.server_store.openServer(service.io, root, manifest.id) catch |err| {
+        try stderr.print("failed to open server directory: {s}\n", .{@errorName(err)});
+        return 1;
+    };
+    defer server_dir.close(service.io);
+    var stopped_guard = jmcl.server_lifecycle.lockStopped(service.allocator, service.io, server_dir) catch |err| switch (err) {
+        error.ServerAlreadyRunning => {
+            try stderr.writeAll("stop the server before installing it\n");
+            return 1;
+        },
+        else => {
+            try stderr.print("failed to validate the server lifecycle status: {s}\n", .{@errorName(err)});
+            return 1;
+        },
+    };
+    defer stopped_guard.deinit();
+    if (manifest.fabric_loader != null or manifest.neoforge_version != null or manifest.forge_version != null) {
+        try stderr.writeAll("Phase 2 installs vanilla servers only\n");
+        return 1;
+    }
+    if (!manifest.accept_eula) {
+        manifest.accept_eula = true;
+        jmcl.server_store.update(service.io, root, manifest.*) catch |err| {
+            try stderr.print("failed to record Minecraft EULA acceptance: {s}\n", .{@errorName(err)});
+            return 1;
+        };
+    }
+    const target = jmcl.install_plan.Target.host() catch |err| {
+        try stderr.print("unsupported host platform: {s}\n", .{@errorName(err)});
+        return 1;
+    };
+    var plan = service.planServerInstall(manifest.*, target) catch |err| switch (err) {
+        error.ServerDownloadMissing => {
+            try stderr.writeAll("the selected Minecraft version has no dedicated server download\n");
+            return 1;
+        },
+        else => {
+            try stderr.print("failed to create the server installation plan: {s}\n", .{@errorName(err)});
+            return 1;
+        },
+    };
+    defer plan.deinit();
+    const runtime = service.selectServerJava(manifest.*, plan, options.java_paths.items) catch |err| switch (err) {
+        error.EnvironmentUnavailable => {
+            try stderr.writeAll("process environment is unavailable\n");
+            return 1;
+        },
+        error.NoCompatibleJava => {
+            try stderr.writeAll("no Java runtime matches the server requirement\n");
+            return 1;
+        },
+        else => {
+            try stderr.print("no Java executable candidates were found: {s}\n", .{@errorName(err)});
+            return 1;
+        },
+    };
+    const store = jmcl.artifact_store.openRoot(service.io, options.store_directory) catch |err| {
+        try stderr.print("failed to open artifact store: {s}\n", .{@errorName(err)});
+        return 1;
+    };
+    defer store.close(service.io);
+    var reporter_context: install_cli.CliInstallReporter = .{
+        .io = service.io,
+        .writer = stderr,
+    };
+    const summary = service.executeServerInstall(
+        manifest.*,
+        server_dir,
+        plan,
+        store,
+        .{ .workers = options.workers, .retries = options.retries },
+        runtime,
+        .{ .context = &reporter_context, .callback = install_cli.CliInstallReporter.callback },
+    ) catch |err| {
+        if (reporter_context.output_failed) return error.WriteFailed;
+        switch (err) {
+            error.UnsupportedPlatform => try stderr.writeAll(unsupported_platform_message ++ "\n"),
+            error.ServerEulaFailed => try stderr.writeAll("failed to write eula.txt\n"),
+            error.ServerPropertiesFailed => try stderr.writeAll("failed to initialize server.properties\n"),
+            error.ServerStateError => try stderr.writeAll("failed to record completed server installation\n"),
+            else => try stderr.print("failed to download and materialize the server jar: {s}\n", .{@errorName(err)}),
+        }
+        return 1;
+    };
+    if (reporter_context.output_failed) return error.WriteFailed;
+    if (options.json) {
+        var json: std.json.Stringify = .{ .writer = stdout };
+        try json.beginObject();
+        try json.objectField("stage");
+        try json.write("server.install");
+        try json.objectField("id");
+        try json.write(manifest.id);
+        try json.objectField("version_id");
+        try json.write(manifest.version_id);
+        try json.objectField("source");
+        try json.write(@tagName(manifest.source));
+        try json.objectField("java");
+        try json.write(summary.java);
+        try json.objectField("properties_created");
+        try json.write(summary.properties_created);
+        try json.objectField("files_total");
+        try json.write(summary.files_total);
+        try json.objectField("files_downloaded");
+        try json.write(summary.files_downloaded);
+        try json.objectField("files_cached");
+        try json.write(summary.files_cached);
+        try json.objectField("files_hard_linked");
+        try json.write(summary.files_hard_linked);
+        try json.objectField("files_copied");
+        try json.write(summary.files_copied);
+        try json.objectField("bytes_verified");
+        try json.write(summary.bytes_verified);
+        try json.objectField("bytes_transferred");
+        try json.write(summary.bytes_transferred);
+        try json.endObject();
+        try stdout.writeByte('\n');
+    } else {
+        try common.writeSourceNotice(stdout, manifest.source);
+        try stdout.print("server\t{s}\nversion\t{s}\nsource\t{s}\njava\t{s}\npropertiesCreated\t{s}\n", .{
+            manifest.id,
+            manifest.version_id,
+            @tagName(manifest.source),
+            summary.java.executable,
+            if (summary.properties_created) "true" else "false",
+        });
+        try stdout.print("files\t{d}\ndownloaded\t{d}\ncached\t{d}\nhardLinked\t{d}\ncopied\t{d}\nverifiedBytes\t{d}\ntransferredBytes\t{d}\n", .{
+            summary.files_total,
+            summary.files_downloaded,
+            summary.files_cached,
+            summary.files_hard_linked,
+            summary.files_copied,
+            summary.bytes_verified,
+            summary.bytes_transferred,
+        });
+    }
+    return 0;
+}
+
+fn runServerProperties(
+    service: *jmcl.Service,
+    args: []const []const u8,
+    stdout: *std.Io.Writer,
+    stderr: *std.Io.Writer,
+) !u8 {
+    if (args.len >= 1 and std.mem.eql(u8, args[0], "get")) return runServerPropertiesGet(service, args[1..], stdout, stderr);
+    if (args.len >= 1 and std.mem.eql(u8, args[0], "set")) return runServerPropertiesSet(service, args[1..], stdout, stderr);
+    try stderr.writeAll("usage: jmcl-core server properties <get|set> ID [options]\n");
+    return 2;
+}
+
+fn loadServerPropertiesDocument(
+    service: *jmcl.Service,
+    servers_directory: []const u8,
+    id: []const u8,
+    stderr: *std.Io.Writer,
+) !?jmcl.server_properties.Document {
+    const root = jmcl.server_store.openRoot(service.io, servers_directory) catch |err| {
+        try stderr.print("failed to open servers directory: {s}\n", .{@errorName(err)});
+        return null;
+    };
+    defer root.close(service.io);
+    var manifest = jmcl.server_store.load(service.allocator, service.io, root, id) catch |err| switch (err) {
+        error.FileNotFound, error.InvalidServerId => {
+            try stderr.writeAll("no server matches the given id\n");
+            return null;
+        },
+        else => {
+            try stderr.print("failed to load server: {s}\n", .{@errorName(err)});
+            return null;
+        },
+    };
+    defer manifest.deinit();
+    const server_dir = jmcl.server_store.openServer(service.io, root, id) catch |err| {
+        try stderr.print("failed to open server directory: {s}\n", .{@errorName(err)});
+        return null;
+    };
+    defer server_dir.close(service.io);
+    return jmcl.server_properties.load(service.allocator, service.io, server_dir) catch |err| switch (err) {
+        error.FileNotFound => {
+            try stderr.writeAll("server.properties has not been created\n");
+            return null;
+        },
+        error.InvalidServerProperties,
+        error.InvalidServerPropertyKey,
+        error.InvalidServerPropertyValue,
+        error.TooManyServerProperties,
+        error.ServerPropertiesTooLarge,
+        => {
+            try stderr.writeAll("server.properties is malformed or out of range\n");
+            return null;
+        },
+        else => {
+            try stderr.print("failed to read server.properties: {s}\n", .{@errorName(err)});
+            return null;
+        },
+    };
+}
+
+fn runServerPropertiesGet(
+    service: *jmcl.Service,
+    args: []const []const u8,
+    stdout: *std.Io.Writer,
+    stderr: *std.Io.Writer,
+) !u8 {
+    if (!try requireLinux(stderr)) return 1;
+    const options = parseServerTargetOptions(args, true) catch {
+        try stderr.writeAll("usage: jmcl-core server properties get ID [--servers-directory PATH] [--json]\n");
+        return 2;
+    };
+    var properties = (try loadServerPropertiesDocument(service, options.servers_directory, options.id, stderr)) orelse return 1;
+    defer properties.deinit();
+    if (options.json) {
+        var json: std.json.Stringify = .{ .writer = stdout };
+        try json.beginObject();
+        try json.objectField("id");
+        try json.write(options.id);
+        try json.objectField("properties");
+        try json.beginObject();
+        for (properties.entries.items) |entry| {
+            try json.objectField(entry.key);
+            try json.write(entry.value);
+        }
+        try json.endObject();
+        try json.endObject();
+        try stdout.writeByte('\n');
+    } else {
+        for (properties.entries.items) |entry| {
+            try stdout.print("{s}={s}\n", .{ entry.key, entry.value });
+        }
+    }
+    return 0;
+}
+
+const ServerPropertiesSetOptions = struct {
+    id: []const u8,
+    servers_directory: []const u8 = jmcl.server_store.default_root,
+    pairs: std.ArrayList(jmcl.server_properties.Entry) = .empty,
+
+    fn deinit(options: *ServerPropertiesSetOptions, allocator: std.mem.Allocator) void {
+        options.pairs.deinit(allocator);
+    }
+};
+
+fn parseServerPropertiesSetOptions(allocator: std.mem.Allocator, args: []const []const u8) !ServerPropertiesSetOptions {
+    if (args.len == 0 or args[0].len == 0) return error.InvalidArguments;
+    try jmcl.server_store.validateId(args[0]);
+    var options: ServerPropertiesSetOptions = .{ .id = args[0] };
+    errdefer options.deinit(allocator);
+    var index: usize = 1;
+    while (index < args.len) {
+        const argument = args[index];
+        if (std.mem.eql(u8, argument, "--servers-directory")) {
+            if (index + 1 >= args.len or args[index + 1].len == 0) return error.InvalidArguments;
+            options.servers_directory = args[index + 1];
+            index += 2;
+            continue;
+        }
+        if (std.mem.startsWith(u8, argument, "--")) return error.InvalidArguments;
+        const separator = std.mem.indexOfScalar(u8, argument, '=') orelse return error.InvalidArguments;
+        if (separator == 0) return error.InvalidArguments;
+        if (options.pairs.items.len == jmcl.server_properties.max_entries) return error.InvalidArguments;
+        try options.pairs.append(allocator, .{
+            .key = argument[0..separator],
+            .value = argument[separator + 1 ..],
+        });
+        index += 1;
+    }
+    if (options.pairs.items.len == 0) return error.InvalidArguments;
+    return options;
+}
+
+fn runServerPropertiesSet(
+    service: *jmcl.Service,
+    args: []const []const u8,
+    stdout: *std.Io.Writer,
+    stderr: *std.Io.Writer,
+) !u8 {
+    if (!try requireLinux(stderr)) return 1;
+    var options = parseServerPropertiesSetOptions(service.allocator, args) catch {
+        try stderr.writeAll("usage: jmcl-core server properties set ID key=value ... [--servers-directory PATH]\n");
+        return 2;
+    };
+    defer options.deinit(service.allocator);
+    const root = jmcl.server_store.openRoot(service.io, options.servers_directory) catch |err| {
+        try stderr.print("failed to open servers directory: {s}\n", .{@errorName(err)});
+        return 1;
+    };
+    defer root.close(service.io);
+    var manifest = jmcl.server_store.load(service.allocator, service.io, root, options.id) catch |err| switch (err) {
+        error.FileNotFound, error.InvalidServerId => {
+            try stderr.writeAll("no server matches the given id\n");
+            return 1;
+        },
+        else => {
+            try stderr.print("failed to load server: {s}\n", .{@errorName(err)});
+            return 1;
+        },
+    };
+    defer manifest.deinit();
+    const server_dir = jmcl.server_store.openServer(service.io, root, options.id) catch |err| {
+        try stderr.print("failed to open server directory: {s}\n", .{@errorName(err)});
+        return 1;
+    };
+    defer server_dir.close(service.io);
+    var properties = jmcl.server_properties.load(service.allocator, service.io, server_dir) catch |err| switch (err) {
+        error.FileNotFound => {
+            try stderr.writeAll("server.properties has not been created\n");
+            return 1;
+        },
+        error.InvalidServerProperties,
+        error.InvalidServerPropertyKey,
+        error.InvalidServerPropertyValue,
+        error.TooManyServerProperties,
+        error.ServerPropertiesTooLarge,
+        => {
+            try stderr.writeAll("server.properties is malformed or out of range\n");
+            return 1;
+        },
+        else => {
+            try stderr.print("failed to read server.properties: {s}\n", .{@errorName(err)});
+            return 1;
+        },
+    };
+    defer properties.deinit();
+    for (options.pairs.items) |pair| {
+        properties.set(pair.key, pair.value) catch {
+            try stderr.writeAll("a server property key or value is out of range\n");
+            return 1;
+        };
+    }
+    jmcl.server_properties.writeAtomic(service.io, server_dir, properties) catch |err| {
+        try stderr.print("failed to atomically update server.properties: {s}\n", .{@errorName(err)});
+        return 1;
+    };
+    for (properties.entries.items) |entry| {
+        try stdout.print("{s}={s}\n", .{ entry.key, entry.value });
+    }
+    return 0;
+}
+
 test "create parser maps flags to fields" {
     const options = try parseServerCreateOptions(&.{
         "vanilla-1.21.4",
@@ -465,4 +895,91 @@ test "target parser accepts id json and servers directory" {
     try std.testing.expectError(error.InvalidArguments, parseServerTargetOptions(&.{}, false));
     try std.testing.expectError(error.InvalidArguments, parseServerTargetOptions(&.{ "srv", "--bogus" }, true));
     try std.testing.expectError(error.InvalidServerId, parseServerTargetOptions(&.{"Bad Id"}, false));
+}
+
+test "install parser maps accept-eula java paths and tuning flags" {
+    var options = try parseServerInstallOptions(std.testing.allocator, &.{
+        "srv",
+        "--accept-eula",
+        "--servers-directory",
+        "/tmp/servers",
+        "--store-directory",
+        "/tmp/store",
+        "--workers",
+        "16",
+        "--retries",
+        "3",
+        "--java-path",
+        "/usr/lib/jvm/java-21/bin/java",
+        "--java-path",
+        "/usr/bin/java",
+        "--json",
+    });
+    defer options.deinit(std.testing.allocator);
+    try std.testing.expectEqualStrings("srv", options.id);
+    try std.testing.expect(options.accept_eula);
+    try std.testing.expectEqualStrings("/tmp/servers", options.servers_directory);
+    try std.testing.expectEqualStrings("/tmp/store", options.store_directory);
+    try std.testing.expectEqual(@as(u8, 16), options.workers);
+    try std.testing.expectEqual(@as(u8, 3), options.retries);
+    try std.testing.expectEqual(@as(usize, 2), options.java_paths.items.len);
+    try std.testing.expectEqualStrings("/usr/lib/jvm/java-21/bin/java", options.java_paths.items[0]);
+    try std.testing.expectEqualStrings("/usr/bin/java", options.java_paths.items[1]);
+    try std.testing.expect(options.json);
+}
+
+test "install parser defaults" {
+    var options = try parseServerInstallOptions(std.testing.allocator, &.{ "srv", "--accept-eula" });
+    defer options.deinit(std.testing.allocator);
+    try std.testing.expect(options.accept_eula);
+    try std.testing.expectEqual(@as(u8, 8), options.workers);
+    try std.testing.expectEqual(@as(u8, 2), options.retries);
+    try std.testing.expectEqual(@as(usize, 0), options.java_paths.items.len);
+    try std.testing.expectEqualStrings(jmcl.server_store.default_root, options.servers_directory);
+    try std.testing.expectEqualStrings(jmcl.artifact_store.default_directory, options.store_directory);
+    try std.testing.expect(!options.json);
+}
+
+test "install parser rejects missing id invalid bounds and unknown flags" {
+    try std.testing.expectError(error.InvalidArguments, parseServerInstallOptions(std.testing.allocator, &.{}));
+    try std.testing.expectError(error.InvalidArguments, parseServerInstallOptions(std.testing.allocator, &.{ "srv", "--workers", "0" }));
+    try std.testing.expectError(error.InvalidArguments, parseServerInstallOptions(std.testing.allocator, &.{ "srv", "--workers", "33" }));
+    try std.testing.expectError(error.InvalidArguments, parseServerInstallOptions(std.testing.allocator, &.{ "srv", "--retries", "6" }));
+    try std.testing.expectError(error.InvalidArguments, parseServerInstallOptions(std.testing.allocator, &.{ "srv", "--workers", "x" }));
+    try std.testing.expectError(error.InvalidArguments, parseServerInstallOptions(std.testing.allocator, &.{ "srv", "--bogus" }));
+    try std.testing.expectError(error.InvalidArguments, parseServerInstallOptions(std.testing.allocator, &.{ "srv", "--java-path" }));
+    try std.testing.expectError(error.InvalidArguments, parseServerInstallOptions(std.testing.allocator, &.{ "srv", "--java-path", "" }));
+    try std.testing.expectError(error.InvalidServerId, parseServerInstallOptions(std.testing.allocator, &.{ "Bad Id", "--accept-eula" }));
+}
+
+test "properties set parser collects key value pairs" {
+    var options = try parseServerPropertiesSetOptions(std.testing.allocator, &.{
+        "srv",
+        "max-players=20",
+        "--servers-directory",
+        "/tmp/servers",
+        "motd=hello=world",
+        "server-ip=",
+    });
+    defer options.deinit(std.testing.allocator);
+    try std.testing.expectEqualStrings("srv", options.id);
+    try std.testing.expectEqualStrings("/tmp/servers", options.servers_directory);
+    try std.testing.expectEqual(@as(usize, 3), options.pairs.items.len);
+    try std.testing.expectEqualStrings("max-players", options.pairs.items[0].key);
+    try std.testing.expectEqualStrings("20", options.pairs.items[0].value);
+    try std.testing.expectEqualStrings("motd", options.pairs.items[1].key);
+    try std.testing.expectEqualStrings("hello=world", options.pairs.items[1].value);
+    try std.testing.expectEqualStrings("server-ip", options.pairs.items[2].key);
+    try std.testing.expectEqualStrings("", options.pairs.items[2].value);
+}
+
+test "properties set parser rejects bare tokens and missing input" {
+    try std.testing.expectError(error.InvalidArguments, parseServerPropertiesSetOptions(std.testing.allocator, &.{}));
+    try std.testing.expectError(error.InvalidArguments, parseServerPropertiesSetOptions(std.testing.allocator, &.{"srv"}));
+    try std.testing.expectError(error.InvalidArguments, parseServerPropertiesSetOptions(std.testing.allocator, &.{ "srv", "max-players" }));
+    try std.testing.expectError(error.InvalidArguments, parseServerPropertiesSetOptions(std.testing.allocator, &.{ "srv", "=20" }));
+    try std.testing.expectError(error.InvalidArguments, parseServerPropertiesSetOptions(std.testing.allocator, &.{ "srv", "--json" }));
+    try std.testing.expectError(error.InvalidArguments, parseServerPropertiesSetOptions(std.testing.allocator, &.{ "srv", "a=b", "--servers-directory" }));
+    try std.testing.expectError(error.InvalidArguments, parseServerPropertiesSetOptions(std.testing.allocator, &.{ "srv", "a=b", "--servers-directory", "" }));
+    try std.testing.expectError(error.InvalidServerId, parseServerPropertiesSetOptions(std.testing.allocator, &.{ "Bad Id", "a=b" }));
 }
