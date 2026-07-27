@@ -18,7 +18,13 @@ pub fn run(
     if (args.len >= 1 and std.mem.eql(u8, args[0], "delete")) return runServerDelete(service, args[1..], stdout, stderr);
     if (args.len >= 1 and std.mem.eql(u8, args[0], "install")) return runServerInstall(service, args[1..], stdout, stderr);
     if (args.len >= 1 and std.mem.eql(u8, args[0], "properties")) return runServerProperties(service, args[1..], stdout, stderr);
-    try stderr.writeAll("usage: jmcl-core server <create|list|show|delete|install|properties> [options]\n");
+    if (args.len >= 1 and std.mem.eql(u8, args[0], "start")) return runServerStart(service, args[1..], stdout, stderr);
+    if (args.len >= 1 and std.mem.eql(u8, args[0], "stop")) return runServerStop(service, args[1..], stdout, stderr);
+    if (args.len >= 1 and std.mem.eql(u8, args[0], "restart")) return runServerRestart(service, args[1..], stdout, stderr);
+    if (args.len >= 1 and std.mem.eql(u8, args[0], "status")) return runServerStatus(service, args[1..], stdout, stderr);
+    if (args.len >= 1 and std.mem.eql(u8, args[0], "logs")) return runServerLogs(service, args[1..], stdout, stderr);
+    if (args.len >= 1 and std.mem.eql(u8, args[0], "command")) return runServerCommand(service, args[1..], stdout, stderr);
+    try stderr.writeAll("usage: jmcl-core server <create|list|show|delete|install|properties|start|stop|restart|status|logs|command> [options]\n");
     return 2;
 }
 
@@ -795,6 +801,483 @@ fn runServerPropertiesSet(
     return 0;
 }
 
+const OpenedServer = struct {
+    root: std.Io.Dir,
+    manifest: jmcl.server_store.Document,
+    server_dir: std.Io.Dir,
+
+    fn deinit(opened: *OpenedServer, service: *jmcl.Service) void {
+        opened.server_dir.close(service.io);
+        opened.manifest.deinit();
+        opened.root.close(service.io);
+        opened.* = undefined;
+    }
+};
+
+fn openServerTarget(
+    service: *jmcl.Service,
+    servers_directory: []const u8,
+    id: []const u8,
+    stderr: *std.Io.Writer,
+) !?OpenedServer {
+    const root = jmcl.server_store.openRoot(service.io, servers_directory) catch |err| {
+        try stderr.print("failed to open servers directory: {s}\n", .{@errorName(err)});
+        return null;
+    };
+    var manifest = jmcl.server_store.load(service.allocator, service.io, root, id) catch |err| switch (err) {
+        error.FileNotFound, error.InvalidServerId => {
+            root.close(service.io);
+            try stderr.writeAll("no server matches the given id\n");
+            return null;
+        },
+        else => {
+            root.close(service.io);
+            try stderr.print("failed to load server: {s}\n", .{@errorName(err)});
+            return null;
+        },
+    };
+    const server_dir = jmcl.server_store.openServer(service.io, root, id) catch |err| {
+        manifest.deinit();
+        root.close(service.io);
+        try stderr.print("failed to open server directory: {s}\n", .{@errorName(err)});
+        return null;
+    };
+    return .{ .root = root, .manifest = manifest, .server_dir = server_dir };
+}
+
+fn writeServerStartError(stderr: *std.Io.Writer, err: jmcl.Service.ServerStartError) std.Io.Writer.Error!void {
+    switch (err) {
+        error.UnsupportedPlatform => try stderr.writeAll(unsupported_platform_message ++ "\n"),
+        error.EnvironmentUnavailable => try stderr.writeAll("process environment is unavailable\n"),
+        error.ServerStatusFailed => try stderr.writeAll("failed to validate the server lifecycle status\n"),
+        error.ServerAlreadyRunning => try stderr.writeAll("the server is already running\n"),
+        error.ServerNotInstalled => try stderr.writeAll("the server installation is incomplete or does not match its manifest\n"),
+        error.ServerInstallationUnreadable => try stderr.writeAll("failed to read the completed server installation\n"),
+        error.JavaNotFound => try stderr.writeAll("no Java executable candidates were found\n"),
+        error.JavaResolutionFailed => try stderr.writeAll("the selected Java executable could not be resolved\n"),
+        error.NoCompatibleJava => try stderr.writeAll("no Java runtime matches the installed server requirement\n"),
+        error.InvalidGracePeriod, error.InvalidJavaPath => try stderr.writeAll("server lifecycle parameters are invalid\n"),
+        error.ServerStartFailed => try stderr.writeAll("failed to start the server\n"),
+        error.ServerRestartFailed => try stderr.writeAll("failed to restart the server\n"),
+        error.OutOfMemory => try stderr.writeAll("out of memory\n"),
+    }
+}
+
+const ServerStartOptions = struct {
+    id: []const u8,
+    servers_directory: []const u8 = jmcl.server_store.default_root,
+    java_paths: std.ArrayList([]const u8) = .empty,
+
+    fn deinit(options: *ServerStartOptions, allocator: std.mem.Allocator) void {
+        options.java_paths.deinit(allocator);
+    }
+};
+
+fn parseServerStartOptions(allocator: std.mem.Allocator, args: []const []const u8) !ServerStartOptions {
+    if (args.len == 0 or args[0].len == 0) return error.InvalidArguments;
+    try jmcl.server_store.validateId(args[0]);
+    var options: ServerStartOptions = .{ .id = args[0] };
+    errdefer options.deinit(allocator);
+    var index: usize = 1;
+    while (index < args.len) {
+        if (index + 1 >= args.len or args[index + 1].len == 0) return error.InvalidArguments;
+        const value = args[index + 1];
+        if (std.mem.eql(u8, args[index], "--servers-directory")) {
+            options.servers_directory = value;
+        } else if (std.mem.eql(u8, args[index], "--java-path")) {
+            try options.java_paths.append(allocator, value);
+        } else return error.InvalidArguments;
+        index += 2;
+    }
+    return options;
+}
+
+fn runServerStart(
+    service: *jmcl.Service,
+    args: []const []const u8,
+    stdout: *std.Io.Writer,
+    stderr: *std.Io.Writer,
+) !u8 {
+    if (!try requireLinux(stderr)) return 1;
+    var options = parseServerStartOptions(service.allocator, args) catch {
+        try stderr.writeAll("usage: jmcl-core server start ID [--servers-directory PATH] [--java-path PATH ...]\n");
+        return 2;
+    };
+    defer options.deinit(service.allocator);
+    var opened = (try openServerTarget(service, options.servers_directory, options.id, stderr)) orelse return 1;
+    defer opened.deinit(service);
+    var summary = service.startServer(
+        opened.manifest.value,
+        opened.server_dir,
+        options.java_paths.items,
+    ) catch |err| {
+        try writeServerStartError(stderr, err);
+        return 1;
+    };
+    defer summary.deinit();
+    try stdout.print("server\t{s}\nrunning\ttrue\npid\t{d}\nsupervisorPid\t{d}\nstartedAtMs\t{d}\njava\t{s}\n", .{
+        options.id,
+        summary.pid,
+        summary.supervisor_pid,
+        summary.started_at_ms,
+        summary.java_path,
+    });
+    return 0;
+}
+
+const ServerStopOptions = struct {
+    id: []const u8,
+    grace_ms: u32 = jmcl.server_lifecycle.default_grace_ms,
+    servers_directory: []const u8 = jmcl.server_store.default_root,
+};
+
+fn parseServerStopOptions(args: []const []const u8) !ServerStopOptions {
+    if (args.len == 0 or args[0].len == 0) return error.InvalidArguments;
+    try jmcl.server_store.validateId(args[0]);
+    var options: ServerStopOptions = .{ .id = args[0] };
+    var index: usize = 1;
+    while (index < args.len) {
+        if (index + 1 >= args.len or args[index + 1].len == 0) return error.InvalidArguments;
+        const value = args[index + 1];
+        if (std.mem.eql(u8, args[index], "--servers-directory")) {
+            options.servers_directory = value;
+        } else if (std.mem.eql(u8, args[index], "--grace-ms")) {
+            options.grace_ms = std.fmt.parseInt(u32, value, 10) catch return error.InvalidArguments;
+            if (options.grace_ms > jmcl.server_lifecycle.max_grace_ms) return error.InvalidArguments;
+        } else return error.InvalidArguments;
+        index += 2;
+    }
+    return options;
+}
+
+fn runServerStop(
+    service: *jmcl.Service,
+    args: []const []const u8,
+    stdout: *std.Io.Writer,
+    stderr: *std.Io.Writer,
+) !u8 {
+    if (!try requireLinux(stderr)) return 1;
+    const options = parseServerStopOptions(args) catch {
+        try stderr.writeAll("usage: jmcl-core server stop ID [--grace-ms N] [--servers-directory PATH]\n");
+        return 2;
+    };
+    var opened = (try openServerTarget(service, options.servers_directory, options.id, stderr)) orelse return 1;
+    defer opened.deinit(service);
+    const result = jmcl.server_lifecycle.stop(
+        service.allocator,
+        service.io,
+        opened.server_dir,
+        options.grace_ms,
+    ) catch |err| switch (err) {
+        error.InvalidGracePeriod => {
+            try stderr.writeAll("server grace_ms is out of range\n");
+            return 1;
+        },
+        else => {
+            try stderr.print("failed to stop the server: {s}\n", .{@errorName(err)});
+            return 1;
+        },
+    };
+    if (result.termination == .not_running) {
+        try stderr.writeAll("the server is not running\n");
+        return 1;
+    }
+    try stdout.print("server\t{s}\nrunning\tfalse\ntermination\t{s}\n", .{
+        options.id,
+        @tagName(result.termination),
+    });
+    if (result.pid) |pid| try stdout.print("pid\t{d}\n", .{pid});
+    return 0;
+}
+
+const ServerRestartOptions = struct {
+    id: []const u8,
+    grace_ms: u32 = jmcl.server_lifecycle.default_grace_ms,
+    servers_directory: []const u8 = jmcl.server_store.default_root,
+    java_paths: std.ArrayList([]const u8) = .empty,
+
+    fn deinit(options: *ServerRestartOptions, allocator: std.mem.Allocator) void {
+        options.java_paths.deinit(allocator);
+    }
+};
+
+fn parseServerRestartOptions(allocator: std.mem.Allocator, args: []const []const u8) !ServerRestartOptions {
+    if (args.len == 0 or args[0].len == 0) return error.InvalidArguments;
+    try jmcl.server_store.validateId(args[0]);
+    var options: ServerRestartOptions = .{ .id = args[0] };
+    errdefer options.deinit(allocator);
+    var index: usize = 1;
+    while (index < args.len) {
+        if (index + 1 >= args.len or args[index + 1].len == 0) return error.InvalidArguments;
+        const value = args[index + 1];
+        if (std.mem.eql(u8, args[index], "--servers-directory")) {
+            options.servers_directory = value;
+        } else if (std.mem.eql(u8, args[index], "--grace-ms")) {
+            options.grace_ms = std.fmt.parseInt(u32, value, 10) catch return error.InvalidArguments;
+            if (options.grace_ms > jmcl.server_lifecycle.max_grace_ms) return error.InvalidArguments;
+        } else if (std.mem.eql(u8, args[index], "--java-path")) {
+            try options.java_paths.append(allocator, value);
+        } else return error.InvalidArguments;
+        index += 2;
+    }
+    return options;
+}
+
+fn runServerRestart(
+    service: *jmcl.Service,
+    args: []const []const u8,
+    stdout: *std.Io.Writer,
+    stderr: *std.Io.Writer,
+) !u8 {
+    if (!try requireLinux(stderr)) return 1;
+    var options = parseServerRestartOptions(service.allocator, args) catch {
+        try stderr.writeAll("usage: jmcl-core server restart ID [--grace-ms N] [--servers-directory PATH] [--java-path PATH ...]\n");
+        return 2;
+    };
+    defer options.deinit(service.allocator);
+    var opened = (try openServerTarget(service, options.servers_directory, options.id, stderr)) orelse return 1;
+    defer opened.deinit(service);
+    var summary = service.restartServer(
+        opened.manifest.value,
+        opened.server_dir,
+        options.java_paths.items,
+        options.grace_ms,
+    ) catch |err| {
+        try writeServerStartError(stderr, err);
+        return 1;
+    };
+    defer summary.deinit();
+    try stdout.print("server\t{s}\nrunning\ttrue\npid\t{d}\nsupervisorPid\t{d}\nstartedAtMs\t{d}\njava\t{s}\n", .{
+        options.id,
+        summary.pid,
+        summary.supervisor_pid,
+        summary.started_at_ms,
+        summary.java_path,
+    });
+    return 0;
+}
+
+fn runServerStatus(
+    service: *jmcl.Service,
+    args: []const []const u8,
+    stdout: *std.Io.Writer,
+    stderr: *std.Io.Writer,
+) !u8 {
+    if (!try requireLinux(stderr)) return 1;
+    const options = parseServerTargetOptions(args, true) catch {
+        try stderr.writeAll("usage: jmcl-core server status ID [--servers-directory PATH] [--json]\n");
+        return 2;
+    };
+    var opened = (try openServerTarget(service, options.servers_directory, options.id, stderr)) orelse return 1;
+    defer opened.deinit(service);
+    var status_result = jmcl.server_lifecycle.status(
+        service.allocator,
+        service.io,
+        opened.server_dir,
+    ) catch |err| {
+        try stderr.print("failed to read the server lifecycle status: {s}\n", .{@errorName(err)});
+        return 1;
+    };
+    defer status_result.deinit();
+    if (options.json) {
+        var json: std.json.Stringify = .{ .writer = stdout };
+        try json.beginObject();
+        try json.objectField("stage");
+        try json.write("server.status");
+        try json.objectField("id");
+        try json.write(options.id);
+        try json.objectField("running");
+        try json.write(status_result.running);
+        try json.objectField("stale_state");
+        try json.write(status_result.stale_state);
+        try json.objectField("pid");
+        try json.write(status_result.pid);
+        try json.objectField("supervisor_pid");
+        try json.write(status_result.supervisor_pid);
+        try json.objectField("java_path");
+        try json.write(status_result.java_path);
+        try json.objectField("started_at_ms");
+        try json.write(status_result.started_at_ms);
+        try json.objectField("uptime_ms");
+        try json.write(status_result.uptime_ms);
+        try json.endObject();
+        try stdout.writeByte('\n');
+    } else {
+        try stdout.print("server\t{s}\nrunning\t{s}\nstaleState\t{s}\n", .{
+            options.id,
+            if (status_result.running) "true" else "false",
+            if (status_result.stale_state) "true" else "false",
+        });
+        if (status_result.pid) |pid| try stdout.print("pid\t{d}\n", .{pid});
+        if (status_result.supervisor_pid) |pid| try stdout.print("supervisorPid\t{d}\n", .{pid});
+        if (status_result.java_path) |path| try stdout.print("java\t{s}\n", .{path});
+        if (status_result.started_at_ms) |ms| try stdout.print("startedAtMs\t{d}\n", .{ms});
+        if (status_result.uptime_ms) |ms| try stdout.print("uptimeMs\t{d}\n", .{ms});
+    }
+    return 0;
+}
+
+const ServerLogsOptions = struct {
+    id: []const u8,
+    cursor: ?u64 = null,
+    file_id: ?u64 = null,
+    max_bytes: usize = jmcl.server_lifecycle.default_log_read_bytes,
+    servers_directory: []const u8 = jmcl.server_store.default_root,
+    json: bool = false,
+};
+
+fn parseServerLogsOptions(args: []const []const u8) !ServerLogsOptions {
+    if (args.len == 0 or args[0].len == 0) return error.InvalidArguments;
+    try jmcl.server_store.validateId(args[0]);
+    var options: ServerLogsOptions = .{ .id = args[0] };
+    var index: usize = 1;
+    while (index < args.len) {
+        const argument = args[index];
+        if (std.mem.eql(u8, argument, "--json")) {
+            options.json = true;
+            index += 1;
+            continue;
+        }
+        if (index + 1 >= args.len or args[index + 1].len == 0) return error.InvalidArguments;
+        const value = args[index + 1];
+        if (std.mem.eql(u8, argument, "--servers-directory")) {
+            options.servers_directory = value;
+        } else if (std.mem.eql(u8, argument, "--cursor")) {
+            options.cursor = std.fmt.parseInt(u64, value, 10) catch return error.InvalidArguments;
+        } else if (std.mem.eql(u8, argument, "--file-id")) {
+            options.file_id = std.fmt.parseInt(u64, value, 10) catch return error.InvalidArguments;
+        } else if (std.mem.eql(u8, argument, "--max-bytes")) {
+            options.max_bytes = std.fmt.parseInt(usize, value, 10) catch return error.InvalidArguments;
+            if (options.max_bytes == 0 or options.max_bytes > jmcl.server_lifecycle.max_log_read_bytes) return error.InvalidArguments;
+        } else return error.InvalidArguments;
+        index += 2;
+    }
+    return options;
+}
+
+fn runServerLogs(
+    service: *jmcl.Service,
+    args: []const []const u8,
+    stdout: *std.Io.Writer,
+    stderr: *std.Io.Writer,
+) !u8 {
+    if (!try requireLinux(stderr)) return 1;
+    const options = parseServerLogsOptions(args) catch {
+        try stderr.writeAll("usage: jmcl-core server logs ID [--cursor N] [--file-id N] [--max-bytes N] [--servers-directory PATH] [--json]\n");
+        return 2;
+    };
+    var opened = (try openServerTarget(service, options.servers_directory, options.id, stderr)) orelse return 1;
+    defer opened.deinit(service);
+    var result = jmcl.server_lifecycle.readLogs(
+        service.allocator,
+        service.io,
+        opened.server_dir,
+        options.cursor,
+        options.file_id,
+        options.max_bytes,
+    ) catch |err| switch (err) {
+        error.ServerLogsNotFound => {
+            try stderr.writeAll("no server console log exists\n");
+            return 1;
+        },
+        error.InvalidLogReadSize => {
+            try stderr.writeAll("server max_bytes is out of range\n");
+            return 1;
+        },
+        else => {
+            try stderr.print("failed to read the server console log: {s}\n", .{@errorName(err)});
+            return 1;
+        },
+    };
+    defer result.deinit();
+    if (options.json) {
+        var json: std.json.Stringify = .{ .writer = stdout };
+        try json.beginObject();
+        try json.objectField("stage");
+        try json.write("server.logs");
+        try json.objectField("id");
+        try json.write(options.id);
+        try json.objectField("text");
+        try json.write(result.text);
+        try json.objectField("file_id");
+        try json.write(result.file_id);
+        try json.objectField("start_cursor");
+        try json.write(result.start_cursor);
+        try json.objectField("next_cursor");
+        try json.write(result.next_cursor);
+        try json.objectField("eof");
+        try json.write(result.eof);
+        try json.objectField("reset");
+        try json.write(result.reset);
+        try json.objectField("truncated");
+        try json.write(result.truncated);
+        try json.endObject();
+        try stdout.writeByte('\n');
+    } else {
+        try stdout.writeAll(result.text);
+    }
+    return 0;
+}
+
+const ServerCommandOptions = struct {
+    id: []const u8,
+    command: []const u8,
+    servers_directory: []const u8 = jmcl.server_store.default_root,
+};
+
+fn parseServerCommandOptions(args: []const []const u8) !ServerCommandOptions {
+    if (args.len < 2 or args[0].len == 0) return error.InvalidArguments;
+    try jmcl.server_store.validateId(args[0]);
+    var options: ServerCommandOptions = .{ .id = args[0], .command = args[1] };
+    jmcl.server_lifecycle.validateCommand(options.command) catch return error.InvalidArguments;
+    var index: usize = 2;
+    while (index < args.len) {
+        if (index + 1 >= args.len or args[index + 1].len == 0) return error.InvalidArguments;
+        const value = args[index + 1];
+        if (std.mem.eql(u8, args[index], "--servers-directory")) {
+            options.servers_directory = value;
+        } else return error.InvalidArguments;
+        index += 2;
+    }
+    return options;
+}
+
+fn runServerCommand(
+    service: *jmcl.Service,
+    args: []const []const u8,
+    stdout: *std.Io.Writer,
+    stderr: *std.Io.Writer,
+) !u8 {
+    if (!try requireLinux(stderr)) return 1;
+    const options = parseServerCommandOptions(args) catch {
+        try stderr.writeAll("usage: jmcl-core server command ID COMMAND [--servers-directory PATH]\n");
+        return 2;
+    };
+    var opened = (try openServerTarget(service, options.servers_directory, options.id, stderr)) orelse return 1;
+    defer opened.deinit(service);
+    const pid = jmcl.server_lifecycle.command(
+        service.allocator,
+        service.io,
+        opened.server_dir,
+        options.command,
+    ) catch |err| switch (err) {
+        error.ServerNotRunning => {
+            try stderr.writeAll("the server is not running\n");
+            return 1;
+        },
+        error.InvalidServerCommand => {
+            try stderr.writeAll("server command is invalid\n");
+            return 1;
+        },
+        else => {
+            try stderr.print("failed to send the server command: {s}\n", .{@errorName(err)});
+            return 1;
+        },
+    };
+    try stdout.print("server\t{s}\naccepted\ttrue\npid\t{d}\n", .{ options.id, pid });
+    return 0;
+}
+
 test "create parser maps flags to fields" {
     const options = try parseServerCreateOptions(&.{
         "vanilla-1.21.4",
@@ -982,4 +1465,131 @@ test "properties set parser rejects bare tokens and missing input" {
     try std.testing.expectError(error.InvalidArguments, parseServerPropertiesSetOptions(std.testing.allocator, &.{ "srv", "a=b", "--servers-directory" }));
     try std.testing.expectError(error.InvalidArguments, parseServerPropertiesSetOptions(std.testing.allocator, &.{ "srv", "a=b", "--servers-directory", "" }));
     try std.testing.expectError(error.InvalidServerId, parseServerPropertiesSetOptions(std.testing.allocator, &.{ "Bad Id", "a=b" }));
+}
+
+test "start parser maps java paths and servers directory" {
+    var options = try parseServerStartOptions(std.testing.allocator, &.{
+        "srv",
+        "--java-path",
+        "/usr/lib/jvm/java-21/bin/java",
+        "--java-path",
+        "/usr/bin/java",
+        "--servers-directory",
+        "/tmp/servers",
+    });
+    defer options.deinit(std.testing.allocator);
+    try std.testing.expectEqualStrings("srv", options.id);
+    try std.testing.expectEqual(@as(usize, 2), options.java_paths.items.len);
+    try std.testing.expectEqualStrings("/usr/lib/jvm/java-21/bin/java", options.java_paths.items[0]);
+    try std.testing.expectEqualStrings("/usr/bin/java", options.java_paths.items[1]);
+    try std.testing.expectEqualStrings("/tmp/servers", options.servers_directory);
+}
+
+test "start parser defaults and rejections" {
+    var defaults = try parseServerStartOptions(std.testing.allocator, &.{"srv"});
+    defer defaults.deinit(std.testing.allocator);
+    try std.testing.expectEqual(@as(usize, 0), defaults.java_paths.items.len);
+    try std.testing.expectEqualStrings(jmcl.server_store.default_root, defaults.servers_directory);
+    try std.testing.expectError(error.InvalidArguments, parseServerStartOptions(std.testing.allocator, &.{}));
+    try std.testing.expectError(error.InvalidArguments, parseServerStartOptions(std.testing.allocator, &.{ "srv", "--bogus", "x" }));
+    try std.testing.expectError(error.InvalidArguments, parseServerStartOptions(std.testing.allocator, &.{ "srv", "--java-path" }));
+    try std.testing.expectError(error.InvalidArguments, parseServerStartOptions(std.testing.allocator, &.{ "srv", "--java-path", "" }));
+    try std.testing.expectError(error.InvalidArguments, parseServerStartOptions(std.testing.allocator, &.{ "srv", "--json" }));
+    try std.testing.expectError(error.InvalidServerId, parseServerStartOptions(std.testing.allocator, &.{"Bad Id"}));
+}
+
+test "stop parser maps grace flag and rejects out of range" {
+    const options = try parseServerStopOptions(&.{ "srv", "--grace-ms", "5000", "--servers-directory", "/tmp/servers" });
+    try std.testing.expectEqualStrings("srv", options.id);
+    try std.testing.expectEqual(@as(u32, 5000), options.grace_ms);
+    try std.testing.expectEqualStrings("/tmp/servers", options.servers_directory);
+    const defaults = try parseServerStopOptions(&.{"srv"});
+    try std.testing.expectEqual(jmcl.server_lifecycle.default_grace_ms, defaults.grace_ms);
+    try std.testing.expectError(error.InvalidArguments, parseServerStopOptions(&.{}));
+    try std.testing.expectError(error.InvalidArguments, parseServerStopOptions(&.{ "srv", "--grace-ms", "120001" }));
+    try std.testing.expectError(error.InvalidArguments, parseServerStopOptions(&.{ "srv", "--grace-ms", "x" }));
+    try std.testing.expectError(error.InvalidArguments, parseServerStopOptions(&.{ "srv", "--grace-ms" }));
+    try std.testing.expectError(error.InvalidArguments, parseServerStopOptions(&.{ "srv", "--json" }));
+    try std.testing.expectError(error.InvalidServerId, parseServerStopOptions(&.{"Bad Id"}));
+}
+
+test "restart parser maps grace java paths and servers directory" {
+    var options = try parseServerRestartOptions(std.testing.allocator, &.{
+        "srv",
+        "--grace-ms",
+        "20000",
+        "--java-path",
+        "/usr/bin/java",
+        "--servers-directory",
+        "/tmp/servers",
+    });
+    defer options.deinit(std.testing.allocator);
+    try std.testing.expectEqualStrings("srv", options.id);
+    try std.testing.expectEqual(@as(u32, 20000), options.grace_ms);
+    try std.testing.expectEqual(@as(usize, 1), options.java_paths.items.len);
+    try std.testing.expectEqualStrings("/usr/bin/java", options.java_paths.items[0]);
+    try std.testing.expectEqualStrings("/tmp/servers", options.servers_directory);
+    var defaults = try parseServerRestartOptions(std.testing.allocator, &.{"srv"});
+    defer defaults.deinit(std.testing.allocator);
+    try std.testing.expectEqual(jmcl.server_lifecycle.default_grace_ms, defaults.grace_ms);
+    try std.testing.expectEqual(@as(usize, 0), defaults.java_paths.items.len);
+    try std.testing.expectError(error.InvalidArguments, parseServerRestartOptions(std.testing.allocator, &.{}));
+    try std.testing.expectError(error.InvalidArguments, parseServerRestartOptions(std.testing.allocator, &.{ "srv", "--grace-ms", "120001" }));
+    try std.testing.expectError(error.InvalidArguments, parseServerRestartOptions(std.testing.allocator, &.{ "srv", "--grace-ms", "x" }));
+    try std.testing.expectError(error.InvalidArguments, parseServerRestartOptions(std.testing.allocator, &.{ "srv", "--bogus", "x" }));
+    try std.testing.expectError(error.InvalidServerId, parseServerRestartOptions(std.testing.allocator, &.{"Bad Id"}));
+}
+
+test "logs parser maps cursor file id max bytes and json" {
+    const options = try parseServerLogsOptions(&.{
+        "srv",
+        "--cursor",
+        "1024",
+        "--file-id",
+        "99",
+        "--max-bytes",
+        "4096",
+        "--servers-directory",
+        "/tmp/servers",
+        "--json",
+    });
+    try std.testing.expectEqualStrings("srv", options.id);
+    try std.testing.expectEqual(@as(?u64, 1024), options.cursor);
+    try std.testing.expectEqual(@as(?u64, 99), options.file_id);
+    try std.testing.expectEqual(@as(usize, 4096), options.max_bytes);
+    try std.testing.expectEqualStrings("/tmp/servers", options.servers_directory);
+    try std.testing.expect(options.json);
+}
+
+test "logs parser defaults and rejections" {
+    const defaults = try parseServerLogsOptions(&.{"srv"});
+    try std.testing.expect(defaults.cursor == null);
+    try std.testing.expect(defaults.file_id == null);
+    try std.testing.expectEqual(jmcl.server_lifecycle.default_log_read_bytes, defaults.max_bytes);
+    try std.testing.expect(!defaults.json);
+    try std.testing.expectError(error.InvalidArguments, parseServerLogsOptions(&.{}));
+    try std.testing.expectError(error.InvalidArguments, parseServerLogsOptions(&.{ "srv", "--cursor", "x" }));
+    try std.testing.expectError(error.InvalidArguments, parseServerLogsOptions(&.{ "srv", "--cursor" }));
+    try std.testing.expectError(error.InvalidArguments, parseServerLogsOptions(&.{ "srv", "--file-id", "" }));
+    try std.testing.expectError(error.InvalidArguments, parseServerLogsOptions(&.{ "srv", "--max-bytes", "0" }));
+    try std.testing.expectError(error.InvalidArguments, parseServerLogsOptions(&.{ "srv", "--max-bytes", "1048577" }));
+    try std.testing.expectError(error.InvalidArguments, parseServerLogsOptions(&.{ "srv", "--bogus", "x" }));
+    try std.testing.expectError(error.InvalidServerId, parseServerLogsOptions(&.{"Bad Id"}));
+}
+
+test "command parser maps command and servers directory" {
+    const options = try parseServerCommandOptions(&.{ "srv", "say hello", "--servers-directory", "/tmp/servers" });
+    try std.testing.expectEqualStrings("srv", options.id);
+    try std.testing.expectEqualStrings("say hello", options.command);
+    try std.testing.expectEqualStrings("/tmp/servers", options.servers_directory);
+}
+
+test "command parser rejects missing invalid and multiline commands" {
+    try std.testing.expectError(error.InvalidArguments, parseServerCommandOptions(&.{}));
+    try std.testing.expectError(error.InvalidArguments, parseServerCommandOptions(&.{"srv"}));
+    try std.testing.expectError(error.InvalidArguments, parseServerCommandOptions(&.{ "srv", "" }));
+    try std.testing.expectError(error.InvalidArguments, parseServerCommandOptions(&.{ "srv", "say hi\nsay bye" }));
+    try std.testing.expectError(error.InvalidArguments, parseServerCommandOptions(&.{ "srv", "say hi", "--bogus", "x" }));
+    try std.testing.expectError(error.InvalidArguments, parseServerCommandOptions(&.{ "srv", "say hi", "--servers-directory" }));
+    try std.testing.expectError(error.InvalidServerId, parseServerCommandOptions(&.{ "Bad Id", "say hi" }));
 }

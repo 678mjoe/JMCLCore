@@ -864,95 +864,23 @@ fn writeLifecycleStart(
     }
     var opened = (try openServerTarget(service, writer, request_id, directory, id)) orelse return;
     defer opened.deinit(service);
-    if (operation == .start) {
-        var current = core.server_lifecycle.status(
-            service.allocator,
-            service.io,
-            opened.server_dir,
-        ) catch {
-            try writeError(writer, request_id, "SERVER_STATUS_FAILED", "Failed to validate the server lifecycle status");
-            return;
-        };
-        defer current.deinit();
-        if (current.running) {
-            try writeError(writer, request_id, "SERVER_ALREADY_RUNNING", "The server is already running");
-            return;
-        }
-    }
-    const required_java_major = (core.server_store.installedJavaMajor(
-        service.allocator,
-        service.io,
-        opened.server_dir,
-        opened.manifest.value,
-    ) catch {
-        const code = if (operation == .start) "SERVER_START_FAILED" else "SERVER_RESTART_FAILED";
-        try writeError(writer, request_id, code, "Failed to read the completed server installation");
-        return;
-    }) orelse {
-        try writeError(writer, request_id, "SERVER_NOT_INSTALLED", "The server installation is incomplete or does not match its manifest");
-        return;
-    };
-    const target = core.install_plan.Target.host() catch {
-        try writeError(writer, request_id, "UNSUPPORTED_PLATFORM", "The host platform is not supported");
-        return;
-    };
-    var explicit_java: [1][]const u8 = undefined;
-    const java_paths = if (opened.manifest.value.java_path) |path| blk: {
-        explicit_java[0] = path;
-        break :blk explicit_java[0..];
-    } else java_paths_input;
-    var detection = core.java_runtime.detect(
-        service.allocator,
-        service.io,
-        service.environ_map orelse {
-            try writeError(writer, request_id, "ENVIRONMENT_UNAVAILABLE", "Process environment is unavailable");
-            return;
-        },
-        java_paths,
-    ) catch {
-        try writeError(writer, request_id, "JAVA_NOT_FOUND", "No Java executable candidates were found");
-        return;
-    };
-    defer detection.deinit();
-    const runtime = core.java_runtime.selectCompatible(
-        detection,
-        required_java_major,
-        target.arch,
-    ) catch {
-        try writeError(writer, request_id, "JAVA_INCOMPATIBLE", "No Java runtime matches the installed server requirement");
-        return;
-    };
-    const java_executable = (if (std.fs.path.isAbsolute(runtime.executable))
-        std.Io.Dir.realPathFileAbsoluteAlloc(service.io, runtime.executable, service.allocator)
+    var summary = (if (operation == .start)
+        service.startServer(opened.manifest.value, opened.server_dir, java_paths_input)
     else
-        std.Io.Dir.cwd().realPathFileAlloc(service.io, runtime.executable, service.allocator)) catch {
-        try writeError(writer, request_id, "JAVA_NOT_FOUND", "The selected Java executable could not be resolved");
-        return;
-    };
-    defer service.allocator.free(java_executable);
-    const environ_map = service.environ_map orelse {
-        try writeError(writer, request_id, "ENVIRONMENT_UNAVAILABLE", "Process environment is unavailable");
-        return;
-    };
-    const result = (if (operation == .start)
-        core.server_lifecycle.start(
-            service.allocator,
-            service.io,
-            environ_map,
-            opened.server_dir,
-            java_executable,
-        )
-    else
-        core.server_lifecycle.restart(
-            service.allocator,
-            service.io,
-            environ_map,
-            opened.server_dir,
-            java_executable,
-            grace_ms,
-        )) catch |err| {
+        service.restartServer(opened.manifest.value, opened.server_dir, java_paths_input, grace_ms)) catch |err| {
         switch (err) {
+            error.UnsupportedPlatform => try writeError(writer, request_id, "UNSUPPORTED_PLATFORM", "The host platform is not supported"),
+            error.EnvironmentUnavailable => try writeError(writer, request_id, "ENVIRONMENT_UNAVAILABLE", "Process environment is unavailable"),
+            error.ServerStatusFailed => try writeError(writer, request_id, "SERVER_STATUS_FAILED", "Failed to validate the server lifecycle status"),
             error.ServerAlreadyRunning => try writeError(writer, request_id, "SERVER_ALREADY_RUNNING", "The server is already running"),
+            error.ServerNotInstalled => try writeError(writer, request_id, "SERVER_NOT_INSTALLED", "The server installation is incomplete or does not match its manifest"),
+            error.ServerInstallationUnreadable => {
+                const code = if (operation == .start) "SERVER_START_FAILED" else "SERVER_RESTART_FAILED";
+                try writeError(writer, request_id, code, "Failed to read the completed server installation");
+            },
+            error.JavaNotFound => try writeError(writer, request_id, "JAVA_NOT_FOUND", "No Java executable candidates were found"),
+            error.JavaResolutionFailed => try writeError(writer, request_id, "JAVA_NOT_FOUND", "The selected Java executable could not be resolved"),
+            error.NoCompatibleJava => try writeError(writer, request_id, "JAVA_INCOMPATIBLE", "No Java runtime matches the installed server requirement"),
             error.InvalidGracePeriod, error.InvalidJavaPath => try writeError(writer, request_id, "INVALID_PARAMS", "server lifecycle parameters are invalid"),
             else => {
                 const code = if (operation == .start) "SERVER_START_FAILED" else "SERVER_RESTART_FAILED";
@@ -962,6 +890,7 @@ fn writeLifecycleStart(
         }
         return;
     };
+    defer summary.deinit();
 
     var json: std.json.Stringify = .{ .writer = writer };
     try writeEventHeader(&json, request_id, "result");
@@ -974,13 +903,13 @@ fn writeLifecycleStart(
     try json.objectField("running");
     try json.write(true);
     try json.objectField("pid");
-    try json.write(result.pid);
+    try json.write(summary.pid);
     try json.objectField("supervisor_pid");
-    try json.write(result.supervisor_pid);
+    try json.write(summary.supervisor_pid);
     try json.objectField("started_at_ms");
-    try json.write(result.started_at_ms);
+    try json.write(summary.started_at_ms);
     try json.objectField("java_path");
-    try json.write(java_executable);
+    try json.write(summary.java_path);
     try json.endObject();
     try json.endObject();
     try writer.writeByte('\n');

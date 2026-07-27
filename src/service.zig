@@ -20,6 +20,7 @@ const modrinth = @import("content/modrinth.zig");
 const mrpack = @import("modpack/mrpack.zig");
 const curseforge_pack = @import("modpack/curseforge_pack.zig");
 const neoforge = @import("loaders/neoforge.zig");
+const server_lifecycle = @import("server/lifecycle.zig");
 const server_properties = @import("server/properties.zig");
 const server_store = @import("server/server_store.zig");
 const version_manifest = @import("install/version_manifest.zig");
@@ -758,6 +759,131 @@ pub const Service = struct {
             .files_copied = install_summary.files_copied,
             .bytes_verified = install_summary.bytes_verified,
             .bytes_transferred = install_summary.bytes_transferred,
+        };
+    }
+
+    pub const ServerStartError = error{
+        UnsupportedPlatform,
+        EnvironmentUnavailable,
+        ServerStatusFailed,
+        ServerAlreadyRunning,
+        ServerNotInstalled,
+        ServerInstallationUnreadable,
+        JavaNotFound,
+        JavaResolutionFailed,
+        NoCompatibleJava,
+        InvalidGracePeriod,
+        InvalidJavaPath,
+        ServerStartFailed,
+        ServerRestartFailed,
+        OutOfMemory,
+    };
+
+    pub const ServerStartSummary = struct {
+        arena: *std.heap.ArenaAllocator,
+        pid: u32,
+        supervisor_pid: u32,
+        started_at_ms: i64,
+        java_path: []const u8,
+
+        pub fn deinit(summary: *ServerStartSummary) void {
+            const allocator = summary.arena.child_allocator;
+            summary.arena.deinit();
+            allocator.destroy(summary.arena);
+            summary.* = undefined;
+        }
+    };
+
+    const ServerStartOperation = enum { start, restart };
+
+    pub fn startServer(
+        self: Service,
+        manifest: server_store.Manifest,
+        server_dir: std.Io.Dir,
+        java_paths: []const []const u8,
+    ) ServerStartError!ServerStartSummary {
+        return self.startServerInner(.start, manifest, server_dir, java_paths, 0);
+    }
+
+    pub fn restartServer(
+        self: Service,
+        manifest: server_store.Manifest,
+        server_dir: std.Io.Dir,
+        java_paths: []const []const u8,
+        grace_ms: u32,
+    ) ServerStartError!ServerStartSummary {
+        return self.startServerInner(.restart, manifest, server_dir, java_paths, grace_ms);
+    }
+
+    fn startServerInner(
+        self: Service,
+        operation: ServerStartOperation,
+        manifest: server_store.Manifest,
+        server_dir: std.Io.Dir,
+        java_paths: []const []const u8,
+        grace_ms: u32,
+    ) ServerStartError!ServerStartSummary {
+        const arena = self.allocator.create(std.heap.ArenaAllocator) catch return error.OutOfMemory;
+        errdefer self.allocator.destroy(arena);
+        arena.* = std.heap.ArenaAllocator.init(self.allocator);
+        errdefer arena.deinit();
+
+        if (operation == .start) {
+            if (comptime builtin.os.tag == .linux) {
+                var current = server_lifecycle.status(self.allocator, self.io, server_dir) catch |err| switch (err) {
+                    error.UnsupportedPlatform => return error.UnsupportedPlatform,
+                    else => return error.ServerStatusFailed,
+                };
+                defer current.deinit();
+                if (current.running) return error.ServerAlreadyRunning;
+            }
+        }
+        const required_java_major = (server_store.installedJavaMajor(
+            arena.allocator(),
+            self.io,
+            server_dir,
+            manifest,
+        ) catch return error.ServerInstallationUnreadable) orelse return error.ServerNotInstalled;
+        const target = install_plan.Target.host() catch return error.UnsupportedPlatform;
+        var explicit_java: [1][]const u8 = undefined;
+        const candidates: []const []const u8 = if (manifest.java_path) |path| blk: {
+            explicit_java[0] = path;
+            break :blk explicit_java[0..];
+        } else java_paths;
+        const environ_map = self.environ_map orelse return error.EnvironmentUnavailable;
+        var detection = java_runtime.detect(
+            self.allocator,
+            self.io,
+            environ_map,
+            candidates,
+        ) catch return error.JavaNotFound;
+        defer detection.deinit();
+        const runtime = java_runtime.selectCompatible(
+            detection,
+            required_java_major,
+            target.arch,
+        ) catch return error.NoCompatibleJava;
+        const java_executable = (if (std.fs.path.isAbsolute(runtime.executable))
+            std.Io.Dir.realPathFileAbsoluteAlloc(self.io, runtime.executable, arena.allocator())
+        else
+            std.Io.Dir.cwd().realPathFileAlloc(self.io, runtime.executable, arena.allocator())) catch
+            return error.JavaResolutionFailed;
+        const result = (if (operation == .start)
+            server_lifecycle.start(self.allocator, self.io, environ_map, server_dir, java_executable)
+        else
+            server_lifecycle.restart(self.allocator, self.io, environ_map, server_dir, java_executable, grace_ms)) catch |err| switch (err) {
+            error.UnsupportedPlatform => return error.UnsupportedPlatform,
+            error.ServerAlreadyRunning => return error.ServerAlreadyRunning,
+            error.InvalidGracePeriod => return error.InvalidGracePeriod,
+            error.InvalidJavaPath => return error.InvalidJavaPath,
+            else => return if (operation == .start) error.ServerStartFailed else error.ServerRestartFailed,
+        };
+        return .{
+            .arena = arena,
+            .pid = result.pid,
+            .supervisor_pid = result.supervisor_pid,
+            .started_at_ms = result.started_at_ms,
+            .java_path = java_executable,
         };
     }
 
@@ -2729,4 +2855,89 @@ test "selectServerJava rejects unsupported platforms before touching the host" {
         plan,
         &.{},
     ));
+}
+
+fn writeInstalledServerFixture(io: std.Io, dir: std.Io.Dir, manifest: server_store.Manifest) !void {
+    const server_file = try dir.createFile(io, "server.jar", .{});
+    try server_file.writeStreamingAll(io, "jar");
+    server_file.close(io);
+    try server_store.recordCompletedInstallation(
+        io,
+        dir,
+        manifest,
+        "1111111111111111111111111111111111111111",
+        3,
+        21,
+        .jar,
+        "server.jar",
+        "1111111111111111111111111111111111111111",
+        3,
+    );
+}
+
+test "startServer rejects a manifest edited after install before any Java spawns" {
+    const io = std.testing.io;
+    var temporary = std.testing.tmpDir(.{});
+    defer temporary.cleanup();
+    const manifest: server_store.Manifest = .{
+        .id = "vanilla",
+        .name = "Vanilla",
+        .version_id = "1.21.4",
+        .source = .official,
+        .accept_eula = true,
+    };
+    try writeInstalledServerFixture(io, temporary.dir, manifest);
+    var edited = manifest;
+    edited.neoforge_version = "21.1.133";
+    const service = Service.init(std.testing.allocator, io, null);
+    try std.testing.expectError(
+        error.ServerNotInstalled,
+        service.startServer(edited, temporary.dir, &.{}),
+    );
+    edited = manifest;
+    edited.fabric_loader = "0.16.10";
+    try std.testing.expectError(
+        error.ServerNotInstalled,
+        service.startServer(edited, temporary.dir, &.{}),
+    );
+}
+
+test "restartServer rejects a manifest edited after install before any Java spawns" {
+    const io = std.testing.io;
+    var temporary = std.testing.tmpDir(.{});
+    defer temporary.cleanup();
+    const manifest: server_store.Manifest = .{
+        .id = "vanilla",
+        .name = "Vanilla",
+        .version_id = "1.21.4",
+        .source = .official,
+        .accept_eula = true,
+    };
+    try writeInstalledServerFixture(io, temporary.dir, manifest);
+    var edited = manifest;
+    edited.forge_version = "47.3.12";
+    const service = Service.init(std.testing.allocator, io, null);
+    try std.testing.expectError(
+        error.ServerNotInstalled,
+        service.restartServer(edited, temporary.dir, &.{}, server_lifecycle.default_grace_ms),
+    );
+}
+
+test "startServer passes the marker gate for an unmodified manifest" {
+    const io = std.testing.io;
+    var temporary = std.testing.tmpDir(.{});
+    defer temporary.cleanup();
+    const manifest: server_store.Manifest = .{
+        .id = "vanilla",
+        .name = "Vanilla",
+        .version_id = "1.21.4",
+        .source = .official,
+        .accept_eula = true,
+    };
+    try writeInstalledServerFixture(io, temporary.dir, manifest);
+    const service = Service.init(std.testing.allocator, io, null);
+    try std.testing.expectError(
+        error.EnvironmentUnavailable,
+        service.startServer(manifest, temporary.dir, &.{}),
+    );
 }
