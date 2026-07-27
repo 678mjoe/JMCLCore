@@ -626,11 +626,81 @@ pub const Service = struct {
         return install_plan.buildServer(self.allocator, metadata.value, manifest.source, target);
     }
 
+    pub const ServerJavaError = error{
+        UnsupportedPlatform,
+        EnvironmentUnavailable,
+        JavaNotFound,
+        NoCompatibleJava,
+        OutOfMemory,
+    };
+
+    pub fn selectServerJava(
+        self: Service,
+        manifest: server_store.Manifest,
+        plan: install_plan.Plan,
+        java_paths: []const []const u8,
+    ) ServerJavaError!java_runtime.Runtime {
+        if (comptime builtin.os.tag != .linux) return error.UnsupportedPlatform;
+
+        var explicit_java: [1][]const u8 = undefined;
+        const candidates: []const []const u8 = if (manifest.java_path) |path| blk: {
+            explicit_java[0] = path;
+            break :blk explicit_java[0..];
+        } else java_paths;
+
+        var detection = java_runtime.detect(
+            self.allocator,
+            self.io,
+            self.environ_map orelse return error.EnvironmentUnavailable,
+            candidates,
+        ) catch return error.JavaNotFound;
+        defer detection.deinit();
+        const runtime = java_runtime.selectCompatible(
+            detection,
+            plan.value.java_major_version,
+            plan.value.target.arch,
+        ) catch return error.NoCompatibleJava;
+
+        const arena = plan.arena.allocator();
+        return .{
+            .executable = try arena.dupe(u8, runtime.executable),
+            .source = runtime.source,
+            .major_version = runtime.major_version,
+            .specification_version = try arena.dupe(u8, runtime.specification_version),
+            .version = if (runtime.version) |value| try arena.dupe(u8, value) else null,
+            .runtime_version = if (runtime.runtime_version) |value| try arena.dupe(u8, value) else null,
+            .vendor = if (runtime.vendor) |value| try arena.dupe(u8, value) else null,
+            .java_home = if (runtime.java_home) |value| try arena.dupe(u8, value) else null,
+            .vm_name = if (runtime.vm_name) |value| try arena.dupe(u8, value) else null,
+            .os_arch = try arena.dupe(u8, runtime.os_arch),
+            .os_version = if (runtime.os_version) |value| try arena.dupe(u8, value) else null,
+            .architecture = runtime.architecture,
+            .data_model = runtime.data_model,
+        };
+    }
+
+    pub const ServerInstallError = error{
+        UnsupportedPlatform,
+        ServerInstallFailed,
+        ServerEulaFailed,
+        ServerPropertiesFailed,
+        ServerStateError,
+    };
+
     pub const ServerInstallSummary = struct {
+        java: java_runtime.Runtime,
         java_path: []const u8,
         java_major_version: u16,
         server_sha1: []const u8,
         server_size: u64,
+        properties_created: bool,
+        files_total: usize,
+        files_downloaded: usize,
+        files_cached: usize,
+        files_hard_linked: usize,
+        files_copied: usize,
+        bytes_verified: u64,
+        bytes_transferred: u64,
     };
 
     pub fn executeServerInstall(
@@ -640,31 +710,12 @@ pub const Service = struct {
         plan: install_plan.Plan,
         store: std.Io.Dir,
         options: install_executor.Options,
-        java_paths: []const []const u8,
+        runtime: java_runtime.Runtime,
         reporter: ?install_executor.Reporter,
-    ) !ServerInstallSummary {
+    ) ServerInstallError!ServerInstallSummary {
         if (comptime builtin.os.tag != .linux) return error.UnsupportedPlatform;
 
-        var explicit_java: [1][]const u8 = undefined;
-        const candidates: []const []const u8 = if (manifest.java_path) |path| blk: {
-            explicit_java[0] = path;
-            break :blk explicit_java[0..];
-        } else java_paths;
-
-        var detection = try java_runtime.detect(
-            self.allocator,
-            self.io,
-            self.environ_map orelse return error.EnvironmentUnavailable,
-            candidates,
-        );
-        defer detection.deinit();
-        const runtime = try java_runtime.selectCompatible(
-            detection,
-            plan.value.java_major_version,
-            plan.value.target.arch,
-        );
-
-        _ = try install_executor.execute(
+        const install_summary = install_executor.execute(
             self.allocator,
             self.io,
             self.environ_map,
@@ -673,25 +724,36 @@ pub const Service = struct {
             plan.value,
             options,
             reporter,
-        );
-        try server_properties.writeEula(self.io, server_dir);
-        _ = try server_properties.ensureDefault(self.io, server_dir);
+        ) catch return error.ServerInstallFailed;
+        server_properties.writeEula(self.io, server_dir) catch
+            return error.ServerEulaFailed;
+        const properties_created = server_properties.ensureDefault(self.io, server_dir) catch
+            return error.ServerPropertiesFailed;
 
         const server_file = plan.value.files[0];
-        try server_store.recordCompletedInstallation(
+        server_store.recordCompletedInstallation(
             self.io,
             server_dir,
             manifest,
             server_file.sha1,
             server_file.size,
             plan.value.java_major_version,
-        );
+        ) catch return error.ServerStateError;
 
         return .{
-            .java_path = try plan.arena.allocator().dupe(u8, runtime.executable),
+            .java = runtime,
+            .java_path = runtime.executable,
             .java_major_version = plan.value.java_major_version,
             .server_sha1 = server_file.sha1,
             .server_size = server_file.size,
+            .properties_created = properties_created,
+            .files_total = install_summary.files_total,
+            .files_downloaded = install_summary.files_downloaded,
+            .files_cached = install_summary.files_cached,
+            .files_hard_linked = install_summary.files_hard_linked,
+            .files_copied = install_summary.files_copied,
+            .bytes_verified = install_summary.bytes_verified,
+            .bytes_transferred = install_summary.bytes_transferred,
         };
     }
 
@@ -2605,6 +2667,21 @@ test "executeServerInstall rejects unsupported platforms before touching the hos
             .java_major_version = 21,
         },
     };
+    const runtime: java_runtime.Runtime = .{
+        .executable = "java",
+        .source = .explicit,
+        .major_version = 21,
+        .specification_version = "21",
+        .version = null,
+        .runtime_version = null,
+        .vendor = null,
+        .java_home = null,
+        .vm_name = null,
+        .os_arch = "x86_64",
+        .os_version = null,
+        .architecture = null,
+        .data_model = null,
+    };
 
     const service = Service.init(std.testing.allocator, io, null);
     try std.testing.expectError(error.UnsupportedPlatform, service.executeServerInstall(
@@ -2613,7 +2690,39 @@ test "executeServerInstall rejects unsupported platforms before touching the hos
         plan,
         temporary.dir,
         .{ .workers = 1 },
-        &.{},
+        runtime,
         null,
+    ));
+}
+
+test "selectServerJava rejects unsupported platforms before touching the host" {
+    if (builtin.os.tag == .linux) return;
+    const io = std.testing.io;
+
+    const arena = try std.testing.allocator.create(std.heap.ArenaAllocator);
+    defer std.testing.allocator.destroy(arena);
+    arena.* = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const plan: install_plan.Plan = .{
+        .arena = arena,
+        .value = .{
+            .version_id = "1.21.4",
+            .source = .official,
+            .target = .{ .os = .linux, .arch = .x86_64 },
+            .files = &.{},
+            .classpath = &.{},
+            .native_extractions = &.{},
+            .asset_projections = &.{},
+            .total_download_size = 0,
+            .java_major_version = 21,
+        },
+    };
+
+    const service = Service.init(std.testing.allocator, io, null);
+    try std.testing.expectError(error.UnsupportedPlatform, service.selectServerJava(
+        .{ .id = "gate", .name = "Gate", .version_id = "1.21.4" },
+        plan,
+        &.{},
     ));
 }

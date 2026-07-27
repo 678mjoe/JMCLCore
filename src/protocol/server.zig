@@ -529,7 +529,7 @@ pub fn writeInstallResult(
         try writeError(writer, request_id, "UNSUPPORTED_PLATFORM", "The host platform is not supported");
         return;
     };
-    var plan = service.createServerInstallPlan(manifest.version_id, manifest.source, target) catch |err| {
+    var plan = service.planServerInstall(manifest.*, target) catch |err| {
         switch (err) {
             error.ServerDownloadMissing => try writeError(writer, request_id, "SERVER_DOWNLOAD_UNAVAILABLE", "The selected Minecraft version has no dedicated server download"),
             else => try writeError(writer, request_id, "SERVER_PLAN_FAILED", "Failed to create the server installation plan"),
@@ -537,30 +537,12 @@ pub fn writeInstallResult(
         return;
     };
     defer plan.deinit();
-    var explicit_java: [1][]const u8 = undefined;
-    const java_paths = if (manifest.java_path) |path| blk: {
-        explicit_java[0] = path;
-        break :blk explicit_java[0..];
-    } else input.java_paths;
-    var detection = core.java_runtime.detect(
-        service.allocator,
-        service.io,
-        service.environ_map orelse {
-            try writeError(writer, request_id, "ENVIRONMENT_UNAVAILABLE", "Process environment is unavailable");
-            return;
-        },
-        java_paths,
-    ) catch {
-        try writeError(writer, request_id, "JAVA_NOT_FOUND", "No Java executable candidates were found");
-        return;
-    };
-    defer detection.deinit();
-    const runtime = core.java_runtime.selectCompatible(
-        detection,
-        plan.value.java_major_version,
-        target.arch,
-    ) catch {
-        try writeError(writer, request_id, "JAVA_INCOMPATIBLE", "No Java runtime matches the server requirement");
+    const runtime = service.selectServerJava(manifest.*, plan, input.java_paths) catch |err| {
+        switch (err) {
+            error.EnvironmentUnavailable => try writeError(writer, request_id, "ENVIRONMENT_UNAVAILABLE", "Process environment is unavailable"),
+            error.NoCompatibleJava => try writeError(writer, request_id, "JAVA_INCOMPATIBLE", "No Java runtime matches the server requirement"),
+            else => try writeError(writer, request_id, "JAVA_NOT_FOUND", "No Java executable candidates were found"),
+        }
         return;
     };
     const store = core.artifact_store.openRoot(service.io, input.store_directory) catch {
@@ -576,41 +558,26 @@ pub fn writeInstallResult(
         .request_id = request_id,
         .source = manifest.source,
     };
-    const summary = core.installer.execute(
-        service.allocator,
-        service.io,
-        service.environ_map,
+    const summary = service.executeServerInstall(
+        manifest.*,
         server_dir,
+        plan,
         store,
-        plan.value,
         .{ .workers = input.workers, .retries = input.retries },
+        runtime,
         .{ .context = &reporter_context, .callback = install_protocol.ProtocolInstallReporter.callback },
-    ) catch {
+    ) catch |err| {
         if (reporter_context.output_failed) return error.WriteFailed;
-        try writeError(writer, request_id, "SERVER_INSTALL_FAILED", "Failed to download and materialize the server jar");
+        switch (err) {
+            error.UnsupportedPlatform => try writeError(writer, request_id, "UNSUPPORTED_PLATFORM", "Server management is currently supported only on Linux"),
+            error.ServerEulaFailed => try writeError(writer, request_id, "SERVER_CONFIGURATION_FAILED", "Failed to write eula.txt"),
+            error.ServerPropertiesFailed => try writeError(writer, request_id, "SERVER_CONFIGURATION_FAILED", "Failed to initialize server.properties"),
+            error.ServerStateError => try writeError(writer, request_id, "SERVER_STATE_ERROR", "Failed to record completed server installation"),
+            else => try writeError(writer, request_id, "SERVER_INSTALL_FAILED", "Failed to download and materialize the server jar"),
+        }
         return;
     };
     if (reporter_context.output_failed) return error.WriteFailed;
-    core.server_properties.writeEula(service.io, server_dir) catch {
-        try writeError(writer, request_id, "SERVER_CONFIGURATION_FAILED", "Failed to write eula.txt");
-        return;
-    };
-    const properties_created = core.server_properties.ensureDefault(service.io, server_dir) catch {
-        try writeError(writer, request_id, "SERVER_CONFIGURATION_FAILED", "Failed to initialize server.properties");
-        return;
-    };
-    const server_file = plan.value.files[0];
-    core.server_store.recordCompletedInstallation(
-        service.io,
-        server_dir,
-        manifest.*,
-        server_file.sha1,
-        server_file.size,
-        plan.value.java_major_version,
-    ) catch {
-        try writeError(writer, request_id, "SERVER_STATE_ERROR", "Failed to record completed server installation");
-        return;
-    };
 
     var json: std.json.Stringify = .{ .writer = writer };
     try writeEventHeader(&json, request_id, "result");
@@ -625,9 +592,9 @@ pub fn writeInstallResult(
     try json.objectField("source");
     try json.write(@tagName(manifest.source));
     try json.objectField("java");
-    try json.write(runtime);
+    try json.write(summary.java);
     try json.objectField("properties_created");
-    try json.write(properties_created);
+    try json.write(summary.properties_created);
     try json.objectField("files_total");
     try json.write(summary.files_total);
     try json.objectField("files_downloaded");
