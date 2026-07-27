@@ -73,4 +73,5 @@ test {
     _ = hard_link;
     _ = version_manifest;
     _ = version_metadata;
+    _ = Service;
 }

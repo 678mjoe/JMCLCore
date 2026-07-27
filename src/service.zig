@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const artifact_store = @import("install/artifact_store.zig");
 const authentication = @import("auth/authentication.zig");
 const authentication_http = @import("auth/http.zig");
@@ -14,10 +15,13 @@ const https_fallback = @import("install/https_fallback.zig");
 const install_plan = @import("install/plan.zig");
 const install_executor = @import("install/installer.zig");
 const instance_store = @import("instance_store.zig");
+const java_runtime = @import("install/java_runtime.zig");
 const modrinth = @import("content/modrinth.zig");
 const mrpack = @import("modpack/mrpack.zig");
 const curseforge_pack = @import("modpack/curseforge_pack.zig");
 const neoforge = @import("loaders/neoforge.zig");
+const server_properties = @import("server/properties.zig");
+const server_store = @import("server/server_store.zig");
 const version_manifest = @import("install/version_manifest.zig");
 const version_metadata = @import("install/version_metadata.zig");
 const zip_reader = @import("install/zip_reader.zig");
@@ -604,9 +608,91 @@ pub const Service = struct {
         source: core.DownloadSource,
         target: install_plan.Target,
     ) !install_plan.Plan {
-        var metadata = try self.fetchVersionMetadataPreferred(version_id, source);
+        return self.planServerInstall(.{
+            .id = version_id,
+            .name = version_id,
+            .version_id = version_id,
+            .source = source,
+        }, target);
+    }
+
+    pub fn planServerInstall(
+        self: Service,
+        manifest: server_store.Manifest,
+        target: install_plan.Target,
+    ) !install_plan.Plan {
+        var metadata = try self.fetchVersionMetadataPreferred(manifest.version_id, manifest.source);
         defer metadata.deinit();
-        return install_plan.buildServer(self.allocator, metadata.value, source, target);
+        return install_plan.buildServer(self.allocator, metadata.value, manifest.source, target);
+    }
+
+    pub const ServerInstallSummary = struct {
+        java_path: []const u8,
+        java_major_version: u16,
+        server_sha1: []const u8,
+        server_size: u64,
+    };
+
+    pub fn executeServerInstall(
+        self: Service,
+        manifest: server_store.Manifest,
+        server_dir: std.Io.Dir,
+        plan: install_plan.Plan,
+        store: std.Io.Dir,
+        options: install_executor.Options,
+        java_paths: []const []const u8,
+        reporter: ?install_executor.Reporter,
+    ) !ServerInstallSummary {
+        if (comptime builtin.os.tag != .linux) return error.UnsupportedPlatform;
+
+        var explicit_java: [1][]const u8 = undefined;
+        const candidates: []const []const u8 = if (manifest.java_path) |path| blk: {
+            explicit_java[0] = path;
+            break :blk explicit_java[0..];
+        } else java_paths;
+
+        var detection = try java_runtime.detect(
+            self.allocator,
+            self.io,
+            self.environ_map orelse return error.EnvironmentUnavailable,
+            candidates,
+        );
+        defer detection.deinit();
+        const runtime = try java_runtime.selectCompatible(
+            detection,
+            plan.value.java_major_version,
+            plan.value.target.arch,
+        );
+
+        _ = try install_executor.execute(
+            self.allocator,
+            self.io,
+            self.environ_map,
+            server_dir,
+            store,
+            plan.value,
+            options,
+            reporter,
+        );
+        try server_properties.writeEula(self.io, server_dir);
+        _ = try server_properties.ensureDefault(self.io, server_dir);
+
+        const server_file = plan.value.files[0];
+        try server_store.recordCompletedInstallation(
+            self.io,
+            server_dir,
+            manifest,
+            server_file.sha1,
+            server_file.size,
+            plan.value.java_major_version,
+        );
+
+        return .{
+            .java_path = try plan.arena.allocator().dupe(u8, runtime.executable),
+            .java_major_version = plan.value.java_major_version,
+            .server_sha1 = server_file.sha1,
+            .server_size = server_file.size,
+        };
     }
 
     pub fn createInstallPlanForSelection(
@@ -2493,3 +2579,41 @@ pub const Service = struct {
         };
     }
 };
+
+test "executeServerInstall rejects unsupported platforms before touching the host" {
+    if (builtin.os.tag == .linux) return;
+    const io = std.testing.io;
+    var temporary = std.testing.tmpDir(.{});
+    defer temporary.cleanup();
+
+    const arena = try std.testing.allocator.create(std.heap.ArenaAllocator);
+    defer std.testing.allocator.destroy(arena);
+    arena.* = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const plan: install_plan.Plan = .{
+        .arena = arena,
+        .value = .{
+            .version_id = "1.21.4",
+            .source = .official,
+            .target = .{ .os = .linux, .arch = .x86_64 },
+            .files = &.{},
+            .classpath = &.{},
+            .native_extractions = &.{},
+            .asset_projections = &.{},
+            .total_download_size = 0,
+            .java_major_version = 21,
+        },
+    };
+
+    const service = Service.init(std.testing.allocator, io, null);
+    try std.testing.expectError(error.UnsupportedPlatform, service.executeServerInstall(
+        .{ .id = "gate", .name = "Gate", .version_id = "1.21.4" },
+        temporary.dir,
+        plan,
+        temporary.dir,
+        .{ .workers = 1 },
+        &.{},
+        null,
+    ));
+}
