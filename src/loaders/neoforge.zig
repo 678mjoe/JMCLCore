@@ -256,20 +256,28 @@ pub fn processorApplies(processor: Processor, side: Side) bool {
     return false;
 }
 
-pub fn patchedClientCoordinate(profile: InstallProfile) ![]const u8 {
+pub fn patchedCoordinate(profile: InstallProfile, side: Side) ![]const u8 {
     const entry = profile.data.map.get("PATCHED") orelse return error.MissingPatchedData;
-    const value = dataValueForSide(entry, .client);
+    const value = dataValueForSide(entry, side);
     return switch (classifyDataValue(value)) {
         .coordinate => |coordinate| coordinate,
         else => error.MissingPatchedData,
     };
 }
 
-pub fn patchedClientPathAlloc(allocator: std.mem.Allocator, profile: InstallProfile) ![]u8 {
-    const coordinate = try patchedClientCoordinate(profile);
+pub fn patchedClientCoordinate(profile: InstallProfile) ![]const u8 {
+    return patchedCoordinate(profile, .client);
+}
+
+pub fn patchedPathAlloc(allocator: std.mem.Allocator, profile: InstallProfile, side: Side) ![]u8 {
+    const coordinate = try patchedCoordinate(profile, side);
     const path = try artifactPathAlloc(allocator, coordinate);
     defer allocator.free(path);
     return std.fmt.allocPrint(allocator, "libraries/{s}", .{path});
+}
+
+pub fn patchedClientPathAlloc(allocator: std.mem.Allocator, profile: InstallProfile) ![]u8 {
+    return patchedPathAlloc(allocator, profile, .client);
 }
 
 pub const PlaceholderResolver = struct {
@@ -521,6 +529,62 @@ test "selects processors for the requested side" {
     try std.testing.expect(!processorApplies(server_only, .client));
     try std.testing.expect(processorApplies(client_only, .client));
     try std.testing.expect(processorApplies(server_only, .server));
+}
+
+test "derives the patched artifact path for the requested side" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\{
+        \\  "spec":1,
+        \\  "version":"21.1.133",
+        \\  "minecraft":"1.21.1",
+        \\  "data":{
+        \\    "PATCHED":{
+        \\      "client":"[net.neoforged:neoforge:21.1.133:client]",
+        \\      "server":"[net.neoforged:neoforge:21.1.133:server]"
+        \\    }
+        \\  }
+        \\}
+    ;
+    var document = try parseInstallProfile(allocator, source);
+    defer document.deinit();
+
+    const server_path = try patchedPathAlloc(allocator, document.value, .server);
+    defer allocator.free(server_path);
+    try std.testing.expectEqualStrings(
+        "libraries/net/neoforged/neoforge/21.1.133/neoforge-21.1.133-server.jar",
+        server_path,
+    );
+
+    const client_path = try patchedClientPathAlloc(allocator, document.value);
+    defer allocator.free(client_path);
+    try std.testing.expectEqualStrings(
+        "libraries/net/neoforged/neoforge/21.1.133/neoforge-21.1.133-client.jar",
+        client_path,
+    );
+}
+
+test "server patched path falls back to the client value" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\{
+        \\  "spec":1,
+        \\  "version":"21.1.133",
+        \\  "minecraft":"1.21.1",
+        \\  "data":{
+        \\    "PATCHED":{"client":"[net.neoforged:neoforge:21.1.133:client]"}
+        \\  }
+        \\}
+    ;
+    var document = try parseInstallProfile(allocator, source);
+    defer document.deinit();
+
+    const server_path = try patchedPathAlloc(allocator, document.value, .server);
+    defer allocator.free(server_path);
+    try std.testing.expectEqualStrings(
+        "libraries/net/neoforged/neoforge/21.1.133/neoforge-21.1.133-client.jar",
+        server_path,
+    );
 }
 
 test "substitutes processor argument placeholders" {

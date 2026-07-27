@@ -17,6 +17,8 @@ pub const Options = struct {
     java_paths: []const []const u8 = &.{},
     required_major: u16 = 0,
     expected_patched_sha1: ?[]const u8 = null,
+    side: neoforge.Side = .client,
+    minecraft_jar_relative: ?[]const u8 = null,
 };
 
 pub const Status = enum { patched, cached };
@@ -84,6 +86,11 @@ pub fn run(
     try neoforge.validateVersionId(neoforge_version);
     const support_relative = try std.fmt.allocPrint(allocator, ".jmcl/neoforge/{s}", .{neoforge_version});
     defer allocator.free(support_relative);
+    const minecraft_jar_relative = try std.fmt.allocPrint(allocator, "versions/{s}/{s}.jar", .{ version_id, version_id });
+    defer allocator.free(minecraft_jar_relative);
+    var resolved_options = options;
+    resolved_options.side = .client;
+    resolved_options.minecraft_jar_relative = minecraft_jar_relative;
     return runLayout(
         allocator,
         io,
@@ -92,7 +99,38 @@ pub fn run(
         store,
         support_relative,
         version_id,
-        options,
+        resolved_options,
+        reporter,
+        "neoforge",
+    );
+}
+
+pub fn runServer(
+    allocator: std.mem.Allocator,
+    io: std.Io,
+    environ_map: ?*const std.process.Environ.Map,
+    server_dir: std.Io.Dir,
+    store: std.Io.Dir,
+    neoforge_version: []const u8,
+    version_id: []const u8,
+    options: Options,
+    reporter: ?Reporter,
+) !Summary {
+    try neoforge.validateVersionId(neoforge_version);
+    const support_relative = try std.fmt.allocPrint(allocator, ".jmcl/neoforge-server/{s}", .{neoforge_version});
+    defer allocator.free(support_relative);
+    var resolved_options = options;
+    resolved_options.side = .server;
+    resolved_options.minecraft_jar_relative = "server.jar";
+    return runLayout(
+        allocator,
+        io,
+        environ_map,
+        server_dir,
+        store,
+        support_relative,
+        version_id,
+        resolved_options,
         reporter,
         "neoforge",
     );
@@ -138,7 +176,7 @@ pub fn runLayout(
     defer install_document.deinit();
     const profile = install_document.value;
 
-    const patched_relative = try neoforge.patchedClientPathAlloc(scratch, profile);
+    const patched_relative = try neoforge.patchedPathAlloc(scratch, profile, options.side);
 
     if (try readState(allocator, io, minecraft_dir, support_relative)) |state| {
         if (artifact_store.verify(minecraft_dir, io, patched_relative, state.patched_sha1, state.patched_size) catch false) {
@@ -165,19 +203,17 @@ pub fn runLayout(
     const root_absolute = try absolutePathAlloc(scratch, io, minecraft_dir);
     const libraries_absolute = try std.fs.path.join(scratch, &.{ root_absolute, "libraries" });
     const installer_absolute = try std.fs.path.join(scratch, &.{ root_absolute, installer_relative });
-    const minecraft_jar_relative = try std.fmt.allocPrint(scratch, "versions/{s}/{s}.jar", .{ version_id, version_id });
+    const minecraft_jar_relative = options.minecraft_jar_relative orelse
+        try std.fmt.allocPrint(scratch, "versions/{s}/{s}.jar", .{ version_id, version_id });
+    try neoforge.validateRelativePath(minecraft_jar_relative);
     const minecraft_jar_absolute = try std.fs.path.join(scratch, &.{ root_absolute, minecraft_jar_relative });
 
     var map: std.StringHashMap([]const u8) = .init(scratch);
-    try map.put("SIDE", "client");
-    try map.put("ROOT", root_absolute);
-    try map.put("LIBRARY_DIR", libraries_absolute);
-    try map.put("INSTALLER", installer_absolute);
-    try map.put("MINECRAFT_JAR", minecraft_jar_absolute);
+    try putBasePlaceholders(&map, options.side, root_absolute, libraries_absolute, installer_absolute, minecraft_jar_absolute);
 
     var data_iterator = profile.data.map.iterator();
     while (data_iterator.next()) |entry| {
-        const value = neoforge.dataValueForSide(entry.value_ptr.*, .client);
+        const value = neoforge.dataValueForSide(entry.value_ptr.*, options.side);
         switch (neoforge.classifyDataValue(value)) {
             .literal => |literal| try map.put(entry.key_ptr.*, literal),
             .coordinate => |coordinate| {
@@ -209,15 +245,12 @@ pub fn runLayout(
         .artifact = ResolverContext.artifact,
     };
 
-    var applicable: std.ArrayList(neoforge.Processor) = .empty;
-    for (profile.processors) |processor| {
-        if (neoforge.processorApplies(processor, .client)) try applicable.append(scratch, processor);
-    }
+    const applicable = try collectApplicableProcessors(scratch, profile, options.side);
 
-    for (applicable.items, 0..) |processor, index| {
+    for (applicable, 0..) |processor, index| {
         Reporter.emit(reporter, .{ .processor_started = .{
             .index = index + 1,
-            .total = applicable.items.len,
+            .total = applicable.len,
             .name = processor.jar,
         } });
         try runProcessor(
@@ -257,10 +290,37 @@ pub fn runLayout(
 
     return .{
         .status = .patched,
-        .processors_run = applicable.items.len,
+        .processors_run = applicable.len,
         .patched_sha1 = try allocator.dupe(u8, patched_sha1),
         .patched_size = patched_stat.size,
     };
+}
+
+fn putBasePlaceholders(
+    map: *std.StringHashMap([]const u8),
+    side: neoforge.Side,
+    root_absolute: []const u8,
+    libraries_absolute: []const u8,
+    installer_absolute: []const u8,
+    minecraft_jar_absolute: []const u8,
+) !void {
+    try map.put("SIDE", @tagName(side));
+    try map.put("ROOT", root_absolute);
+    try map.put("LIBRARY_DIR", libraries_absolute);
+    try map.put("INSTALLER", installer_absolute);
+    try map.put("MINECRAFT_JAR", minecraft_jar_absolute);
+}
+
+fn collectApplicableProcessors(
+    allocator: std.mem.Allocator,
+    profile: neoforge.InstallProfile,
+    side: neoforge.Side,
+) ![]neoforge.Processor {
+    var applicable: std.ArrayList(neoforge.Processor) = .empty;
+    for (profile.processors) |processor| {
+        if (neoforge.processorApplies(processor, side)) try applicable.append(allocator, processor);
+    }
+    return applicable.toOwnedSlice(allocator);
 }
 
 const JavaSelection = struct {
@@ -525,4 +585,62 @@ test "parses Main-Class from a jar manifest" {
     const missing = try buildManifestJar(allocator, "Manifest-Version: 1.0\r\n");
     defer allocator.free(missing);
     try std.testing.expectError(error.ProcessorMainClassMissing, readMainClass(allocator, missing));
+}
+
+test "base placeholders follow the requested side" {
+    const allocator = std.testing.allocator;
+    var server_map: std.StringHashMap([]const u8) = .init(allocator);
+    defer server_map.deinit();
+    try putBasePlaceholders(
+        &server_map,
+        .server,
+        "/srv",
+        "/srv/libraries",
+        "/srv/.jmcl/neoforge-server/21.1.133/installer.jar",
+        "/srv/server.jar",
+    );
+    try std.testing.expectEqualStrings(@tagName(.server), server_map.get("SIDE").?);
+    try std.testing.expectEqualStrings("/srv/server.jar", server_map.get("MINECRAFT_JAR").?);
+    try std.testing.expectEqualStrings("/srv", server_map.get("ROOT").?);
+    try std.testing.expectEqualStrings("/srv/libraries", server_map.get("LIBRARY_DIR").?);
+    try std.testing.expectEqualStrings("/srv/.jmcl/neoforge-server/21.1.133/installer.jar", server_map.get("INSTALLER").?);
+
+    var client_map: std.StringHashMap([]const u8) = .init(allocator);
+    defer client_map.deinit();
+    try putBasePlaceholders(
+        &client_map,
+        .client,
+        "/game",
+        "/game/libraries",
+        "/game/.jmcl/neoforge/21.1.133/installer.jar",
+        "/game/versions/1.21.1/1.21.1.jar",
+    );
+    try std.testing.expectEqualStrings(@tagName(.client), client_map.get("SIDE").?);
+    try std.testing.expectEqualStrings("/game/versions/1.21.1/1.21.1.jar", client_map.get("MINECRAFT_JAR").?);
+}
+
+test "processor selection follows the requested side" {
+    const allocator = std.testing.allocator;
+    const both: neoforge.Processor = .{ .jar = "example:both:1.0" };
+    const server_only: neoforge.Processor = .{ .jar = "example:server:1.0", .sides = &.{@tagName(.server)} };
+    const client_only: neoforge.Processor = .{ .jar = "example:client:1.0", .sides = &.{@tagName(.client)} };
+    const profile: neoforge.InstallProfile = .{
+        .spec = 1,
+        .version = "21.1.133",
+        .minecraft = "1.21.1",
+        .data = .{},
+        .processors = &.{ both, server_only, client_only },
+    };
+
+    const server_list = try collectApplicableProcessors(allocator, profile, .server);
+    defer allocator.free(server_list);
+    try std.testing.expectEqual(@as(usize, 2), server_list.len);
+    try std.testing.expectEqualStrings("example:both:1.0", server_list[0].jar);
+    try std.testing.expectEqualStrings("example:server:1.0", server_list[1].jar);
+
+    const client_list = try collectApplicableProcessors(allocator, profile, .client);
+    defer allocator.free(client_list);
+    try std.testing.expectEqual(@as(usize, 2), client_list.len);
+    try std.testing.expectEqualStrings("example:both:1.0", client_list[0].jar);
+    try std.testing.expectEqualStrings("example:client:1.0", client_list[1].jar);
 }
