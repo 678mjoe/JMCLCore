@@ -1,11 +1,12 @@
 const std = @import("std");
 const DownloadSource = @import("../install/download_source.zig").DownloadSource;
+const install_plan = @import("../install/plan.zig");
 
 pub const schema_version: u32 = 1;
 pub const default_root = "servers";
 const max_manifest_bytes = 64 * 1024;
 const max_servers = 4096;
-pub const installation_schema_version: u32 = 2;
+pub const installation_schema_version: u32 = 3;
 pub const installation_relative_path = ".jmcl/install.json";
 const max_installation_bytes = 16 * 1024;
 
@@ -22,6 +23,8 @@ pub const Manifest = struct {
     java_path: ?[]const u8 = null,
 };
 
+pub const LaunchMode = enum { jar, args_file };
+
 pub const Installation = struct {
     schema_version: u32 = installation_schema_version,
     version_id: []const u8,
@@ -32,6 +35,10 @@ pub const Installation = struct {
     server_sha1: []const u8,
     server_size: u64,
     java_major_version: u16,
+    launch_mode: LaunchMode,
+    launch_file: []const u8,
+    launch_sha1: []const u8,
+    launch_size: u64,
 };
 
 pub const Document = std.json.Parsed(Manifest);
@@ -163,6 +170,10 @@ pub fn recordCompletedInstallation(
     server_sha1: []const u8,
     server_size: u64,
     java_major_version: u16,
+    launch_mode: LaunchMode,
+    launch_file: []const u8,
+    launch_sha1: []const u8,
+    launch_size: u64,
 ) !void {
     const installation: Installation = .{
         .version_id = manifest.version_id,
@@ -173,6 +184,10 @@ pub fn recordCompletedInstallation(
         .server_sha1 = server_sha1,
         .server_size = server_size,
         .java_major_version = java_major_version,
+        .launch_mode = launch_mode,
+        .launch_file = launch_file,
+        .launch_sha1 = launch_sha1,
+        .launch_size = launch_size,
     };
     try validateInstallation(installation);
     var atomic_file = try server_dir.createFileAtomic(io, installation_relative_path, .{
@@ -199,12 +214,11 @@ pub fn isInstalled(
     return (try installedJavaMajor(allocator, io, server_dir, manifest)) != null;
 }
 
-pub fn installedJavaMajor(
+pub fn loadInstallation(
     allocator: std.mem.Allocator,
     io: std.Io,
     server_dir: std.Io.Dir,
-    manifest: Manifest,
-) !?u16 {
+) !?Installation {
     const bytes = server_dir.readFileAlloc(
         io,
         installation_relative_path,
@@ -214,16 +228,25 @@ pub fn installedJavaMajor(
         error.FileNotFound, error.StreamTooLong => return null,
         else => |other| return other,
     };
-    defer allocator.free(bytes);
     if (bytes.len > max_installation_bytes) return null;
-    var document = std.json.parseFromSlice(Installation, allocator, bytes, .{
+    const installation = std.json.parseFromSliceLeaky(Installation, allocator, bytes, .{
         .allocate = .alloc_always,
         .ignore_unknown_fields = true,
         .max_value_len = max_installation_bytes,
     }) catch return null;
-    defer document.deinit();
-    validateInstallation(document.value) catch return null;
-    const installation = document.value;
+    validateInstallation(installation) catch return null;
+    return installation;
+}
+
+pub fn installedJavaMajor(
+    allocator: std.mem.Allocator,
+    io: std.Io,
+    server_dir: std.Io.Dir,
+    manifest: Manifest,
+) !?u16 {
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const installation = (try loadInstallation(arena.allocator(), io, server_dir)) orelse return null;
     if (!std.mem.eql(u8, installation.version_id, manifest.version_id) or
         !optionalEql(installation.fabric_loader, manifest.fabric_loader) or
         !optionalEql(installation.neoforge_version, manifest.neoforge_version) or
@@ -237,6 +260,11 @@ pub fn installedJavaMajor(
         else => |other| return other,
     };
     if (stat.kind != .file or stat.size != installation.server_size) return null;
+    const launch_stat = server_dir.statFile(io, installation.launch_file, .{}) catch |err| switch (err) {
+        error.FileNotFound => return null,
+        else => |other| return other,
+    };
+    if (launch_stat.kind != .file or launch_stat.size != installation.launch_size) return null;
     return installation.java_major_version;
 }
 
@@ -295,6 +323,13 @@ fn validateInstallation(installation: Installation) !void {
         if (!std.ascii.isHex(byte)) return error.InvalidServerSha1;
     }
     if (installation.java_major_version == 0) return error.InvalidJavaRequirement;
+    if (installation.launch_size == 0) return error.InvalidLaunchSize;
+    if (installation.launch_sha1.len != 40) return error.InvalidLaunchSha1;
+    for (installation.launch_sha1) |byte| {
+        const lowercase_hex = (byte >= '0' and byte <= '9') or (byte >= 'a' and byte <= 'f');
+        if (!lowercase_hex) return error.InvalidLaunchSha1;
+    }
+    install_plan.validateRelativePath(installation.launch_file) catch return error.InvalidLaunchFile;
 }
 
 fn optionalEql(left: ?[]const u8, right: ?[]const u8) bool {
@@ -407,6 +442,10 @@ test "installation marker matches only the completed server identity" {
         "1111111111111111111111111111111111111111",
         3,
         21,
+        .jar,
+        "server.jar",
+        "1111111111111111111111111111111111111111",
+        3,
     );
     try std.testing.expect(try isInstalled(
         std.testing.allocator,
@@ -438,6 +477,230 @@ test "installation marker matches only the completed server identity" {
     ));
     try temporary.dir.deleteFile(io, "server.jar");
     try std.testing.expect(!try isInstalled(
+        std.testing.allocator,
+        io,
+        temporary.dir,
+        manifest,
+    ));
+}
+
+test "installation launch descriptor round-trips through the marker" {
+    const io = std.testing.io;
+    var temporary = std.testing.tmpDir(.{});
+    defer temporary.cleanup();
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const manifest: Manifest = .{
+        .id = "vanilla",
+        .name = "Vanilla",
+        .version_id = "1.21.4",
+        .source = .official,
+        .accept_eula = true,
+    };
+    try recordCompletedInstallation(
+        io,
+        temporary.dir,
+        manifest,
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        100,
+        21,
+        .jar,
+        "server.jar",
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        100,
+    );
+    const jar_bytes = try temporary.dir.readFileAlloc(
+        io,
+        installation_relative_path,
+        arena.allocator(),
+        .limited(max_installation_bytes + 1),
+    );
+    try std.testing.expect(std.mem.indexOf(u8, jar_bytes, "\"launch_mode\":\"jar\"") != null);
+    const jar_installation = (try loadInstallation(arena.allocator(), io, temporary.dir)).?;
+    try std.testing.expectEqual(installation_schema_version, jar_installation.schema_version);
+    try std.testing.expectEqual(LaunchMode.jar, jar_installation.launch_mode);
+    try std.testing.expectEqualStrings("server.jar", jar_installation.launch_file);
+    try std.testing.expectEqualStrings("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", jar_installation.launch_sha1);
+    try std.testing.expectEqual(@as(u64, 100), jar_installation.launch_size);
+    try std.testing.expectEqual(@as(u16, 21), jar_installation.java_major_version);
+
+    try recordCompletedInstallation(
+        io,
+        temporary.dir,
+        manifest,
+        "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        200,
+        17,
+        .args_file,
+        "libraries/net/neoforged/neoforge/21.1.133/unix_args.txt",
+        "cccccccccccccccccccccccccccccccccccccccc",
+        42,
+    );
+    const args_bytes = try temporary.dir.readFileAlloc(
+        io,
+        installation_relative_path,
+        arena.allocator(),
+        .limited(max_installation_bytes + 1),
+    );
+    try std.testing.expect(std.mem.indexOf(u8, args_bytes, "\"launch_mode\":\"args_file\"") != null);
+    const args_installation = (try loadInstallation(arena.allocator(), io, temporary.dir)).?;
+    try std.testing.expectEqual(LaunchMode.args_file, args_installation.launch_mode);
+    try std.testing.expectEqualStrings(
+        "libraries/net/neoforged/neoforge/21.1.133/unix_args.txt",
+        args_installation.launch_file,
+    );
+    try std.testing.expectEqualStrings("cccccccccccccccccccccccccccccccccccccccc", args_installation.launch_sha1);
+    try std.testing.expectEqual(@as(u64, 42), args_installation.launch_size);
+}
+
+test "v2 installation markers fail validation" {
+    const io = std.testing.io;
+    var temporary = std.testing.tmpDir(.{});
+    defer temporary.cleanup();
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    try temporary.dir.createDir(io, ".jmcl", .default_dir);
+    const manifest: Manifest = .{
+        .id = "vanilla",
+        .name = "Vanilla",
+        .version_id = "1.21.4",
+        .source = .official,
+        .accept_eula = true,
+    };
+    const v2_marker =
+        \\{"schema_version":2,"version_id":"1.21.4","fabric_loader":null,"neoforge_version":null,"forge_version":null,"source":"official","server_sha1":"1111111111111111111111111111111111111111","server_size":3,"java_major_version":21}
+    ;
+    const v2_file = try temporary.dir.createFile(io, installation_relative_path, .{});
+    try v2_file.writeStreamingAll(io, v2_marker);
+    v2_file.close(io);
+    try std.testing.expect((try loadInstallation(arena.allocator(), io, temporary.dir)) == null);
+    try std.testing.expect(!try isInstalled(std.testing.allocator, io, temporary.dir, manifest));
+
+    const v2_with_descriptor =
+        \\{"schema_version":2,"version_id":"1.21.4","fabric_loader":null,"neoforge_version":null,"forge_version":null,"source":"official","server_sha1":"1111111111111111111111111111111111111111","server_size":3,"java_major_version":21,"launch_mode":"jar","launch_file":"server.jar","launch_sha1":"1111111111111111111111111111111111111111","launch_size":3}
+    ;
+    const upgraded_file = try temporary.dir.createFile(io, installation_relative_path, .{});
+    try upgraded_file.writeStreamingAll(io, v2_with_descriptor);
+    upgraded_file.close(io);
+    try std.testing.expect((try loadInstallation(arena.allocator(), io, temporary.dir)) == null);
+    try std.testing.expect(!try isInstalled(std.testing.allocator, io, temporary.dir, manifest));
+}
+
+test "installation marker rejects hostile launch descriptors" {
+    const io = std.testing.io;
+    var temporary = std.testing.tmpDir(.{});
+    defer temporary.cleanup();
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    try temporary.dir.createDir(io, ".jmcl", .default_dir);
+    const prefix = "{\"schema_version\":3,\"version_id\":\"1.21.4\",\"fabric_loader\":null,\"neoforge_version\":null,\"forge_version\":null,\"source\":\"official\",\"server_sha1\":\"1111111111111111111111111111111111111111\",\"server_size\":3,\"java_major_version\":21,";
+    const hostile = [_][]const u8{
+        prefix ++ "\"launch_mode\":\"jar\",\"launch_file\":\"../evil\",\"launch_sha1\":\"1111111111111111111111111111111111111111\",\"launch_size\":3}",
+        prefix ++ "\"launch_mode\":\"jar\",\"launch_file\":\"/etc/passwd\",\"launch_sha1\":\"1111111111111111111111111111111111111111\",\"launch_size\":3}",
+        prefix ++ "\"launch_mode\":\"jar\",\"launch_file\":\"server.jar\",\"launch_sha1\":\"111111111111111111111111111111111111111\",\"launch_size\":3}",
+        prefix ++ "\"launch_mode\":\"jar\",\"launch_file\":\"server.jar\",\"launch_sha1\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"launch_size\":3}",
+        prefix ++ "\"launch_mode\":\"jar\",\"launch_file\":\"server.jar\",\"launch_sha1\":\"1111111111111111111111111111111111111111\",\"launch_size\":0}",
+        prefix ++ "\"launch_mode\":\"shell\",\"launch_file\":\"server.jar\",\"launch_sha1\":\"1111111111111111111111111111111111111111\",\"launch_size\":3}",
+        prefix ++ "\"launch_mode\":\"jar\",\"launch_file\":\"\",\"launch_sha1\":\"1111111111111111111111111111111111111111\",\"launch_size\":3}",
+    };
+    for (hostile) |marker| {
+        const file = try temporary.dir.createFile(io, installation_relative_path, .{});
+        try file.writeStreamingAll(io, marker);
+        file.close(io);
+        try std.testing.expect((try loadInstallation(arena.allocator(), io, temporary.dir)) == null);
+    }
+    const manifest: Manifest = .{
+        .id = "vanilla",
+        .name = "Vanilla",
+        .version_id = "1.21.4",
+        .source = .official,
+        .accept_eula = true,
+    };
+    try std.testing.expectError(error.InvalidLaunchFile, recordCompletedInstallation(
+        io,
+        temporary.dir,
+        manifest,
+        "1111111111111111111111111111111111111111",
+        3,
+        21,
+        .jar,
+        "../evil",
+        "1111111111111111111111111111111111111111",
+        3,
+    ));
+    try std.testing.expectError(error.InvalidLaunchSha1, recordCompletedInstallation(
+        io,
+        temporary.dir,
+        manifest,
+        "1111111111111111111111111111111111111111",
+        3,
+        21,
+        .jar,
+        "server.jar",
+        "111111111111111111111111111111111111111",
+        3,
+    ));
+    try std.testing.expectError(error.InvalidLaunchSize, recordCompletedInstallation(
+        io,
+        temporary.dir,
+        manifest,
+        "1111111111111111111111111111111111111111",
+        3,
+        21,
+        .jar,
+        "server.jar",
+        "1111111111111111111111111111111111111111",
+        0,
+    ));
+}
+
+test "installed check requires the launch file with matching size" {
+    const io = std.testing.io;
+    var temporary = std.testing.tmpDir(.{});
+    defer temporary.cleanup();
+    const manifest: Manifest = .{
+        .id = "neoforge",
+        .name = "NeoForge",
+        .version_id = "1.21.1",
+        .neoforge_version = "21.1.133",
+        .source = .official,
+        .accept_eula = true,
+    };
+    const server_file = try temporary.dir.createFile(io, "server.jar", .{});
+    try server_file.writeStreamingAll(io, "jar");
+    server_file.close(io);
+    try recordCompletedInstallation(
+        io,
+        temporary.dir,
+        manifest,
+        "1111111111111111111111111111111111111111",
+        3,
+        21,
+        .args_file,
+        "libraries/args/unix_args.txt",
+        "2222222222222222222222222222222222222222",
+        5,
+    );
+    try std.testing.expect(try installedJavaMajor(
+        std.testing.allocator,
+        io,
+        temporary.dir,
+        manifest,
+    ) == null);
+    try temporary.dir.createDirPath(io, "libraries/args");
+    const wrong_size = try temporary.dir.createFile(io, "libraries/args/unix_args.txt", .{});
+    try wrong_size.writeStreamingAll(io, "four");
+    wrong_size.close(io);
+    try std.testing.expect(try installedJavaMajor(
+        std.testing.allocator,
+        io,
+        temporary.dir,
+        manifest,
+    ) == null);
+    const right_size = try temporary.dir.createFile(io, "libraries/args/unix_args.txt", .{});
+    try right_size.writeStreamingAll(io, "exact");
+    right_size.close(io);
+    try std.testing.expectEqual(@as(?u16, 21), try installedJavaMajor(
         std.testing.allocator,
         io,
         temporary.dir,

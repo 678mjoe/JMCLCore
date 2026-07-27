@@ -738,6 +738,10 @@ pub const Service = struct {
             server_file.sha1,
             server_file.size,
             plan.value.java_major_version,
+            .jar,
+            "server.jar",
+            server_file.sha1,
+            server_file.size,
         ) catch return error.ServerStateError;
 
         return .{
