@@ -5,6 +5,7 @@ const cli_instance = @import("cli/instance.zig");
 const cli_install = @import("cli/install.zig");
 const cli_java = @import("cli/java.zig");
 const cli_launch = @import("cli/launch.zig");
+const cli_server = @import("cli/server.zig");
 const cli_store = @import("cli/store.zig");
 const cli_version = @import("cli/version.zig");
 
@@ -54,6 +55,7 @@ fn run(
     if (std.mem.eql(u8, command, "store")) return cli_store.run(&service, rest, stdout, stderr);
     if (std.mem.eql(u8, command, "java")) return cli_java.run(&service, rest, stdout, stderr);
     if (std.mem.eql(u8, command, "instance")) return cli_instance.run(&service, rest, stdout, stderr);
+    if (std.mem.eql(u8, command, "server")) return cli_server.run(&service, rest, stdout, stderr);
     if (std.mem.eql(u8, command, "launch")) return cli_launch.run(&service, rest, stdout, stderr);
 
     if (std.mem.eql(u8, command, "rpc")) {
@@ -138,6 +140,7 @@ test {
     _ = cli_install;
     _ = cli_java;
     _ = cli_launch;
+    _ = cli_server;
     _ = cli_store;
     _ = cli_version;
 }
