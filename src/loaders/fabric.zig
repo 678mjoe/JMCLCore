@@ -235,6 +235,25 @@ pub fn profileUrlAlloc(
     );
 }
 
+pub fn serverProfileUrlAlloc(
+    allocator: std.mem.Allocator,
+    minecraft_version: []const u8,
+    loader_version: []const u8,
+) ![]u8 {
+    try validateProfileId(minecraft_version);
+    try validateProfileId(loader_version);
+    return std.fmt.allocPrint(
+        allocator,
+        "https://meta.fabricmc.net/v2/versions/loader/{s}/{s}/server/json",
+        .{ minecraft_version, loader_version },
+    );
+}
+
+pub fn validateServerProfile(profile: Profile, minecraft_version: []const u8) !void {
+    try validate(profile);
+    if (!std.mem.eql(u8, profile.inheritsFrom, minecraft_version)) return error.FabricParentMismatch;
+}
+
 fn validateProfileId(value: []const u8) !void {
     if (value.len == 0 or value.len > 256) return error.InvalidProfileId;
     if (value[value.len - 1] == '.' or value[value.len - 1] == ' ') return error.InvalidProfileId;
@@ -403,4 +422,80 @@ test "rejects unsafe Fabric profile and Maven inputs" {
         .mainClass = "net.fabricmc.loader.impl.launch.knot.KnotClient",
         .libraries = &.{},
     }));
+}
+
+test "builds a Fabric server profile URL" {
+    const allocator = std.testing.allocator;
+    const url = try serverProfileUrlAlloc(allocator, "1.21.1", "0.16.10");
+    defer allocator.free(url);
+    try std.testing.expectEqualStrings(
+        "https://meta.fabricmc.net/v2/versions/loader/1.21.1/0.16.10/server/json",
+        url,
+    );
+    try std.testing.expectError(error.InvalidProfileId, serverProfileUrlAlloc(allocator, "bad/id", "0.16.10"));
+    try std.testing.expectError(error.InvalidProfileId, serverProfileUrlAlloc(allocator, "1.21.1", ""));
+}
+
+const server_profile_fixture =
+    \\{
+    \\  "id":"fabric-loader-0.16.10-1.21.1",
+    \\  "inheritsFrom":"1.21.1",
+    \\  "releaseTime":"2024-11-28T13:53:11+00:00",
+    \\  "time":"2024-11-28T13:53:11+00:00",
+    \\  "type":"release",
+    \\  "mainClass":"net.fabricmc.loader.impl.launch.knot.KnotServer",
+    \\  "arguments":{"game":[],"jvm":[]},
+    \\  "libraries":[
+    \\    {"name":"net.fabricmc:tiny-mappings-parser:0.3.0+build.17","url":"https://maven.fabricmc.net/","sha1":"e9dfb8e1b9e3bc0ac2a5a70a13bb9e8b036e0d1b","size":52432},
+    \\    {"name":"org.ow2.asm:asm:9.7.1","url":"https://maven.fabricmc.net/","sha1":"f0ed132a49244b042cd0e15702ab9f2ce3cc8436","size":126093},
+    \\    {"name":"net.fabricmc:intermediary:1.21.1","url":"https://maven.fabricmc.net/"},
+    \\    {"name":"net.fabricmc:fabric-loader:0.16.10","url":"https://maven.fabricmc.net/"}
+    \\  ]
+    \\}
+;
+
+test "parses and validates a Fabric server profile" {
+    var document = try parse(std.testing.allocator, server_profile_fixture);
+    defer document.deinit();
+    const profile = document.value;
+    try std.testing.expectEqualStrings("fabric-loader-0.16.10-1.21.1", profile.id);
+    try std.testing.expectEqualStrings("1.21.1", profile.inheritsFrom);
+    try std.testing.expectEqualStrings("net.fabricmc.loader.impl.launch.knot.KnotServer", profile.mainClass);
+    try std.testing.expectEqual(@as(usize, 4), profile.libraries.len);
+    try std.testing.expectEqualStrings("net.fabricmc:tiny-mappings-parser:0.3.0+build.17", profile.libraries[0].name);
+    try std.testing.expectEqualStrings("e9dfb8e1b9e3bc0ac2a5a70a13bb9e8b036e0d1b", profile.libraries[0].sha1.?);
+    try std.testing.expectEqual(@as(u64, 52432), profile.libraries[0].size.?);
+    try std.testing.expect(profile.libraries[2].sha1 == null);
+    try std.testing.expect(profile.libraries[2].size == null);
+    try std.testing.expect(profile.libraries[3].sha1 == null);
+    try std.testing.expect(profile.libraries[3].size == null);
+    try validateServerProfile(profile, "1.21.1");
+}
+
+test "rejects a Fabric server profile with mismatched parent" {
+    var document = try parse(std.testing.allocator, server_profile_fixture);
+    defer document.deinit();
+    try std.testing.expectError(error.FabricParentMismatch, validateServerProfile(document.value, "1.21.2"));
+}
+
+test "rejects invalid Fabric server profiles" {
+    const empty_main_class =
+        \\{
+        \\  "id":"fabric-loader-0.16.10-1.21.1",
+        \\  "inheritsFrom":"1.21.1",
+        \\  "mainClass":"",
+        \\  "libraries":[{"name":"net.fabricmc:fabric-loader:0.16.10","url":"https://maven.fabricmc.net/"}]
+        \\}
+    ;
+    try std.testing.expectError(error.InvalidMainClass, parse(std.testing.allocator, empty_main_class));
+
+    const malformed_coordinate =
+        \\{
+        \\  "id":"fabric-loader-0.16.10-1.21.1",
+        \\  "inheritsFrom":"1.21.1",
+        \\  "mainClass":"net.fabricmc.loader.impl.launch.knot.KnotServer",
+        \\  "libraries":[{"name":"net.fabricmc:fabric-loader","url":"https://maven.fabricmc.net/"}]
+        \\}
+    ;
+    try std.testing.expectError(error.InvalidMavenCoordinate, parse(std.testing.allocator, malformed_coordinate));
 }
