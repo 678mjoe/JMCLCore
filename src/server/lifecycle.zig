@@ -1,6 +1,7 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const hard_link = @import("../install/hard_link.zig");
+const server_store = @import("server_store.zig");
 
 pub const state_schema_version: u32 = 1;
 pub const state_relative_path = ".jmcl/server.pid";
@@ -130,6 +131,34 @@ pub const StoppedGuardError = error{
     ServerAlreadyRunning,
     ServerStatusFailed,
 };
+
+pub fn buildLaunchArgv(
+    allocator: std.mem.Allocator,
+    java_path: []const u8,
+    identity_argument: []const u8,
+    mode: server_store.LaunchMode,
+    launch_file: []const u8,
+) error{OutOfMemory}![][]const u8 {
+    switch (mode) {
+        .jar => {
+            const argv = try allocator.alloc([]const u8, 5);
+            argv[0] = java_path;
+            argv[1] = identity_argument;
+            argv[2] = "-jar";
+            argv[3] = launch_file;
+            argv[4] = "nogui";
+            return argv;
+        },
+        .args_file => {
+            const argv = try allocator.alloc([]const u8, 4);
+            argv[0] = java_path;
+            argv[1] = identity_argument;
+            argv[2] = try std.fmt.allocPrint(allocator, "@{s}", .{launch_file});
+            argv[3] = "nogui";
+            return argv;
+        },
+    }
+}
 
 pub const StoppedGuard = struct {
     io: std.Io,
@@ -705,9 +734,22 @@ fn runSupervisorInner(init: std.process.Init, args: []const []const u8) !void {
     const fifo: std.Io.File = .{ .handle = fifo_fd, .flags = .{ .nonblocking = false } };
     defer fifo.close(init.io);
     const identity_argument = try std.fmt.allocPrint(init.arena.allocator(), "-Djmcl.server.identity={s}", .{identity});
-    const argv = [_][]const u8{ java_path, identity_argument, "-jar", "server.jar", "nogui" };
+    var descriptor_arena = std.heap.ArenaAllocator.init(init.gpa);
+    defer descriptor_arena.deinit();
+    const installation = (server_store.loadInstallation(
+        descriptor_arena.allocator(),
+        init.io,
+        server_dir,
+    ) catch return error.LaunchDescriptorReadFailed) orelse return error.InvalidLaunchDescriptor;
+    const argv = try buildLaunchArgv(
+        descriptor_arena.allocator(),
+        java_path,
+        identity_argument,
+        installation.launch_mode,
+        installation.launch_file,
+    );
     var child = try std.process.spawn(init.io, .{
-        .argv = &argv,
+        .argv = argv,
         .cwd = .{ .dir = server_dir },
         .environ_map = init.environ_map,
         .stdin = .{ .file = fifo },
@@ -841,6 +883,44 @@ fn writeFdAll(fd: std.posix.fd_t, bytes: []const u8) !void {
         }
     }
 }
+test "buildLaunchArgv places identity after java for jar mode" {
+    const identity_argument = "-Djmcl.server.identity=0123456789abcdef0123456789abcdef";
+    const argv = try buildLaunchArgv(
+        std.testing.allocator,
+        "/usr/bin/java",
+        identity_argument,
+        .jar,
+        "server.jar",
+    );
+    defer std.testing.allocator.free(argv);
+    try std.testing.expectEqual(@as(usize, 5), argv.len);
+    try std.testing.expectEqualStrings("/usr/bin/java", argv[0]);
+    try std.testing.expectEqualStrings(identity_argument, argv[1]);
+    try std.testing.expectEqualStrings("-jar", argv[2]);
+    try std.testing.expectEqualStrings("server.jar", argv[3]);
+    try std.testing.expectEqualStrings("nogui", argv[4]);
+}
+
+test "buildLaunchArgv prefixes the args file token for args_file mode" {
+    const identity_argument = "-Djmcl.server.identity=fedcba9876543210fedcba9876543210";
+    const argv = try buildLaunchArgv(
+        std.testing.allocator,
+        "/usr/bin/java",
+        identity_argument,
+        .args_file,
+        "libraries/net/neoforged/neoforge/21.1.133/unix_args.txt",
+    );
+    defer {
+        std.testing.allocator.free(argv[2]);
+        std.testing.allocator.free(argv);
+    }
+    try std.testing.expectEqual(@as(usize, 4), argv.len);
+    try std.testing.expectEqualStrings("/usr/bin/java", argv[0]);
+    try std.testing.expectEqualStrings(identity_argument, argv[1]);
+    try std.testing.expectEqualStrings("@libraries/net/neoforged/neoforge/21.1.133/unix_args.txt", argv[2]);
+    try std.testing.expectEqualStrings("nogui", argv[3]);
+}
+
 test "server command validation accepts one bounded UTF-8 line" {
     try validateCommand("say hello");
     try validateCommand("say 你好");
