@@ -298,6 +298,54 @@ pub fn buildServer(
     };
 }
 
+pub fn buildServerExtras(
+    allocator: std.mem.Allocator,
+    version: metadata.Metadata,
+    source: DownloadSource,
+    target: Target,
+    extra_files: []const File,
+) !Plan {
+    try validateComponent(version.id);
+    const download = version.downloads.server orelse return error.ServerDownloadMissing;
+    const java_major_version = if (version.javaVersion) |java| blk: {
+        if (java.majorVersion == 0) return error.InvalidJavaRequirement;
+        break :blk java.majorVersion;
+    } else 8;
+    const arena = try allocator.create(std.heap.ArenaAllocator);
+    errdefer allocator.destroy(arena);
+    arena.* = std.heap.ArenaAllocator.init(allocator);
+    errdefer arena.deinit();
+    const plan_allocator = arena.allocator();
+    var builder: Builder = .{
+        .allocator = plan_allocator,
+        .source = source,
+    };
+    _ = try builder.addFile(
+        "server.jar",
+        download.url,
+        download.sha1,
+        download.size,
+        .{ .server = true },
+    );
+    for (extra_files) |file| {
+        _ = try builder.addFile(file.path, file.url, file.sha1, file.size, file.usage);
+    }
+    return .{
+        .arena = arena,
+        .value = .{
+            .version_id = try plan_allocator.dupe(u8, version.id),
+            .source = source,
+            .target = target,
+            .files = try builder.files.toOwnedSlice(plan_allocator),
+            .classpath = &.{},
+            .native_extractions = &.{},
+            .asset_projections = &.{},
+            .total_download_size = builder.total_download_size,
+            .java_major_version = java_major_version,
+        },
+    };
+}
+
 pub fn buildWithExtras(
     allocator: std.mem.Allocator,
     version: metadata.Metadata,
@@ -660,6 +708,72 @@ test "dedicated server plans default legacy metadata to Java 8" {
     );
     defer plan.deinit();
     try std.testing.expectEqual(@as(u16, 8), plan.value.java_major_version);
+}
+
+test "builds a dedicated server plan with loader extras" {
+    const source =
+        \\{
+        \\  "id":"neoforge-21.1.133",
+        \\  "type":"release",
+        \\  "mainClass":"net.minecraft.server.Main",
+        \\  "downloads":{"client":{"sha1":"2222222222222222222222222222222222222222","size":84,"url":"https://piston-data.mojang.com/v1/objects/client/client.jar"},"server":{"sha1":"1111111111111111111111111111111111111111","size":42,"url":"https://piston-data.mojang.com/v1/objects/server/server.jar"}},
+        \\  "javaVersion":{"component":"java-runtime-delta","majorVersion":21},
+        \\  "libraries":[]
+        \\}
+    ;
+    var parsed = try metadata.parse(std.testing.allocator, source);
+    defer parsed.deinit();
+    const extras = [_]File{
+        .{
+            .path = ".jmcl/neoforge-server/21.1.133/installer.jar",
+            .url = "https://maven.neoforged.net/releases/net/neoforged/neoforge/21.1.133/neoforge-21.1.133-installer.jar",
+            .fallback_url = null,
+            .sha1 = "3333333333333333333333333333333333333333",
+            .size = 7,
+            .usage = .{ .library = true },
+        },
+        .{
+            .path = "libraries/net/neoforged/example/1.0/example-1.0.jar",
+            .url = "https://maven.neoforged.net/releases/net/neoforged/example/1.0/example-1.0.jar",
+            .fallback_url = null,
+            .sha1 = "4444444444444444444444444444444444444444",
+            .size = 5,
+            .usage = .{ .library = true },
+        },
+    };
+    var plan = try buildServerExtras(
+        std.testing.allocator,
+        parsed.value,
+        .bmclapi,
+        .{ .os = .linux, .arch = .x86_64 },
+        &extras,
+    );
+    defer plan.deinit();
+    plan.value.loader = .neoforge;
+    try std.testing.expectEqual(@as(usize, 3), plan.value.files.len);
+    try std.testing.expectEqualStrings("server.jar", plan.value.files[0].path);
+    try std.testing.expect(plan.value.files[0].usage.server);
+    try std.testing.expectEqualStrings(
+        ".jmcl/neoforge-server/21.1.133/installer.jar",
+        plan.value.files[1].path,
+    );
+    try std.testing.expectEqualStrings(
+        "libraries/net/neoforged/example/1.0/example-1.0.jar",
+        plan.value.files[2].path,
+    );
+    try std.testing.expectEqual(Loader.neoforge, plan.value.loader);
+    try std.testing.expectEqual(@as(u16, 21), plan.value.java_major_version);
+    try std.testing.expectEqual(@as(u64, 54), plan.value.total_download_size);
+    try std.testing.expectEqualStrings(
+        "https://bmclapi2.bangbang93.com/v1/objects/server/server.jar",
+        plan.value.files[0].url,
+    );
+    try std.testing.expectEqualStrings(
+        "https://maven.neoforged.net/releases/net/neoforged/neoforge/21.1.133/neoforge-21.1.133-installer.jar",
+        plan.value.files[1].url,
+    );
+    try std.testing.expect(plan.value.files[1].fallback_url == null);
+    try std.testing.expect(plan.value.files[2].fallback_url == null);
 }
 
 test "rejects metadata without a dedicated server download" {

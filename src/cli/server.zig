@@ -477,7 +477,7 @@ fn runServerInstall(
         },
     };
     defer stopped_guard.deinit();
-    if (manifest.fabric_loader != null or manifest.neoforge_version != null or manifest.forge_version != null) {
+    if (manifest.fabric_loader != null) {
         try stderr.writeAll("Phase 2 installs vanilla servers only\n");
         return 1;
     }
@@ -495,6 +495,10 @@ fn runServerInstall(
     var plan = service.planServerInstall(manifest.*, target) catch |err| switch (err) {
         error.ServerDownloadMissing => {
             try stderr.writeAll("the selected Minecraft version has no dedicated server download\n");
+            return 1;
+        },
+        error.UnsupportedServerLoader => {
+            try stderr.writeAll("Phase 2 installs vanilla servers only\n");
             return 1;
         },
         else => {

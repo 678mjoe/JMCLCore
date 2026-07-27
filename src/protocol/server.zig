@@ -514,7 +514,7 @@ pub fn writeInstallResult(
         return;
     };
     defer stopped_guard.deinit();
-    if (manifest.fabric_loader != null or manifest.neoforge_version != null or manifest.forge_version != null) {
+    if (manifest.fabric_loader != null) {
         try writeError(writer, request_id, "SERVER_LOADER_UNSUPPORTED", "Phase 2 installs vanilla servers only");
         return;
     }
@@ -532,6 +532,7 @@ pub fn writeInstallResult(
     var plan = service.planServerInstall(manifest.*, target) catch |err| {
         switch (err) {
             error.ServerDownloadMissing => try writeError(writer, request_id, "SERVER_DOWNLOAD_UNAVAILABLE", "The selected Minecraft version has no dedicated server download"),
+            error.UnsupportedServerLoader => try writeError(writer, request_id, "SERVER_LOADER_UNSUPPORTED", "Phase 2 installs vanilla servers only"),
             else => try writeError(writer, request_id, "SERVER_PLAN_FAILED", "Failed to create the server installation plan"),
         }
         return;

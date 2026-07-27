@@ -622,9 +622,49 @@ pub const Service = struct {
         manifest: server_store.Manifest,
         target: install_plan.Target,
     ) !install_plan.Plan {
-        var metadata = try self.fetchVersionMetadataPreferred(manifest.version_id, manifest.source);
-        defer metadata.deinit();
-        return install_plan.buildServer(self.allocator, metadata.value, manifest.source, target);
+        if (manifest.fabric_loader != null) return error.UnsupportedServerLoader;
+        const selection: VersionSelection = .{
+            .id = manifest.version_id,
+            .neoforge_version = manifest.neoforge_version,
+            .forge_version = manifest.forge_version,
+        };
+        var metadata_document = try self.resolveMetadataPreferred(selection, manifest.source);
+        defer metadata_document.deinit();
+        switch (metadata_document) {
+            .vanilla => return install_plan.buildServer(
+                self.allocator,
+                metadata_document.value().*,
+                manifest.source,
+                target,
+            ),
+            .neoforge => |*document| {
+                var extras = try self.buildNeoForgeExtras(selection.neoforge_version.?, document, .server);
+                defer extras.deinit();
+                var plan = try install_plan.buildServerExtras(
+                    self.allocator,
+                    metadata_document.value().*,
+                    manifest.source,
+                    target,
+                    extras.files,
+                );
+                plan.value.loader = .neoforge;
+                return plan;
+            },
+            .forge => |*document| {
+                var extras = try self.buildForgeExtras(selection.id, selection.forge_version.?, document, .server);
+                defer extras.deinit();
+                var plan = try install_plan.buildServerExtras(
+                    self.allocator,
+                    metadata_document.value().*,
+                    manifest.source,
+                    target,
+                    extras.files,
+                );
+                plan.value.loader = .forge;
+                return plan;
+            },
+            else => return error.UnsupportedServerLoader,
+        }
     }
 
     pub const ServerJavaError = error{
@@ -929,7 +969,7 @@ pub const Service = struct {
 
         switch (metadata_document) {
             .neoforge => |*document| {
-                var extras = try self.buildNeoForgeExtras(selection.neoforge_version.?, document);
+                var extras = try self.buildNeoForgeExtras(selection.neoforge_version.?, document, .client);
                 defer extras.deinit();
                 var plan = try install_plan.buildWithExtras(
                     self.allocator,
@@ -943,7 +983,7 @@ pub const Service = struct {
                 return plan;
             },
             .forge => |*document| {
-                var extras = try self.buildForgeExtras(selection.id, selection.forge_version.?, document);
+                var extras = try self.buildForgeExtras(selection.id, selection.forge_version.?, document, .client);
                 defer extras.deinit();
                 var plan = try install_plan.buildWithExtras(
                     self.allocator,
@@ -991,6 +1031,7 @@ pub const Service = struct {
         self: Service,
         neoforge_version: []const u8,
         document: *const NeoForgeResolvedMetadata,
+        side: neoforge.Side,
     ) !InstallerExtras {
         const arena = try self.allocator.create(std.heap.ArenaAllocator);
         errdefer self.allocator.destroy(arena);
@@ -1001,8 +1042,12 @@ pub const Service = struct {
         const profile_libraries = document.install_profile.value.libraries;
         const files = try scratch.alloc(install_plan.File, profile_libraries.len + 1);
         const installer_url = try neoforge.installerUrlAlloc(scratch, neoforge_version);
+        const support_dir = switch (side) {
+            .client => try std.fmt.allocPrint(scratch, ".jmcl/neoforge/{s}", .{neoforge_version}),
+            .server => try std.fmt.allocPrint(scratch, ".jmcl/neoforge-server/{s}", .{neoforge_version}),
+        };
         files[0] = .{
-            .path = try std.fmt.allocPrint(scratch, ".jmcl/neoforge/{s}/installer.jar", .{neoforge_version}),
+            .path = try std.fmt.allocPrint(scratch, "{s}/installer.jar", .{support_dir}),
             .url = installer_url,
             .fallback_url = null,
             .sha1 = document.installer_sha1,
@@ -1033,6 +1078,7 @@ pub const Service = struct {
         minecraft_version: []const u8,
         forge_version: []const u8,
         document: *const ForgeResolvedMetadata,
+        side: neoforge.Side,
     ) !InstallerExtras {
         const arena = try self.allocator.create(std.heap.ArenaAllocator);
         errdefer self.allocator.destroy(arena);
@@ -1043,7 +1089,10 @@ pub const Service = struct {
         const profile_libraries = document.install_profile.value.libraries;
         const files = try scratch.alloc(install_plan.File, profile_libraries.len + 1);
         const installer_url = try forge.installerUrlAlloc(scratch, minecraft_version, forge_version);
-        const support_dir = try forge.supportDirAlloc(scratch, minecraft_version, forge_version);
+        const support_dir = switch (side) {
+            .client => try forge.supportDirAlloc(scratch, minecraft_version, forge_version),
+            .server => try std.fmt.allocPrint(scratch, ".jmcl/forge-server/{s}-{s}", .{ minecraft_version, forge_version }),
+        };
         files[0] = .{
             .path = try std.fmt.allocPrint(scratch, "{s}/installer.jar", .{support_dir}),
             .url = installer_url,
@@ -2939,5 +2988,99 @@ test "startServer passes the marker gate for an unmodified manifest" {
     try std.testing.expectError(
         error.EnvironmentUnavailable,
         service.startServer(manifest, temporary.dir, &.{}),
+    );
+}
+
+const neoforge_install_profile_fixture =
+    \\{
+    \\  "spec":1,
+    \\  "version":"neoforge-21.1.133",
+    \\  "minecraft":"1.21.1",
+    \\  "data":{},
+    \\  "libraries":[
+    \\    {"name":"net.neoforged:example:1.0","downloads":{"artifact":{"path":"net/neoforged/example/1.0/example-1.0.jar","sha1":"3333333333333333333333333333333333333333","size":10,"url":"https://maven.neoforged.net/releases/net/neoforged/example/1.0/example-1.0.jar"}}}
+    \\  ]
+    \\}
+;
+
+test "server neoforge extras place the installer jar under the server support directory" {
+    const allocator = std.testing.allocator;
+    var install_profile = try neoforge.parseInstallProfile(allocator, neoforge_install_profile_fixture);
+    defer install_profile.deinit();
+    const installer_sha1 = try allocator.dupe(u8, "4444444444444444444444444444444444444444");
+    defer allocator.free(installer_sha1);
+    const document: NeoForgeResolvedMetadata = .{
+        .parent = undefined,
+        .version_profile = undefined,
+        .install_profile = install_profile,
+        .overlay = undefined,
+        .installer_sha1 = installer_sha1,
+        .installer_size = 1234,
+        .allocator = allocator,
+    };
+    const service = Service.init(allocator, std.testing.io, null);
+
+    var server_extras = try service.buildNeoForgeExtras("21.1.133", &document, .server);
+    defer server_extras.deinit();
+    try std.testing.expectEqual(@as(usize, 2), server_extras.files.len);
+    try std.testing.expectEqualStrings(
+        ".jmcl/neoforge-server/21.1.133/installer.jar",
+        server_extras.files[0].path,
+    );
+    try std.testing.expectEqualStrings(
+        "libraries/net/neoforged/example/1.0/example-1.0.jar",
+        server_extras.files[1].path,
+    );
+
+    var client_extras = try service.buildNeoForgeExtras("21.1.133", &document, .client);
+    defer client_extras.deinit();
+    try std.testing.expectEqualStrings(
+        ".jmcl/neoforge/21.1.133/installer.jar",
+        client_extras.files[0].path,
+    );
+    try std.testing.expectEqualStrings(
+        "libraries/net/neoforged/example/1.0/example-1.0.jar",
+        client_extras.files[1].path,
+    );
+}
+
+test "server forge extras place the installer jar under the server support directory" {
+    const allocator = std.testing.allocator;
+    var install_profile = try forge.parseInstallProfile(allocator, neoforge_install_profile_fixture);
+    defer install_profile.deinit();
+    const installer_sha1 = try allocator.dupe(u8, "4444444444444444444444444444444444444444");
+    defer allocator.free(installer_sha1);
+    const document: ForgeResolvedMetadata = .{
+        .parent = undefined,
+        .version_profile = undefined,
+        .install_profile = install_profile,
+        .overlay = undefined,
+        .installer_sha1 = installer_sha1,
+        .installer_size = 1234,
+        .allocator = allocator,
+    };
+    const service = Service.init(allocator, std.testing.io, null);
+
+    var server_extras = try service.buildForgeExtras("1.20.1", "47.3.12", &document, .server);
+    defer server_extras.deinit();
+    try std.testing.expectEqual(@as(usize, 2), server_extras.files.len);
+    try std.testing.expectEqualStrings(
+        ".jmcl/forge-server/1.20.1-47.3.12/installer.jar",
+        server_extras.files[0].path,
+    );
+    try std.testing.expectEqualStrings(
+        "libraries/net/neoforged/example/1.0/example-1.0.jar",
+        server_extras.files[1].path,
+    );
+
+    var client_extras = try service.buildForgeExtras("1.20.1", "47.3.12", &document, .client);
+    defer client_extras.deinit();
+    try std.testing.expectEqualStrings(
+        ".jmcl/forge/1.20.1-47.3.12/installer.jar",
+        client_extras.files[0].path,
+    );
+    try std.testing.expectEqualStrings(
+        "libraries/net/neoforged/example/1.0/example-1.0.jar",
+        client_extras.files[1].path,
     );
 }
