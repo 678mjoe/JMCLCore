@@ -810,7 +810,7 @@ pub const Service = struct {
                         self.environ_map,
                         server_dir,
                         store,
-                        plan.value.version_id,
+                        manifest.version_id,
                         loader_version,
                         plan.value.version_id,
                         executor_options,
@@ -826,7 +826,7 @@ pub const Service = struct {
                     else => std.fmt.bufPrint(
                         &launch_file_buffer,
                         "libraries/net/minecraftforge/forge/{s}-{s}/unix_args.txt",
-                        .{ plan.value.version_id, loader_version },
+                        .{ manifest.version_id, loader_version },
                     ) catch return error.ServerInstallFailed,
                 };
                 const args_file = server_dir.openFile(self.io, launch_file, .{}) catch
