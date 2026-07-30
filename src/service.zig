@@ -1099,6 +1099,47 @@ pub const Service = struct {
         }
     };
 
+    const LibraryFileAppender = struct {
+        allocator: std.mem.Allocator,
+        files: *std.ArrayList(install_plan.File),
+        path_indexes: std.StringHashMapUnmanaged(usize) = .empty,
+
+        fn appendLibraries(appender: *LibraryFileAppender, libraries: []const version_metadata.Library) !void {
+            for (libraries) |library| try appender.appendLibrary(library);
+        }
+
+        fn appendLibrary(appender: *LibraryFileAppender, library: version_metadata.Library) !void {
+            const artifact = library.downloads.?.artifact.?;
+            const artifact_path = try neoforge.artifactPathAlloc(appender.allocator, library.name);
+            const path = try std.fmt.allocPrint(appender.allocator, "libraries/{s}", .{artifact_path});
+            if (appender.path_indexes.get(path)) |index| {
+                const existing = appender.files.items[index];
+                if (!std.ascii.eqlIgnoreCase(existing.sha1, artifact.sha1) or existing.size != artifact.size) {
+                    return error.ConflictingDestination;
+                }
+                return;
+            }
+            const index = appender.files.items.len;
+            try appender.files.append(appender.allocator, .{
+                .path = path,
+                .url = artifact.url,
+                .fallback_url = null,
+                .sha1 = artifact.sha1,
+                .size = artifact.size,
+                .usage = .{ .library = true },
+            });
+            try appender.path_indexes.put(appender.allocator, path, index);
+        }
+    };
+
+    fn overlayLoaderLibraries(
+        overlay_libraries: []const version_metadata.Library,
+        parent_libraries: []const version_metadata.Library,
+    ) []const version_metadata.Library {
+        if (parent_libraries.len > overlay_libraries.len) return overlay_libraries;
+        return overlay_libraries[0 .. overlay_libraries.len - parent_libraries.len];
+    }
+
     fn buildNeoForgeExtras(
         self: Service,
         neoforge_version: []const u8,
@@ -1111,37 +1152,33 @@ pub const Service = struct {
         errdefer arena.deinit();
         const scratch = arena.allocator();
 
-        const profile_libraries = document.install_profile.value.libraries;
-        const files = try scratch.alloc(install_plan.File, profile_libraries.len + 1);
+        var files: std.ArrayList(install_plan.File) = .empty;
         const installer_url = try neoforge.installerUrlAlloc(scratch, neoforge_version);
         const support_dir = switch (side) {
             .client => try std.fmt.allocPrint(scratch, ".jmcl/neoforge/{s}", .{neoforge_version}),
             .server => try std.fmt.allocPrint(scratch, ".jmcl/neoforge-server/{s}", .{neoforge_version}),
         };
-        files[0] = .{
+        try files.append(scratch, .{
             .path = try std.fmt.allocPrint(scratch, "{s}/installer.jar", .{support_dir}),
             .url = installer_url,
             .fallback_url = null,
             .sha1 = document.installer_sha1,
             .size = document.installer_size,
             .usage = .{ .library = true },
-        };
-        for (profile_libraries, 1..) |library, index| {
-            const artifact = library.downloads.?.artifact.?;
-            const artifact_path = try neoforge.artifactPathAlloc(scratch, library.name);
-            files[index] = .{
-                .path = try std.fmt.allocPrint(scratch, "libraries/{s}", .{artifact_path}),
-                .url = artifact.url,
-                .fallback_url = null,
-                .sha1 = artifact.sha1,
-                .size = artifact.size,
-                .usage = .{ .library = true },
-            };
+        });
+        var appender: LibraryFileAppender = .{ .allocator = scratch, .files = &files };
+        try appender.appendLibraries(document.install_profile.value.libraries);
+        switch (side) {
+            .client => {},
+            .server => try appender.appendLibraries(overlayLoaderLibraries(
+                document.overlay.value.libraries,
+                document.parent.value.libraries,
+            )),
         }
         return .{
             .allocator = self.allocator,
             .arena = arena,
-            .files = files,
+            .files = try files.toOwnedSlice(scratch),
         };
     }
 
@@ -1158,37 +1195,33 @@ pub const Service = struct {
         errdefer arena.deinit();
         const scratch = arena.allocator();
 
-        const profile_libraries = document.install_profile.value.libraries;
-        const files = try scratch.alloc(install_plan.File, profile_libraries.len + 1);
+        var files: std.ArrayList(install_plan.File) = .empty;
         const installer_url = try forge.installerUrlAlloc(scratch, minecraft_version, forge_version);
         const support_dir = switch (side) {
             .client => try forge.supportDirAlloc(scratch, minecraft_version, forge_version),
             .server => try std.fmt.allocPrint(scratch, ".jmcl/forge-server/{s}-{s}", .{ minecraft_version, forge_version }),
         };
-        files[0] = .{
+        try files.append(scratch, .{
             .path = try std.fmt.allocPrint(scratch, "{s}/installer.jar", .{support_dir}),
             .url = installer_url,
             .fallback_url = null,
             .sha1 = document.installer_sha1,
             .size = document.installer_size,
             .usage = .{ .library = true },
-        };
-        for (profile_libraries, 1..) |library, index| {
-            const artifact = library.downloads.?.artifact.?;
-            const artifact_path = try neoforge.artifactPathAlloc(scratch, library.name);
-            files[index] = .{
-                .path = try std.fmt.allocPrint(scratch, "libraries/{s}", .{artifact_path}),
-                .url = artifact.url,
-                .fallback_url = null,
-                .sha1 = artifact.sha1,
-                .size = artifact.size,
-                .usage = .{ .library = true },
-            };
+        });
+        var appender: LibraryFileAppender = .{ .allocator = scratch, .files = &files };
+        try appender.appendLibraries(document.install_profile.value.libraries);
+        switch (side) {
+            .client => {},
+            .server => try appender.appendLibraries(overlayLoaderLibraries(
+                document.overlay.value.libraries,
+                document.parent.value.libraries,
+            )),
         }
         return .{
             .allocator = self.allocator,
             .arena = arena,
-            .files = files,
+            .files = try files.toOwnedSlice(scratch),
         };
     }
 
@@ -3156,17 +3189,56 @@ const neoforge_install_profile_fixture =
     \\}
 ;
 
+const modded_overlay_runtime_fixture =
+    \\{
+    \\  "id":"modded",
+    \\  "type":"release",
+    \\  "mainClass":"cpw.mods.bootstraplauncher.BootstrapLauncher",
+    \\  "downloads":{"client":{"sha1":"1111111111111111111111111111111111111111","size":1,"url":"https://example.invalid/client.jar"}},
+    \\  "libraries":[
+    \\    {"name":"cpw.mods:bootstraplauncher:2.0.2","downloads":{"artifact":{"path":"cpw/mods/bootstraplauncher/2.0.2/bootstraplauncher-2.0.2.jar","sha1":"5555555555555555555555555555555555555555","size":20,"url":"https://example.invalid/bootstraplauncher-2.0.2.jar"}}}
+    \\  ]
+    \\}
+;
+
+const empty_modded_overlay_fixture =
+    \\{
+    \\  "id":"modded",
+    \\  "type":"release",
+    \\  "mainClass":"example.Main",
+    \\  "downloads":{"client":{"sha1":"1111111111111111111111111111111111111111","size":1,"url":"https://example.invalid/client.jar"}},
+    \\  "libraries":[]
+    \\}
+;
+
+const forge_overlay_runtime_fixture =
+    \\{
+    \\  "id":"1.20.1-forge-47.3.12",
+    \\  "type":"release",
+    \\  "mainClass":"net.minecraftforge.bootstrap.ForgeBootstrap",
+    \\  "downloads":{"client":{"sha1":"1111111111111111111111111111111111111111","size":1,"url":"https://example.invalid/client.jar"}},
+    \\  "libraries":[
+    \\    {"name":"net.minecraftforge:eventbus:6.2.33","downloads":{"artifact":{"path":"net/minecraftforge/eventbus/6.2.33/eventbus-6.2.33.jar","sha1":"6666666666666666666666666666666666666666","size":30,"url":"https://example.invalid/eventbus-6.2.33.jar"}}}
+    \\  ],
+    \\  "patched_client":"libraries/net/minecraftforge/forge/1.20.1-47.3.12/forge-1.20.1-47.3.12-client.jar"
+    \\}
+;
+
 test "server neoforge extras place the installer jar under the server support directory" {
     const allocator = std.testing.allocator;
     var install_profile = try neoforge.parseInstallProfile(allocator, neoforge_install_profile_fixture);
     defer install_profile.deinit();
+    var parent = try version_metadata.parse(allocator, empty_modded_overlay_fixture);
+    defer parent.deinit();
+    var overlay = try version_metadata.parse(allocator, empty_modded_overlay_fixture);
+    defer overlay.deinit();
     const installer_sha1 = try allocator.dupe(u8, "4444444444444444444444444444444444444444");
     defer allocator.free(installer_sha1);
     const document: NeoForgeResolvedMetadata = .{
-        .parent = undefined,
+        .parent = parent,
         .version_profile = undefined,
         .install_profile = install_profile,
-        .overlay = undefined,
+        .overlay = .{ .arena = undefined, .value = overlay.value },
         .installer_sha1 = installer_sha1,
         .installer_size = 1234,
         .allocator = allocator,
@@ -3197,17 +3269,79 @@ test "server neoforge extras place the installer jar under the server support di
     );
 }
 
+test "server neoforge extras include merged runtime libraries" {
+    const allocator = std.testing.allocator;
+    var install_profile = try neoforge.parseInstallProfile(allocator, neoforge_install_profile_fixture);
+    defer install_profile.deinit();
+    var parent = try version_metadata.parse(allocator, empty_modded_overlay_fixture);
+    defer parent.deinit();
+    var overlay = try version_metadata.parse(allocator, modded_overlay_runtime_fixture);
+    defer overlay.deinit();
+    const installer_sha1 = try allocator.dupe(u8, "4444444444444444444444444444444444444444");
+    defer allocator.free(installer_sha1);
+    const document: NeoForgeResolvedMetadata = .{
+        .parent = parent,
+        .version_profile = undefined,
+        .install_profile = install_profile,
+        .overlay = .{ .arena = undefined, .value = overlay.value },
+        .installer_sha1 = installer_sha1,
+        .installer_size = 1234,
+        .allocator = allocator,
+    };
+    const service = Service.init(allocator, std.testing.io, null);
+
+    var server_extras = try service.buildNeoForgeExtras("21.1.133", &document, .server);
+    defer server_extras.deinit();
+    try std.testing.expect(hasInstallFile(
+        server_extras.files,
+        "libraries/cpw/mods/bootstraplauncher/2.0.2/bootstraplauncher-2.0.2.jar",
+    ));
+}
+
+test "client neoforge extras keep install profile libraries only" {
+    const allocator = std.testing.allocator;
+    var install_profile = try neoforge.parseInstallProfile(allocator, neoforge_install_profile_fixture);
+    defer install_profile.deinit();
+    var parent = try version_metadata.parse(allocator, empty_modded_overlay_fixture);
+    defer parent.deinit();
+    var overlay = try version_metadata.parse(allocator, modded_overlay_runtime_fixture);
+    defer overlay.deinit();
+    const installer_sha1 = try allocator.dupe(u8, "4444444444444444444444444444444444444444");
+    defer allocator.free(installer_sha1);
+    const document: NeoForgeResolvedMetadata = .{
+        .parent = parent,
+        .version_profile = undefined,
+        .install_profile = install_profile,
+        .overlay = .{ .arena = undefined, .value = overlay.value },
+        .installer_sha1 = installer_sha1,
+        .installer_size = 1234,
+        .allocator = allocator,
+    };
+    const service = Service.init(allocator, std.testing.io, null);
+
+    var client_extras = try service.buildNeoForgeExtras("21.1.133", &document, .client);
+    defer client_extras.deinit();
+    try std.testing.expect(!hasInstallFile(
+        client_extras.files,
+        "libraries/cpw/mods/bootstraplauncher/2.0.2/bootstraplauncher-2.0.2.jar",
+    ));
+}
+
 test "server forge extras place the installer jar under the server support directory" {
     const allocator = std.testing.allocator;
     var install_profile = try forge.parseInstallProfile(allocator, neoforge_install_profile_fixture);
     defer install_profile.deinit();
+    var parent = try version_metadata.parse(allocator, empty_modded_overlay_fixture);
+    defer parent.deinit();
+    var overlay = try version_metadata.parse(allocator, empty_modded_overlay_fixture);
+    defer overlay.deinit();
     const installer_sha1 = try allocator.dupe(u8, "4444444444444444444444444444444444444444");
     defer allocator.free(installer_sha1);
     const document: ForgeResolvedMetadata = .{
-        .parent = undefined,
+        .parent = parent,
         .version_profile = undefined,
         .install_profile = install_profile,
-        .overlay = undefined,
+        .overlay = .{ .arena = undefined, .value = overlay.value },
         .installer_sha1 = installer_sha1,
         .installer_size = 1234,
         .allocator = allocator,
@@ -3236,4 +3370,123 @@ test "server forge extras place the installer jar under the server support direc
         "libraries/net/neoforged/example/1.0/example-1.0.jar",
         client_extras.files[1].path,
     );
+}
+
+test "server forge extras include merged runtime libraries without patched artifact" {
+    const allocator = std.testing.allocator;
+    var install_profile = try forge.parseInstallProfile(allocator, neoforge_install_profile_fixture);
+    defer install_profile.deinit();
+    var parent = try version_metadata.parse(allocator, empty_modded_overlay_fixture);
+    defer parent.deinit();
+    var overlay = try version_metadata.parse(allocator, forge_overlay_runtime_fixture);
+    defer overlay.deinit();
+    const installer_sha1 = try allocator.dupe(u8, "4444444444444444444444444444444444444444");
+    defer allocator.free(installer_sha1);
+    const document: ForgeResolvedMetadata = .{
+        .parent = parent,
+        .version_profile = undefined,
+        .install_profile = install_profile,
+        .overlay = .{ .arena = undefined, .value = overlay.value },
+        .installer_sha1 = installer_sha1,
+        .installer_size = 1234,
+        .allocator = allocator,
+    };
+    const service = Service.init(allocator, std.testing.io, null);
+
+    var server_extras = try service.buildForgeExtras("1.20.1", "47.3.12", &document, .server);
+    defer server_extras.deinit();
+    try std.testing.expect(hasInstallFile(
+        server_extras.files,
+        "libraries/net/minecraftforge/eventbus/6.2.33/eventbus-6.2.33.jar",
+    ));
+    try std.testing.expect(!hasInstallFile(
+        server_extras.files,
+        "libraries/net/minecraftforge/forge/1.20.1-47.3.12/forge-1.20.1-47.3.12-client.jar",
+    ));
+}
+
+test "server forge extras dedupe install and overlay libraries by destination" {
+    const allocator = std.testing.allocator;
+    var install_profile = try forge.parseInstallProfile(allocator, neoforge_install_profile_fixture);
+    defer install_profile.deinit();
+    var parent = try version_metadata.parse(allocator, empty_modded_overlay_fixture);
+    defer parent.deinit();
+    const overlay_source =
+        \\{
+        \\  "id":"1.20.1-forge-47.3.12",
+        \\  "type":"release",
+        \\  "mainClass":"net.minecraftforge.bootstrap.ForgeBootstrap",
+        \\  "downloads":{"client":{"sha1":"1111111111111111111111111111111111111111","size":1,"url":"https://example.invalid/client.jar"}},
+        \\  "libraries":[
+        \\    {"name":"net.neoforged:example:1.0","downloads":{"artifact":{"path":"net/neoforged/example/1.0/example-1.0.jar","sha1":"3333333333333333333333333333333333333333","size":10,"url":"https://example.invalid/example-1.0.jar"}}}
+        \\  ]
+        \\}
+    ;
+    var overlay = try version_metadata.parse(allocator, overlay_source);
+    defer overlay.deinit();
+    const installer_sha1 = try allocator.dupe(u8, "4444444444444444444444444444444444444444");
+    defer allocator.free(installer_sha1);
+    const document: ForgeResolvedMetadata = .{
+        .parent = parent,
+        .version_profile = undefined,
+        .install_profile = install_profile,
+        .overlay = .{ .arena = undefined, .value = overlay.value },
+        .installer_sha1 = installer_sha1,
+        .installer_size = 1234,
+        .allocator = allocator,
+    };
+    const service = Service.init(allocator, std.testing.io, null);
+
+    var server_extras = try service.buildForgeExtras("1.20.1", "47.3.12", &document, .server);
+    defer server_extras.deinit();
+    try std.testing.expectEqual(@as(usize, 2), server_extras.files.len);
+    try std.testing.expect(hasInstallFile(
+        server_extras.files,
+        "libraries/net/neoforged/example/1.0/example-1.0.jar",
+    ));
+}
+
+test "server forge extras reject conflicting duplicate library destinations" {
+    const allocator = std.testing.allocator;
+    var install_profile = try forge.parseInstallProfile(allocator, neoforge_install_profile_fixture);
+    defer install_profile.deinit();
+    var parent = try version_metadata.parse(allocator, empty_modded_overlay_fixture);
+    defer parent.deinit();
+    const overlay_source =
+        \\{
+        \\  "id":"1.20.1-forge-47.3.12",
+        \\  "type":"release",
+        \\  "mainClass":"net.minecraftforge.bootstrap.ForgeBootstrap",
+        \\  "downloads":{"client":{"sha1":"1111111111111111111111111111111111111111","size":1,"url":"https://example.invalid/client.jar"}},
+        \\  "libraries":[
+        \\    {"name":"net.neoforged:example:1.0","downloads":{"artifact":{"path":"net/neoforged/example/1.0/example-1.0.jar","sha1":"7777777777777777777777777777777777777777","size":10,"url":"https://example.invalid/example-1.0.jar"}}}
+        \\  ]
+        \\}
+    ;
+    var overlay = try version_metadata.parse(allocator, overlay_source);
+    defer overlay.deinit();
+    const installer_sha1 = try allocator.dupe(u8, "4444444444444444444444444444444444444444");
+    defer allocator.free(installer_sha1);
+    const document: ForgeResolvedMetadata = .{
+        .parent = parent,
+        .version_profile = undefined,
+        .install_profile = install_profile,
+        .overlay = .{ .arena = undefined, .value = overlay.value },
+        .installer_sha1 = installer_sha1,
+        .installer_size = 1234,
+        .allocator = allocator,
+    };
+    const service = Service.init(allocator, std.testing.io, null);
+
+    try std.testing.expectError(
+        error.ConflictingDestination,
+        service.buildForgeExtras("1.20.1", "47.3.12", &document, .server),
+    );
+}
+
+fn hasInstallFile(files: []const install_plan.File, path: []const u8) bool {
+    for (files) |file| {
+        if (std.mem.eql(u8, file.path, path)) return true;
+    }
+    return false;
 }
