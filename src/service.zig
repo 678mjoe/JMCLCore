@@ -793,29 +793,35 @@ pub const Service = struct {
                     .required_major = plan.value.java_major_version,
                 };
                 switch (plan.value.loader) {
-                    .neoforge => _ = neoforge_executor.runServer(
-                        self.allocator,
-                        self.io,
-                        self.environ_map,
-                        server_dir,
-                        store,
-                        loader_version,
-                        plan.value.version_id,
-                        executor_options,
-                        null,
-                    ) catch return error.ServerInstallFailed,
-                    else => _ = forge_executor.runServer(
-                        self.allocator,
-                        self.io,
-                        self.environ_map,
-                        server_dir,
-                        store,
-                        manifest.version_id,
-                        loader_version,
-                        plan.value.version_id,
-                        executor_options,
-                        null,
-                    ) catch return error.ServerInstallFailed,
+                    .neoforge => {
+                        const processor_summary = neoforge_executor.runServer(
+                            self.allocator,
+                            self.io,
+                            self.environ_map,
+                            server_dir,
+                            store,
+                            loader_version,
+                            plan.value.version_id,
+                            executor_options,
+                            null,
+                        ) catch return error.ServerInstallFailed;
+                        defer self.allocator.free(processor_summary.patched_sha1);
+                    },
+                    else => {
+                        const processor_summary = forge_executor.runServer(
+                            self.allocator,
+                            self.io,
+                            self.environ_map,
+                            server_dir,
+                            store,
+                            manifest.version_id,
+                            loader_version,
+                            plan.value.version_id,
+                            executor_options,
+                            null,
+                        ) catch return error.ServerInstallFailed;
+                        defer self.allocator.free(processor_summary.patched_sha1);
+                    },
                 }
                 launch_file = switch (plan.value.loader) {
                     .neoforge => std.fmt.bufPrint(
