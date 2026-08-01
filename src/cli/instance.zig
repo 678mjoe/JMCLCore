@@ -34,6 +34,7 @@ const InstanceCreateOptions = struct {
     name: ?[]const u8 = null,
     instances_directory: []const u8 = jmcl.instance_store.default_root,
     source: jmcl.DownloadSource = .official,
+    validate: bool = true,
 };
 
 fn runInstanceCreate(
@@ -43,7 +44,7 @@ fn runInstanceCreate(
     stderr: *std.Io.Writer,
 ) !u8 {
     const options = parseInstanceCreateOptions(args) catch {
-        try stderr.writeAll("usage: jmcl-core instance create ID --version VERSION [--fabric-loader VERSION | --neoforge-version VERSION | --forge-version VERSION] [--name NAME] [--instances-directory PATH] [--source SOURCE]\n");
+        try stderr.writeAll("usage: jmcl-core instance create ID --version VERSION [--fabric-loader VERSION | --neoforge-version VERSION | --forge-version VERSION] [--name NAME] [--instances-directory PATH] [--source SOURCE] [--no-validate]\n");
         return 2;
     };
     const loader_count: u8 = @as(u8, @intFromBool(options.fabric_loader != null)) +
@@ -53,16 +54,19 @@ fn runInstanceCreate(
         try stderr.writeAll("only one of --fabric-loader, --neoforge-version, or --forge-version may be given\n");
         return 2;
     }
-    var metadata = service.resolveMetadataPreferred(.{
-        .id = options.version_id.?,
-        .fabric_loader = options.fabric_loader,
-        .neoforge_version = options.neoforge_version,
-        .forge_version = options.forge_version,
-    }, options.source) catch |err| {
-        try stderr.print("failed to resolve Minecraft version: {s}\n", .{@errorName(err)});
-        return 1;
-    };
-    metadata.deinit();
+    var metadata = if (options.validate) blk: {
+        const resolved = service.resolveMetadataPreferred(.{
+            .id = options.version_id.?,
+            .fabric_loader = options.fabric_loader,
+            .neoforge_version = options.neoforge_version,
+            .forge_version = options.forge_version,
+        }, options.source) catch |err| {
+            try stderr.print("failed to resolve Minecraft version: {s}\n", .{@errorName(err)});
+            return 1;
+        };
+        break :blk resolved;
+    } else null;
+    if (metadata) |*resolved| resolved.deinit();
     const root = jmcl.instance_store.openRoot(service.io, options.instances_directory) catch |err| {
         try stderr.print("failed to open instances directory: {s}\n", .{@errorName(err)});
         return 1;
@@ -92,6 +96,11 @@ fn parseInstanceCreateOptions(args: []const []const u8) !InstanceCreateOptions {
     var options: InstanceCreateOptions = .{ .id = args[0] };
     var index: usize = 1;
     while (index < args.len) {
+        if (std.mem.eql(u8, args[index], "--no-validate")) {
+            options.validate = false;
+            index += 1;
+            continue;
+        }
         if (index + 1 >= args.len or args[index + 1].len == 0) return error.InvalidArguments;
         const argument = args[index];
         const value = args[index + 1];
@@ -461,6 +470,25 @@ test "instance create options pin version and source" {
     try std.testing.expectEqualStrings("Vanilla 26.1", options.name.?);
     try std.testing.expectEqualStrings("0.16.10", options.fabric_loader.?);
     try std.testing.expectEqual(jmcl.DownloadSource.bmclapi, options.source);
+    try std.testing.expect(options.validate);
+}
+
+test "instance create accepts --no-validate without a value" {
+    const options = try parseInstanceCreateOptions(&.{
+        "vanilla-26.1",
+        "--version",
+        "26.1",
+        "--no-validate",
+    });
+    try std.testing.expect(!options.validate);
+    const trailing = try parseInstanceCreateOptions(&.{
+        "vanilla-26.1",
+        "--no-validate",
+        "--version",
+        "26.1",
+    });
+    try std.testing.expect(!trailing.validate);
+    try std.testing.expectEqualStrings("26.1", trailing.version_id.?);
 }
 
 test "instance create rejects unsafe ids and missing versions" {

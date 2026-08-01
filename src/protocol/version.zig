@@ -18,6 +18,80 @@ const VersionGetParams = struct {
     source: core.DownloadSource = .official,
 };
 
+const VersionResolveParams = struct {
+    id: []const u8,
+    fabric_loader: ?[]const u8 = null,
+    neoforge_version: ?[]const u8 = null,
+    forge_version: ?[]const u8 = null,
+    source: core.DownloadSource = .official,
+};
+
+pub fn writeResolveResult(
+    service: *core.Service,
+    writer: *std.Io.Writer,
+    request_id: []const u8,
+    params_value: ?std.json.Value,
+) std.Io.Writer.Error!void {
+    const value = params_value orelse {
+        try writeError(writer, request_id, "INVALID_PARAMS", "version.resolve requires an id");
+        return;
+    };
+    var params = std.json.parseFromValue(VersionResolveParams, service.allocator, value, .{
+        .ignore_unknown_fields = true,
+    }) catch {
+        try writeError(writer, request_id, "INVALID_PARAMS", "version.resolve parameters are invalid");
+        return;
+    };
+    defer params.deinit();
+    const input = params.value;
+    if (input.id.len == 0) {
+        try writeError(writer, request_id, "INVALID_PARAMS", "version id must not be empty");
+        return;
+    }
+    const loader_count: u8 = @as(u8, @intFromBool(input.fabric_loader != null)) +
+        @intFromBool(input.neoforge_version != null) +
+        @intFromBool(input.forge_version != null);
+    if (loader_count > 1) {
+        try writeError(writer, request_id, "INVALID_PARAMS", "only one loader field may be set");
+        return;
+    }
+
+    var metadata = service.resolveMetadataPreferred(.{
+        .id = input.id,
+        .fabric_loader = input.fabric_loader,
+        .neoforge_version = input.neoforge_version,
+        .forge_version = input.forge_version,
+    }, input.source) catch |err| {
+        switch (err) {
+            error.MetadataFetchTimeout => try writeError(writer, request_id, "METADATA_TIMEOUT", "Timed out while resolving the Minecraft version and loader"),
+            error.VersionNotFound => try writeError(writer, request_id, "VERSION_NOT_FOUND", "The requested version is not in the version manifest"),
+            else => try writeError(writer, request_id, "VERSION_RESOLUTION_FAILED", "Failed to resolve the Minecraft version and loader"),
+        }
+        return;
+    };
+    defer metadata.deinit();
+
+    const resolved = metadata.value();
+    var json: std.json.Stringify = .{ .writer = writer };
+    try writeEventHeader(&json, request_id, "result");
+    try writeSourceField(&json, input.source);
+    try json.objectField("result");
+    try json.beginObject();
+    try json.objectField("kind");
+    try json.write(@tagName(std.meta.activeTag(metadata)));
+    try json.objectField("id");
+    try json.write(resolved.id);
+    try json.objectField("java_major_version");
+    if (resolved.javaVersion) |java_version| {
+        try json.write(java_version.majorVersion);
+    } else {
+        try json.write(null);
+    }
+    try json.endObject();
+    try json.endObject();
+    try writer.writeByte('\n');
+}
+
 pub fn writeListResult(
     service: *core.Service,
     writer: *std.Io.Writer,

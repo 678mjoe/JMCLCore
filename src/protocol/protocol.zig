@@ -96,6 +96,8 @@ pub fn handleLine(
         try version.writeListResult(service, writer, request.id, request.params);
     } else if (std.mem.eql(u8, request.method, "version.get")) {
         try version.writeGetResult(service, writer, request.id, request.params);
+    } else if (std.mem.eql(u8, request.method, "version.resolve")) {
+        try version.writeResolveResult(service, writer, request.id, request.params);
     } else if (std.mem.eql(u8, request.method, "install.plan")) {
         try install.writePlanResult(service, writer, request.id, request.params);
     } else if (std.mem.eql(u8, request.method, "install.execute")) {

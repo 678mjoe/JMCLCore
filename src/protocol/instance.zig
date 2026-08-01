@@ -14,6 +14,7 @@ const InstanceCreateParams = struct {
     neoforge_version: ?[]const u8 = null,
     forge_version: ?[]const u8 = null,
     source: []const u8 = "official",
+    validate: bool = true,
 };
 
 const InstanceDirectoryParams = struct {
@@ -105,16 +106,22 @@ pub fn writeCreateResult(
         return;
     }
 
-    var metadata = service.resolveMetadataPreferred(.{
-        .id = input.version_id,
-        .fabric_loader = input.fabric_loader,
-        .neoforge_version = input.neoforge_version,
-        .forge_version = input.forge_version,
-    }, source) catch {
-        try writeError(writer, request_id, "VERSION_RESOLUTION_FAILED", "Failed to resolve the Minecraft version and loader");
-        return;
-    };
-    metadata.deinit();
+    if (input.validate) {
+        var metadata = service.resolveMetadataPreferred(.{
+            .id = input.version_id,
+            .fabric_loader = input.fabric_loader,
+            .neoforge_version = input.neoforge_version,
+            .forge_version = input.forge_version,
+        }, source) catch |err| {
+            if (err == error.MetadataFetchTimeout) {
+                try writeError(writer, request_id, "METADATA_TIMEOUT", "Timed out while resolving the Minecraft version and loader");
+                return;
+            }
+            try writeError(writer, request_id, "VERSION_RESOLUTION_FAILED", "Failed to resolve the Minecraft version and loader");
+            return;
+        };
+        metadata.deinit();
+    }
 
     const root = core.instance_store.openRoot(service.io, input.directory) catch {
         try writeError(writer, request_id, "INSTANCES_ROOT_ERROR", "Failed to open the instances root");

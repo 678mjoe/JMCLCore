@@ -43,6 +43,7 @@ ID. One invalid request does not terminate the session.
 | `core.version` | Query the core name, version, and protocol version. |
 | `version.list` | Fetch and filter the Mojang version manifest. |
 | `version.get` | Fetch and verify detailed metadata for a version ID. |
+| `version.resolve` | Resolve a version plus an optional loader and report the merged identity. |
 | `install.plan` | Generate a validated, platform-specific download plan. |
 | `install.execute` | Download and verify every static file in a generated plan. |
 | `install.prepare` | Prepare legacy natives and projected assets from the cache. |
@@ -174,7 +175,10 @@ All install methods default to recursing required dependencies; pass
 manage instances under a shared instances root (`directory`). `create`
 resolves the requested Minecraft version and at most one loader field
 (`fabric_loader`, `neoforge_version`, `forge_version`) online before writing
-the manifest, and fails with `INSTANCE_EXISTS` when the id is taken:
+the manifest, and fails with `INSTANCE_EXISTS` when the id is taken. Pass
+`"validate":false` to skip the online resolution and write the manifest
+immediately; the combination is then validated lazily by `install.execute`,
+or explicitly through `version.resolve`:
 
 ```json
 {"protocol":1,"id":"ic-1","method":"instance.create","params":{"directory":"/path/to/instances","id":"my-instance","name":"My Instance","version_id":"1.21.4","fabric_loader":"0.16.10"}}
@@ -487,6 +491,30 @@ the requested ID. The result includes:
 The normalized result may include `null` for fields omitted by a particular
 Minecraft generation. Argument entries preserve Mojang's untagged string and
 conditional-object JSON representation.
+
+## `version.resolve`
+
+`version.resolve` runs the same online version and loader resolution that
+`instance.create` performs by default, as a standalone short call. It accepts
+a required `id`, at most one loader field (`fabric_loader`,
+`neoforge_version`, or `forge_version`), and an optional `source`:
+
+```json
+{"protocol":1,"id":"vr-1","method":"version.resolve","params":{"id":"1.21.1","fabric_loader":"0.16.10","source":"bmclapi"}}
+```
+
+The result reports the merged profile identity:
+
+```json
+{"protocol":1,"id":"vr-1","event":"result","source":"bmclapi","result":{"kind":"fabric","id":"fabric-loader-0.16.10-1.21.1","java_major_version":21}}
+```
+
+`kind` is one of `vanilla`, `fabric`, `neoforge`, `forge`, or `forge_legacy`.
+Errors include `VERSION_NOT_FOUND`, `VERSION_RESOLUTION_FAILED`, and
+`METADATA_TIMEOUT`. GUIs that create instances with `"validate":false` should
+use this method, on a separate session when the main session must stay
+responsive, to surface invalid version or loader combinations before
+installation.
 
 ## Download sources
 

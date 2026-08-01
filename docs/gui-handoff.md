@@ -95,6 +95,7 @@ Verify `protocol == 1` before anything else. `ping` checks liveness.
 |---|---|---|---|
 | `version.list` | — | `type`, `limit` (1–1000, default 20), `source` | `latest`, `versions[]` |
 | `version.get` | `id` | `source` | full normalized version metadata |
+| `version.resolve` | `id` | one loader field, `source` | merged `{kind, id, java_major_version}`; the standalone form of the `instance.create` validation step; `METADATA_TIMEOUT` on fetch expiry |
 | `install.plan` | `id` | `source`, `os`, `arch`, loader fields | deduped file list, classpath, natives, total size |
 | `install.execute` | `id` | `directory` (default `.minecraft`), `store_directory` (default `.jmclcore`), `source`, `os`, `arch`, loader fields, `workers` (1–32, default 8), `retries` (0–5, default 2) | started/file/retry/progress events, processor_started for NeoForge/Forge, final counters |
 | `install.prepare` | `id` | `directory`, `source`, `os`, `arch`, loader fields | `native_directory` (pass to `launch.plan`) |
@@ -139,7 +140,7 @@ instance is `instances/<id>/` with `instance.json` plus the game directory
 
 | Method | Required params | Optional params | Notes |
 |---|---|---|---|
-| `instance.create` | `directory`, `id`, `version_id` | `name` (defaults to id), one loader field, `source` | resolves the version+loader online first; returns `installed:false`; `INSTANCE_EXISTS` if taken |
+| `instance.create` | `directory`, `id`, `version_id` | `name` (defaults to id), one loader field, `source`, `validate` (default true) | resolves the version+loader online first; returns `installed:false`; `INSTANCE_EXISTS` if taken; `METADATA_TIMEOUT` when resolution stalls |
 | `instance.list` | `directory` | — | `{instances[]}` sorted by id; each includes `installed` |
 | `instance.get` | `directory`, `id` | — | one manifest with `installed`; `INSTANCE_NOT_FOUND` |
 | `instance.delete` | `directory`, `id` | — | removes the whole instance directory |
@@ -153,6 +154,13 @@ A manifest looks like:
 ```json
 {"id":"my-instance","name":"My Instance","version_id":"1.21.4","fabric_loader":"0.16.10","neoforge_version":null,"forge_version":null,"source":"official","installed":false}
 ```
+
+For a responsive create flow, pass `"validate":false` to write the manifest
+immediately, then call `version.resolve` on a separate session to check the
+combination in the background and offer `instance.delete` when it fails.
+Metadata fetches are bounded by a 30-second timeout and served from the
+on-disk metadata cache when fresh (see `docs/protocol.md`), so repeated
+resolves of the same combination are cheap.
 
 `installed` becomes true only after `install.execute` fully succeeds for the
 manifest's exact Minecraft version and loader. Download source does not affect

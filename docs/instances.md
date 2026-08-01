@@ -27,7 +27,9 @@ Unicode and are stored in the manifest.
 ## Create And Inspect
 
 Creation verifies that the selected Minecraft version exists, then writes the
-manifest atomically. It does not download game files.
+manifest atomically. It does not download game files. Pass `--no-validate` to
+skip the online check and write the manifest immediately; the combination is
+validated later by `instance install` or the `version.resolve` RPC.
 
 ```sh
 jmcl-core instance create vanilla-26.1 \
