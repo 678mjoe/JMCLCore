@@ -3524,30 +3524,6 @@ const legacy_forge_server_parent_fixture =
     \\}
 ;
 
-const legacy_forge_server_profile_fixture =
-    \\{
-    \\  "install":{
-    \\    "profileName":"Forge",
-    \\    "target":"1.12.2-forge-14.23.5.2860",
-    \\    "path":"net.minecraftforge:forge:1.12.2-14.23.5.2860",
-    \\    "version":"Forge 14.23.5.2860",
-    \\    "filePath":"forge-1.12.2-14.23.5.2860-universal.jar",
-    \\    "minecraft":"1.12.2"
-    \\  },
-    \\  "versionInfo":{
-    \\    "id":"1.12.2-forge-14.23.5.2860",
-    \\    "mainClass":"net.minecraft.launchwrapper.Launch",
-    \\    "minecraftArguments":"--username ${auth_player_name} --tweakClass net.minecraftforge.fml.common.launcher.FMLTweaker",
-    \\    "inheritsFrom":"1.12.2",
-    \\    "jar":"1.12.2",
-    \\    "libraries":[
-    \\      {"name":"net.minecraftforge:forge:1.12.2-14.23.5.2860","url":"https://maven.minecraftforge.net/"},
-    \\      {"name":"net.minecraft:launchwrapper:1.12","serverreq":true}
-    \\    ]
-    \\  }
-    \\}
-;
-
 const processorless_forge_install_profile_fixture =
     \\{
     \\  "spec":0,
