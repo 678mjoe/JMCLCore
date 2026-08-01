@@ -45,6 +45,7 @@ pub fn writeListResult(
 
     var manifest = service.fetchVersionManifest(params.source) catch |err| {
         switch (err) {
+            error.MetadataFetchTimeout => try writeError(writer, id, "METADATA_TIMEOUT", "Timed out fetching the version manifest"),
             error.ResponseBodyTooLarge => try writeError(writer, id, "RESPONSE_TOO_LARGE", "Version manifest exceeds the size limit"),
             error.UnsuccessfulHttpStatus => try writeError(writer, id, "HTTP_STATUS_ERROR", "The selected download source returned an unsuccessful HTTP status"),
             error.SyntaxError, error.UnexpectedToken, error.UnknownField, error.InvalidEnumTag, error.MissingField => try writeError(writer, id, "INVALID_MANIFEST", "Mojang returned an invalid version manifest"),
@@ -91,6 +92,7 @@ pub fn writeGetResult(
 
     var metadata = service.fetchVersionMetadata(params.value.id, params.value.source) catch |err| {
         switch (err) {
+            error.MetadataFetchTimeout => try writeError(writer, request_id, "METADATA_TIMEOUT", "Timed out fetching version metadata"),
             error.VersionNotFound => try writeError(writer, request_id, "VERSION_NOT_FOUND", "The requested version is not in the Mojang manifest"),
             error.MetadataHashMismatch => try writeError(writer, request_id, "INTEGRITY_ERROR", "Version metadata failed SHA-1 verification"),
             error.MetadataIdMismatch => try writeError(writer, request_id, "INVALID_METADATA", "Version metadata contains an unexpected id"),

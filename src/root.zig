@@ -33,6 +33,7 @@ pub const server_store = @import("server/server_store.zig");
 pub const server_properties = @import("server/properties.zig");
 pub const server_lifecycle = @import("server/lifecycle.zig");
 pub const artifact_store = @import("install/artifact_store.zig");
+pub const metadata_cache = @import("install/metadata_cache.zig");
 pub const hard_link = @import("install/hard_link.zig");
 pub const version_manifest = @import("install/version_manifest.zig");
 pub const version_metadata = @import("install/version_metadata.zig");
@@ -70,6 +71,7 @@ test {
     _ = server_properties;
     _ = server_lifecycle;
     _ = artifact_store;
+    _ = metadata_cache;
     _ = hard_link;
     _ = version_manifest;
     _ = version_metadata;

@@ -13,6 +13,7 @@ const forge = @import("loaders/forge.zig");
 const forge_executor = @import("loaders/forge_executor.zig");
 const forge_legacy = @import("loaders/forge_legacy.zig");
 const https_fallback = @import("install/https_fallback.zig");
+const metadata_cache = @import("install/metadata_cache.zig");
 const install_plan = @import("install/plan.zig");
 const install_executor = @import("install/installer.zig");
 const instance_store = @import("instance_store.zig");
@@ -34,6 +35,9 @@ const max_metadata_bytes = 4 * 1024 * 1024;
 const max_asset_index_bytes = 16 * 1024 * 1024;
 const max_sha1_sidecar_bytes = 4 * 1024;
 const fabric_server_args_relative_path = ".jmcl/fabric_args.txt";
+
+pub const metadata_fetch_timeout_ms: u32 = 30_000;
+pub const metadata_mutable_ttl_seconds: u64 = 600;
 
 pub const VersionSelection = struct {
     id: []const u8,
@@ -167,10 +171,10 @@ pub const Service = struct {
         self: Service,
         source: core.DownloadSource,
     ) !std.json.Parsed(version_manifest.Manifest) {
-        var body = try self.fetchBody(source.manifestUrl(), max_manifest_bytes);
-        defer body.deinit();
+        var cached = try self.fetchBodyCached(source.manifestUrl(), max_manifest_bytes, null, .{ .ttl_seconds = metadata_mutable_ttl_seconds });
+        defer cached.deinit();
 
-        return version_manifest.parse(self.allocator, body.content);
+        return version_manifest.parse(self.allocator, cached.body.content);
     }
 
     pub fn beginMicrosoftDeviceAuthorization(
@@ -290,14 +294,20 @@ pub const Service = struct {
         const mirror_url = try source.rewriteUrl(self.allocator, selected.url);
         defer if (mirror_url) |url| self.allocator.free(url);
 
-        var body = try self.fetchBody(mirror_url orelse selected.url, max_metadata_bytes);
-        defer body.deinit();
+        var cached = try self.fetchBodyCached(mirror_url orelse selected.url, max_metadata_bytes, null, .immutable);
+        defer cached.deinit();
 
         if (selected.sha1) |expected| {
-            if (!version_metadata.verifySha1(body.content, expected)) return error.MetadataHashMismatch;
+            if (!version_metadata.verifySha1(cached.body.content, expected)) {
+                if (!cached.from_cache) return error.MetadataHashMismatch;
+                self.evictMetadataCache(mirror_url orelse selected.url);
+                cached.deinit();
+                cached = try self.fetchBodyCached(mirror_url orelse selected.url, max_metadata_bytes, null, .immutable);
+                if (!version_metadata.verifySha1(cached.body.content, expected)) return error.MetadataHashMismatch;
+            }
         }
 
-        var metadata = try version_metadata.parse(self.allocator, body.content);
+        var metadata = try version_metadata.parse(self.allocator, cached.body.content);
         errdefer metadata.deinit();
         if (!std.mem.eql(u8, metadata.value.id, version_id)) return error.MetadataIdMismatch;
         return metadata;
@@ -361,9 +371,9 @@ pub const Service = struct {
     ) !std.json.Parsed(fabric.Profile) {
         const url = try fabric.profileUrlAlloc(self.allocator, minecraft_version, loader_version);
         defer self.allocator.free(url);
-        var body = try self.fetchBody(url, fabric.max_profile_bytes);
-        defer body.deinit();
-        return fabric.parse(self.allocator, body.content);
+        var cached = try self.fetchBodyCached(url, fabric.max_profile_bytes, null, .{ .ttl_seconds = metadata_mutable_ttl_seconds });
+        defer cached.deinit();
+        return fabric.parse(self.allocator, cached.body.content);
     }
 
     pub fn fetchFabricServerProfile(
@@ -373,9 +383,9 @@ pub const Service = struct {
     ) !std.json.Parsed(fabric.Profile) {
         const url = try fabric.serverProfileUrlAlloc(self.allocator, minecraft_version, loader_version);
         defer self.allocator.free(url);
-        var body = try self.fetchBody(url, fabric.max_profile_bytes);
-        defer body.deinit();
-        var profile = try fabric.parse(self.allocator, body.content);
+        var cached = try self.fetchBodyCached(url, fabric.max_profile_bytes, null, .{ .ttl_seconds = metadata_mutable_ttl_seconds });
+        defer cached.deinit();
+        var profile = try fabric.parse(self.allocator, cached.body.content);
         errdefer profile.deinit();
         try fabric.validateServerProfile(profile.value, minecraft_version);
         return profile;
@@ -393,19 +403,19 @@ pub const Service = struct {
 
         const installer_url = try neoforge.installerUrlAlloc(self.allocator, neoforge_version);
         defer self.allocator.free(installer_url);
-        var installer = try self.fetchBody(installer_url, neoforge.max_installer_bytes);
+        var installer = try self.fetchBodyCached(installer_url, neoforge.max_installer_bytes, null, .immutable);
         defer installer.deinit();
 
         const version_source = (try zip_reader.readEntryAlloc(
             self.allocator,
-            installer.content,
+            installer.body.content,
             "version.json",
             neoforge.max_version_profile_bytes,
         )) orelse return error.NeoForgeVersionProfileMissing;
         defer self.allocator.free(version_source);
         const install_source = (try zip_reader.readEntryAlloc(
             self.allocator,
-            installer.content,
+            installer.body.content,
             "install_profile.json",
             neoforge.max_install_profile_bytes,
         )) orelse return error.NeoForgeInstallProfileMissing;
@@ -428,7 +438,7 @@ pub const Service = struct {
         const overlay = try neoforge.merge(self.allocator, parent.value, version_profile.value, patched_path);
 
         var installer_digest: [std.crypto.hash.Sha1.digest_length]u8 = undefined;
-        std.crypto.hash.Sha1.hash(installer.content, &installer_digest, .{});
+        std.crypto.hash.Sha1.hash(installer.body.content, &installer_digest, .{});
         const installer_sha1 = try std.fmt.allocPrint(self.allocator, "{s}", .{
             std.fmt.bytesToHex(installer_digest, .lower),
         });
@@ -440,7 +450,7 @@ pub const Service = struct {
             .install_profile = install_profile,
             .overlay = overlay,
             .installer_sha1 = installer_sha1,
-            .installer_size = installer.content.len,
+            .installer_size = installer.body.content.len,
             .allocator = self.allocator,
         } };
     }
@@ -457,17 +467,17 @@ pub const Service = struct {
 
         const installer_url = try forge.installerUrlAlloc(self.allocator, minecraft_version, forge_version);
         defer self.allocator.free(installer_url);
-        var installer = self.fetchBody(installer_url, neoforge.max_installer_bytes) catch |err| blk: {
+        var installer = self.fetchBodyCached(installer_url, neoforge.max_installer_bytes, null, .immutable) catch |err| blk: {
             if (err != error.UnsuccessfulHttpStatus) return err;
             const legacy_url = try forge.legacyInstallerUrlAlloc(self.allocator, minecraft_version, forge_version);
             defer self.allocator.free(legacy_url);
-            break :blk try self.fetchBody(legacy_url, neoforge.max_installer_bytes);
+            break :blk try self.fetchBodyCached(legacy_url, neoforge.max_installer_bytes, null, .immutable);
         };
         defer installer.deinit();
 
         const install_source = (try zip_reader.readEntryAlloc(
             self.allocator,
-            installer.content,
+            installer.body.content,
             "install_profile.json",
             neoforge.max_install_profile_bytes,
         )) orelse return error.ForgeInstallProfileMissing;
@@ -479,7 +489,7 @@ pub const Service = struct {
 
         const version_source = (try zip_reader.readEntryAlloc(
             self.allocator,
-            installer.content,
+            installer.body.content,
             "version.json",
             neoforge.max_version_profile_bytes,
         )) orelse return error.ForgeVersionProfileMissing;
@@ -525,7 +535,7 @@ pub const Service = struct {
         );
 
         var installer_digest: [std.crypto.hash.Sha1.digest_length]u8 = undefined;
-        std.crypto.hash.Sha1.hash(installer.content, &installer_digest, .{});
+        std.crypto.hash.Sha1.hash(installer.body.content, &installer_digest, .{});
         const installer_sha1 = try std.fmt.allocPrint(self.allocator, "{s}", .{
             std.fmt.bytesToHex(installer_digest, .lower),
         });
@@ -537,7 +547,7 @@ pub const Service = struct {
             .install_profile = install_profile,
             .overlay = overlay,
             .installer_sha1 = installer_sha1,
-            .installer_size = installer.content.len,
+            .installer_size = installer.body.content.len,
             .allocator = self.allocator,
         } };
     }
@@ -3060,15 +3070,58 @@ pub const Service = struct {
         if (output.len != 40) return error.InvalidSha1Destination;
         const sidecar_url = try std.fmt.allocPrint(self.allocator, "{s}.sha1", .{artifact_url});
         defer self.allocator.free(sidecar_url);
-        var body = try self.fetchBody(sidecar_url, max_sha1_sidecar_bytes);
-        defer body.deinit();
-        const token_end = std.mem.indexOfAny(u8, body.content, " \t\r\n") orelse body.content.len;
-        const token = body.content[0..token_end];
+        var cached = try self.fetchBodyCached(sidecar_url, max_sha1_sidecar_bytes, null, .immutable);
+        defer cached.deinit();
+        const token_end = std.mem.indexOfAny(u8, cached.body.content, " \t\r\n") orelse cached.body.content.len;
+        const token = cached.body.content[0..token_end];
         try fabric.validateSha1(token);
         @memcpy(output, token);
     }
 
     fn fetchContentLength(self: Service, url: []const u8) !u64 {
+        const key = try std.fmt.allocPrint(self.allocator, "head:{s}", .{url});
+        defer self.allocator.free(key);
+        var root = self.metadataCacheRoot();
+        defer if (root) |*value| value.close(self.io);
+        const now = epochSecondsNow(self.io);
+        var stale: ?metadata_cache.Entry = null;
+        defer if (stale) |*entry| entry.deinit();
+        if (root) |cache_root| {
+            if (metadata_cache.lookup(self.allocator, self.io, cache_root, key, 32, .immutable, now)) |found| {
+                var entry = found;
+                if (std.fmt.parseInt(u64, entry.payload, 10)) |cached_size| {
+                    entry.deinit();
+                    return cached_size;
+                } else |_| {
+                    if (!entry.fresh) {
+                        stale = entry;
+                    } else {
+                        entry.deinit();
+                        metadata_cache.evict(self.io, cache_root, key);
+                    }
+                }
+            }
+        }
+        const size = self.raceFetch(u64, fetchContentLengthTask, .{ self, url }, metadata_fetch_timeout_ms) catch |err| {
+            if (stale) |*entry| {
+                var moved = entry.*;
+                stale = null;
+                defer moved.deinit();
+                if (std.fmt.parseInt(u64, moved.payload, 10)) |stale_size| {
+                    return stale_size;
+                } else |_| {}
+            }
+            return err;
+        };
+        if (root) |cache_root| {
+            var buffer: [24]u8 = undefined;
+            const text = std.fmt.bufPrint(&buffer, "{d}", .{size}) catch unreachable;
+            metadata_cache.store(self.io, cache_root, key, text, now) catch {};
+        }
+        return size;
+    }
+
+    fn fetchContentLengthDirect(self: Service, url: []const u8) !u64 {
         return self.fetchContentLengthPrimary(url) catch |err| {
             if (err != error.TlsInitializationFailed) return err;
             const head = try https_fallback.fetchHead(self.allocator, self.io, url);
@@ -3183,6 +3236,122 @@ pub const Service = struct {
             .content = storage[0..body.end],
         };
     }
+
+    fn fetchBodyTask(self: Service, url: []const u8, max_bytes: usize, extra_header: ?https_fallback.ExtraHeader) anyerror!ResponseBody {
+        return self.fetchBodyWithHeader(url, max_bytes, extra_header);
+    }
+
+    fn fetchContentLengthTask(self: Service, url: []const u8) anyerror!u64 {
+        return self.fetchContentLengthDirect(url);
+    }
+
+    fn fetchTimeoutTask(io: std.Io, timeout_ms: u32) bool {
+        std.Io.sleep(io, .fromMilliseconds(timeout_ms), .awake) catch return false;
+        return true;
+    }
+
+    fn drainRaced(comptime Result: type, select: anytype) void {
+        while (select.cancel()) |outcome| switch (outcome) {
+            .request => |result| if (result) |*value| {
+                if (comptime std.meta.hasMethod(Result, "deinit")) value.deinit();
+            } else |_| {},
+            .timeout => {},
+        };
+    }
+
+    fn raceFetch(self: Service, comptime Result: type, comptime task_fn: anytype, args: anytype, timeout_ms: u32) !Result {
+        if (timeout_ms == 0) return error.MetadataFetchTimeout;
+        const Outcome = union(enum) {
+            request: anyerror!Result,
+            timeout: bool,
+        };
+        var outcome_buffer: [2]Outcome = undefined;
+        var select = std.Io.Select(Outcome).init(self.io, &outcome_buffer);
+        select.async(.request, task_fn, args);
+        select.async(.timeout, fetchTimeoutTask, .{ self.io, timeout_ms });
+        const first = select.await() catch {
+            drainRaced(Result, &select);
+            return error.Canceled;
+        };
+        switch (first) {
+            .request => |result| {
+                drainRaced(Result, &select);
+                return result;
+            },
+            .timeout => |expired| {
+                drainRaced(Result, &select);
+                return if (expired) error.MetadataFetchTimeout else error.Canceled;
+            },
+        }
+    }
+
+    pub const CachedBody = struct {
+        body: ResponseBody,
+        from_cache: bool,
+
+        pub fn deinit(cached: *CachedBody) void {
+            cached.body.deinit();
+            cached.* = undefined;
+        }
+    };
+
+    fn metadataCacheRoot(self: Service) ?std.Io.Dir {
+        const path = artifact_store.default_directory ++ "/" ++ metadata_cache.directory_name;
+        return std.Io.Dir.cwd().createDirPathOpen(self.io, path, .{}) catch null;
+    }
+
+    fn epochSecondsNow(io: std.Io) i64 {
+        return @divFloor(std.Io.Timestamp.now(io, .real).toMilliseconds(), 1000);
+    }
+
+    fn evictMetadataCache(self: Service, url: []const u8) void {
+        var root = self.metadataCacheRoot() orelse return;
+        defer root.close(self.io);
+        metadata_cache.evict(self.io, root, url);
+    }
+
+    fn fetchBodyCached(
+        self: Service,
+        url: []const u8,
+        max_bytes: usize,
+        extra_header: ?https_fallback.ExtraHeader,
+        policy: metadata_cache.Policy,
+    ) !CachedBody {
+        var root = self.metadataCacheRoot();
+        defer if (root) |*value| value.close(self.io);
+        const now = epochSecondsNow(self.io);
+        var stale: ?metadata_cache.Entry = null;
+        defer if (stale) |*entry| entry.deinit();
+        if (root) |cache_root| {
+            if (metadata_cache.lookup(self.allocator, self.io, cache_root, url, max_bytes, policy, now)) |entry| {
+                if (!entry.fresh) {
+                    stale = entry;
+                } else {
+                    return .{
+                        .body = .{ .allocator = self.allocator, .storage = entry.payload, .content = entry.payload },
+                        .from_cache = true,
+                    };
+                }
+            }
+        }
+        const body = self.raceFetch(ResponseBody, fetchBodyTask, .{ self, url, max_bytes, extra_header }, metadata_fetch_timeout_ms) catch |err| {
+            if (stale) |*entry| {
+                const moved = entry.*;
+                stale = null;
+                return .{
+                    .body = .{ .allocator = moved.allocator, .storage = moved.payload, .content = moved.payload },
+                    .from_cache = true,
+                };
+            }
+            return err;
+        };
+        if (root) |cache_root| metadata_cache.store(self.io, cache_root, url, body.content, now) catch {};
+        return .{ .body = body, .from_cache = false };
+    }
+
+    fn fetchBodyWithTimeout(self: Service, url: []const u8, max_bytes: usize, extra_header: ?https_fallback.ExtraHeader, timeout_ms: u32) !ResponseBody {
+        return self.raceFetch(ResponseBody, fetchBodyTask, .{ self, url, max_bytes, extra_header }, timeout_ms);
+    }
 };
 
 fn fabricServerArgsFromPlanAlloc(allocator: std.mem.Allocator, files: []const install_plan.File) ![]u8 {
@@ -3197,6 +3366,14 @@ fn fabricServerArgsFromPlanAlloc(allocator: std.mem.Allocator, files: []const in
     }
     try output.writer.print(":server.jar\n{s}\n", .{fabric.server_main_class});
     return output.toOwnedSlice();
+}
+
+test "metadata fetch race rejects a zero timeout before network access" {
+    const service = Service.init(std.testing.allocator, std.testing.io, null);
+    try std.testing.expectError(
+        error.MetadataFetchTimeout,
+        service.fetchBodyWithTimeout("https://example.invalid", 1024, null, 0),
+    );
 }
 
 test "executeServerInstall rejects unsupported platforms before touching the host" {

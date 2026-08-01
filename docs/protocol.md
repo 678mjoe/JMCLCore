@@ -505,6 +505,22 @@ SHA-1 is always verified against that value.
 Applications using BMCLAPI must visibly identify BMCLAPI as the source, as
 required by its service policy. See <https://bmclapidoc.bangbang93.com/>.
 
+## Metadata fetch bounds and cache
+
+Version and loader metadata fetches (version manifest, version metadata,
+loader profiles, installer archives, and hash sidecars) are bounded by a
+30-second per-request timeout. Expiry surfaces as `METADATA_TIMEOUT` in the
+`version.*` methods and in `instance.create`. Successful responses are cached
+on disk under `.jmclcore/metadata-cache/`, relative to the core working
+directory and independent of `store_directory`. The version manifest and
+loader profiles are cached for ten minutes; version metadata, installer
+archives, hash sidecars, and content lengths are cached indefinitely because
+their contents are immutable or SHA-1 pinned. When a fetch fails, a stale
+cached entry up to 24 hours old is used instead. Entries are written
+atomically and corrupted entries are evicted automatically; the cache never
+turns a reachable service into a failure and may be deleted safely at any
+time.
+
 ## `install.plan`
 
 `id` is required. `source`, `os`, and `arch` are optional. The target defaults
