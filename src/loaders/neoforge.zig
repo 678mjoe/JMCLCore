@@ -10,6 +10,7 @@ pub const max_processors: usize = 16;
 pub const max_processor_arguments: usize = 64;
 pub const max_processor_classpath: usize = 64;
 pub const max_argument_bytes: usize = 4 * 1024;
+const max_minecraft_arguments_bytes: usize = 16 * 1024;
 pub const max_data_entries: usize = 64;
 pub const max_library_size: u64 = 256 * 1024 * 1024;
 
@@ -46,6 +47,7 @@ pub const VersionProfile = struct {
     time: ?[]const u8 = null,
     releaseTime: ?[]const u8 = null,
     arguments: ?version_metadata.Arguments = null,
+    minecraftArguments: ?[]const u8 = null,
     libraries: []const version_metadata.Library = &.{},
 };
 
@@ -187,8 +189,16 @@ pub fn validateVersionProfile(profile: VersionProfile) !void {
     for (profile.mainClass) |byte| {
         if (!isVisibleAscii(byte) or byte == '/' or byte == '\\') return error.InvalidMainClass;
     }
+    if (profile.minecraftArguments) |arguments| try validateMinecraftArguments(arguments);
     if (profile.libraries.len > max_profile_libraries) return error.TooManyLibraries;
     for (profile.libraries) |library| try validateProfileLibrary(library, false);
+}
+
+pub fn validateMinecraftArguments(value: []const u8) !void {
+    if (value.len == 0 or value.len > max_minecraft_arguments_bytes) return error.InvalidMinecraftArguments;
+    for (value) |byte| {
+        if (byte < 0x20 or byte >= 0x7f) return error.InvalidMinecraftArguments;
+    }
 }
 
 fn validateProfileLibrary(library: version_metadata.Library, allow_data_extensions: bool) !void {

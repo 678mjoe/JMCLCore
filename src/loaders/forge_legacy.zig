@@ -53,6 +53,15 @@ pub const ResolvedLibrary = struct {
     size: u64,
 };
 
+const RepositoryUpgrade = struct { insecure: []const u8, secure: []const u8 };
+const trusted_repository_upgrades = [_]RepositoryUpgrade{
+    .{ .insecure = "http://files.minecraftforge.net/maven/", .secure = "https://maven.minecraftforge.net/" },
+    .{ .insecure = "http://maven.minecraftforge.net/", .secure = "https://maven.minecraftforge.net/" },
+    .{ .insecure = "http://libraries.minecraft.net/", .secure = "https://libraries.minecraft.net/" },
+    .{ .insecure = "http://repo1.maven.org/maven2/", .secure = "https://repo1.maven.org/maven2/" },
+    .{ .insecure = "http://maven-central.storage-download.googleapis.com/maven2/", .secure = "https://maven-central.storage-download.googleapis.com/maven2/" },
+};
+
 const Probe = struct {
     versionInfo: ?std.json.Value = null,
 };
@@ -128,17 +137,26 @@ pub fn normalizedBaseUrl(url: ?[]const u8) ![]const u8 {
         try validateRepositoryUrl(value);
         return value;
     }
-    const upgrades = [_]struct { insecure: []const u8, secure: []const u8 }{
-        .{ .insecure = "http://files.minecraftforge.net/maven/", .secure = "https://maven.minecraftforge.net/" },
-        .{ .insecure = "http://maven.minecraftforge.net/", .secure = "https://maven.minecraftforge.net/" },
-        .{ .insecure = "http://libraries.minecraft.net/", .secure = "https://libraries.minecraft.net/" },
-        .{ .insecure = "http://repo1.maven.org/maven2/", .secure = "https://repo1.maven.org/maven2/" },
-        .{ .insecure = "http://maven-central.storage-download.googleapis.com/maven2/", .secure = "https://maven-central.storage-download.googleapis.com/maven2/" },
-    };
-    for (upgrades) |upgrade| {
+    for (trusted_repository_upgrades) |upgrade| {
         if (std.mem.eql(u8, value, upgrade.insecure)) return upgrade.secure;
     }
     return error.InsecureLibraryUrl;
+}
+
+pub fn normalizedArtifactUrlAlloc(allocator: std.mem.Allocator, url: []const u8) ![]u8 {
+    if (std.mem.startsWith(u8, url, "https://")) {
+        try validateRepositoryUrl(url);
+        return allocator.dupe(u8, url);
+    }
+    for (trusted_repository_upgrades) |upgrade| {
+        if (std.mem.startsWith(u8, url, upgrade.insecure)) {
+            const upgraded = try std.fmt.allocPrint(allocator, "{s}{s}", .{ upgrade.secure, url[upgrade.insecure.len..] });
+            errdefer allocator.free(upgraded);
+            try validateRepositoryUrl(upgraded);
+            return upgraded;
+        }
+    }
+    return error.InsecureArtifactUrl;
 }
 
 fn validateRepositoryUrl(value: []const u8) !void {

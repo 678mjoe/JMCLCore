@@ -69,7 +69,7 @@ pub const ForgeResolvedMetadata = struct {
 
 pub const ForgeLegacyResolvedMetadata = struct {
     parent: std.json.Parsed(version_metadata.Metadata),
-    profile: std.json.Parsed(forge_legacy.Profile),
+    profile: ?std.json.Parsed(forge_legacy.Profile),
     overlay: forge.Overlay,
 };
 
@@ -104,7 +104,7 @@ pub const ResolvedMetadata = union(enum) {
             },
             .forge_legacy => |*document| {
                 document.overlay.deinit();
-                document.profile.deinit();
+                if (document.profile) |*profile| profile.deinit();
                 document.parent.deinit();
             },
         }
@@ -469,8 +469,24 @@ pub const Service = struct {
         )) orelse return error.ForgeVersionProfileMissing;
         defer self.allocator.free(version_source);
 
-        var install_profile = try forge.parseInstallProfile(self.allocator, install_source);
+        var install_profile = try std.json.parseFromSlice(neoforge.InstallProfile, self.allocator, install_source, .{
+            .allocate = .alloc_always,
+            .ignore_unknown_fields = true,
+            .max_value_len = neoforge.max_install_profile_bytes,
+        });
         errdefer install_profile.deinit();
+        if (install_profile.value.processors.len == 0 and install_profile.value.data.map.count() == 0) {
+            const resolved = try self.resolveForgeProcessorlessLegacyMetadata(
+                minecraft_version,
+                forge_version,
+                parent,
+                install_profile.value,
+                version_source,
+            );
+            install_profile.deinit();
+            return resolved;
+        }
+        try neoforge.validateInstallProfile(install_profile.value);
         const patched_coordinate = try neoforge.patchedClientCoordinate(install_profile.value);
         var version_profile = try forge.parseVersionProfile(self.allocator, version_source, patched_coordinate);
         errdefer version_profile.deinit();
@@ -551,6 +567,138 @@ pub const Service = struct {
             .profile = profile,
             .overlay = overlay,
         } };
+    }
+
+    fn resolveForgeProcessorlessLegacyMetadata(
+        self: Service,
+        minecraft_version: []const u8,
+        forge_version: []const u8,
+        parent: std.json.Parsed(version_metadata.Metadata),
+        install_profile: neoforge.InstallProfile,
+        version_source: []const u8,
+    ) !ResolvedMetadata {
+        var version_profile = try std.json.parseFromSlice(neoforge.VersionProfile, self.allocator, version_source, .{
+            .allocate = .alloc_always,
+            .ignore_unknown_fields = true,
+            .max_value_len = neoforge.max_version_profile_bytes,
+        });
+        defer version_profile.deinit();
+        try validateProcessorlessLegacyForgeProfile(minecraft_version, forge_version, install_profile, version_profile.value);
+        const universal_name = try std.fmt.allocPrint(self.allocator, "net.minecraftforge:forge:{s}-{s}", .{ minecraft_version, forge_version });
+        defer self.allocator.free(universal_name);
+
+        const libraries = version_profile.value.libraries;
+        const resolved = try self.allocator.alloc(forge_legacy.ResolvedLibrary, libraries.len);
+        defer self.allocator.free(resolved);
+        var initialized: usize = 0;
+        defer for (resolved[0..initialized]) |library| {
+            self.allocator.free(library.path);
+            self.allocator.free(library.url);
+            self.allocator.free(library.sha1);
+        };
+        for (libraries, 0..) |library, index| {
+            resolved[index] = try self.resolveProcessorlessLegacyForgeLibrary(library, universal_name);
+            initialized += 1;
+        }
+
+        const overlay = try mergeProcessorlessLegacyForge(self.allocator, parent.value, version_profile.value, resolved);
+        return .{ .forge_legacy = .{
+            .parent = parent,
+            .profile = null,
+            .overlay = overlay,
+        } };
+    }
+
+    fn validateProcessorlessLegacyForgeProfile(
+        minecraft_version: []const u8,
+        forge_version: []const u8,
+        install_profile: neoforge.InstallProfile,
+        version_profile: neoforge.VersionProfile,
+    ) !void {
+        if (install_profile.processors.len != 0 or install_profile.data.map.count() != 0) return error.UnsupportedInstallProfileSpec;
+        if (!std.mem.eql(u8, install_profile.minecraft, minecraft_version)) return error.ForgeParentMismatch;
+        if (!std.mem.eql(u8, version_profile.inheritsFrom, minecraft_version)) return error.ForgeParentMismatch;
+        const expected_id = try std.fmt.allocPrint(std.heap.page_allocator, "{s}-forge-{s}", .{ minecraft_version, forge_version });
+        defer std.heap.page_allocator.free(expected_id);
+        if (!std.mem.eql(u8, install_profile.version, expected_id)) return error.ForgeProfileIdMismatch;
+        if (!std.mem.eql(u8, version_profile.id, expected_id)) return error.ForgeProfileIdMismatch;
+        try neoforge.validateVersionId(version_profile.id);
+        if (version_profile.mainClass.len == 0 or version_profile.mainClass.len > 512) return error.InvalidMainClass;
+        for (version_profile.mainClass) |byte| {
+            if (byte <= 0x20 or byte >= 0x7f or byte == '/' or byte == '\\') return error.InvalidMainClass;
+        }
+        if (version_profile.minecraftArguments) |arguments| try neoforge.validateMinecraftArguments(arguments);
+        if (version_profile.libraries.len == 0 or version_profile.libraries.len > neoforge.max_profile_libraries) return error.TooManyLibraries;
+    }
+
+    fn resolveProcessorlessLegacyForgeLibrary(
+        self: Service,
+        library: version_metadata.Library,
+        universal_name: []const u8,
+    ) !forge_legacy.ResolvedLibrary {
+        const coordinate = if (std.mem.eql(u8, library.name, universal_name))
+            try forge_legacy.universalCoordinateAlloc(self.allocator, library.name)
+        else
+            try self.allocator.dupe(u8, library.name);
+        defer self.allocator.free(coordinate);
+        const path = try neoforge.artifactPathAlloc(self.allocator, coordinate);
+        errdefer self.allocator.free(path);
+        const artifact = (library.downloads orelse return error.MissingLibraryDownloads).artifact orelse return error.MissingLibraryArtifact;
+        try neoforge.validateSha1(artifact.sha1);
+        if (artifact.size == 0 or artifact.size > neoforge.max_library_size) return error.InvalidLibrarySize;
+        const url = if (artifact.url.len == 0 and std.mem.eql(u8, library.name, universal_name))
+            try forge_legacy.artifactUrlAlloc(self.allocator, "https://maven.minecraftforge.net/", coordinate)
+        else blk: {
+            break :blk try forge_legacy.normalizedArtifactUrlAlloc(self.allocator, artifact.url);
+        };
+        errdefer self.allocator.free(url);
+        return .{
+            .path = path,
+            .url = url,
+            .sha1 = try self.allocator.dupe(u8, artifact.sha1),
+            .size = artifact.size,
+        };
+    }
+
+    fn mergeProcessorlessLegacyForge(
+        allocator: std.mem.Allocator,
+        parent: version_metadata.Metadata,
+        profile: neoforge.VersionProfile,
+        resolved: []const forge_legacy.ResolvedLibrary,
+    ) !neoforge.Overlay {
+        const arena = try allocator.create(std.heap.ArenaAllocator);
+        errdefer allocator.destroy(arena);
+        arena.* = std.heap.ArenaAllocator.init(allocator);
+        errdefer arena.deinit();
+        const output = arena.allocator();
+        const libraries = try output.alloc(version_metadata.Library, resolved.len + parent.libraries.len);
+        for (resolved, 0..) |library, index| {
+            libraries[index] = .{
+                .name = try output.dupe(u8, profile.libraries[index].name),
+                .downloads = .{ .artifact = .{
+                    .path = try output.dupe(u8, library.path),
+                    .sha1 = try output.dupe(u8, library.sha1),
+                    .size = library.size,
+                    .url = try output.dupe(u8, library.url),
+                } },
+            };
+        }
+        @memcpy(libraries[resolved.len..], parent.libraries);
+        var value = parent;
+        value.id = try output.dupe(u8, profile.id);
+        value.type = profile.type orelse parent.type;
+        value.mainClass = try output.dupe(u8, profile.mainClass);
+        value.libraries = libraries;
+        value.arguments = null;
+        value.minecraftArguments = if (profile.minecraftArguments) |arguments|
+            try output.dupe(u8, arguments)
+        else
+            parent.minecraftArguments;
+        value.releaseTime = profile.releaseTime orelse parent.releaseTime;
+        value.time = profile.time orelse parent.time;
+        value.inheritsFrom = null;
+        value.patched_client = null;
+        return .{ .arena = arena, .value = value };
     }
 
     fn resolveLegacyLibrary(
@@ -3229,6 +3377,220 @@ const forge_overlay_runtime_fixture =
     \\  "patched_client":"libraries/net/minecraftforge/forge/1.20.1-47.3.12/forge-1.20.1-47.3.12-client.jar"
     \\}
 ;
+
+const legacy_forge_server_parent_fixture =
+    \\{
+    \\  "id":"1.12.2",
+    \\  "type":"release",
+    \\  "mainClass":"net.minecraft.client.main.Main",
+    \\  "minecraftArguments":"--username ${auth_player_name}",
+    \\  "downloads":{
+    \\    "client":{"sha1":"1111111111111111111111111111111111111111","size":1,"url":"https://example.invalid/client.jar"},
+    \\    "server":{"sha1":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","size":10,"url":"https://example.invalid/server.jar"}
+    \\  },
+    \\  "libraries":[{"name":"com.example:parent:1.0","downloads":{"artifact":{"path":"com/example/parent/1.0/parent-1.0.jar","sha1":"9999999999999999999999999999999999999999","size":90,"url":"https://example.invalid/parent.jar"}}}]
+    \\}
+;
+
+const legacy_forge_server_profile_fixture =
+    \\{
+    \\  "install":{
+    \\    "profileName":"Forge",
+    \\    "target":"1.12.2-forge-14.23.5.2860",
+    \\    "path":"net.minecraftforge:forge:1.12.2-14.23.5.2860",
+    \\    "version":"Forge 14.23.5.2860",
+    \\    "filePath":"forge-1.12.2-14.23.5.2860-universal.jar",
+    \\    "minecraft":"1.12.2"
+    \\  },
+    \\  "versionInfo":{
+    \\    "id":"1.12.2-forge-14.23.5.2860",
+    \\    "mainClass":"net.minecraft.launchwrapper.Launch",
+    \\    "minecraftArguments":"--username ${auth_player_name} --tweakClass net.minecraftforge.fml.common.launcher.FMLTweaker",
+    \\    "inheritsFrom":"1.12.2",
+    \\    "jar":"1.12.2",
+    \\    "libraries":[
+    \\      {"name":"net.minecraftforge:forge:1.12.2-14.23.5.2860","url":"https://maven.minecraftforge.net/"},
+    \\      {"name":"net.minecraft:launchwrapper:1.12","serverreq":true}
+    \\    ]
+    \\  }
+    \\}
+;
+
+const processorless_forge_install_profile_fixture =
+    \\{
+    \\  "spec":0,
+    \\  "profile":"forge",
+    \\  "version":"1.12.2-forge-14.23.5.2860",
+    \\  "minecraft":"1.12.2",
+    \\  "data":{},
+    \\  "processors":[],
+    \\  "libraries":[
+    \\    {"name":"de.oceanlabs.mcp:mcp_config:1.12.2-20200226.224830@zip","downloads":{"artifact":{"path":"de/oceanlabs/mcp/mcp_config/1.12.2-20200226.224830/mcp_config-1.12.2-20200226.224830.zip","url":"https://maven.minecraftforge.net/de/oceanlabs/mcp/mcp_config/1.12.2-20200226.224830/mcp_config-1.12.2-20200226.224830.zip","sha1":"72e1b936f56e0dd394c64caf9c86af01f64dc979","size":421086}}},
+    \\    {"name":"net.minecraftforge:forge:1.12.2-14.23.5.2860","downloads":{"artifact":{"path":"net/minecraftforge/forge/1.12.2-14.23.5.2860/forge-1.12.2-14.23.5.2860.jar","url":"","sha1":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","size":4466148}}}
+    \\  ]
+    \\}
+;
+
+const processorless_forge_version_profile_fixture =
+    \\{
+    \\  "id":"1.12.2-forge-14.23.5.2860",
+    \\  "inheritsFrom":"1.12.2",
+    \\  "mainClass":"net.minecraft.launchwrapper.Launch",
+    \\  "minecraftArguments":"--username ${auth_player_name} --tweakClass net.minecraftforge.fml.common.launcher.FMLTweaker",
+    \\  "libraries":[
+    \\    {"name":"net.minecraftforge:forge:1.12.2-14.23.5.2860","downloads":{"artifact":{"path":"net/minecraftforge/forge/1.12.2-14.23.5.2860/forge-1.12.2-14.23.5.2860.jar","url":"","sha1":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","size":4466148}}},
+    \\    {"name":"net.minecraft:launchwrapper:1.12","downloads":{"artifact":{"path":"net/minecraft/launchwrapper/1.12/launchwrapper-1.12.jar","url":"https://libraries.minecraft.net/net/minecraft/launchwrapper/1.12/launchwrapper-1.12.jar","sha1":"cccccccccccccccccccccccccccccccccccccccc","size":32999}}}
+    \\  ]
+    \\}
+;
+
+test "processorless forge upgrades trusted legacy http artifact urls" {
+    const allocator = std.testing.allocator;
+    const service = Service.init(allocator, std.testing.io, null);
+    const library: version_metadata.Library = .{
+        .name = "net.minecraft:launchwrapper:1.12",
+        .downloads = .{ .artifact = .{
+            .path = "net/minecraft/launchwrapper/1.12/launchwrapper-1.12.jar",
+            .sha1 = "cccccccccccccccccccccccccccccccccccccccc",
+            .size = 32999,
+            .url = "http://libraries.minecraft.net/net/minecraft/launchwrapper/1.12/launchwrapper-1.12.jar",
+        } },
+    };
+
+    const resolved = try service.resolveProcessorlessLegacyForgeLibrary(
+        library,
+        "net.minecraftforge:forge:1.12.2-14.23.5.2860",
+    );
+    defer allocator.free(resolved.path);
+    defer allocator.free(resolved.url);
+    defer allocator.free(resolved.sha1);
+
+    try std.testing.expectEqualStrings(
+        "https://libraries.minecraft.net/net/minecraft/launchwrapper/1.12/launchwrapper-1.12.jar",
+        resolved.url,
+    );
+}
+
+test "processorless forge rejects arbitrary http artifact urls" {
+    const allocator = std.testing.allocator;
+    const service = Service.init(allocator, std.testing.io, null);
+    const library: version_metadata.Library = .{
+        .name = "net.minecraft:launchwrapper:1.12",
+        .downloads = .{ .artifact = .{
+            .path = "net/minecraft/launchwrapper/1.12/launchwrapper-1.12.jar",
+            .sha1 = "cccccccccccccccccccccccccccccccccccccccc",
+            .size = 32999,
+            .url = "http://evil.example/net/minecraft/launchwrapper/1.12/launchwrapper-1.12.jar",
+        } },
+    };
+
+    try std.testing.expectError(error.InsecureArtifactUrl, service.resolveProcessorlessLegacyForgeLibrary(
+        library,
+        "net.minecraftforge:forge:1.12.2-14.23.5.2860",
+    ));
+}
+
+test "processorless forge 1.12.2 profile accepts trusted legacy http library hosts" {
+    const allocator = std.testing.allocator;
+    var parent = try version_metadata.parse(allocator, legacy_forge_server_parent_fixture);
+    var parent_needs_deinit = true;
+    errdefer if (parent_needs_deinit) parent.deinit();
+    var install_profile = try std.json.parseFromSlice(neoforge.InstallProfile, allocator, processorless_forge_install_profile_fixture, .{
+        .allocate = .alloc_always,
+        .ignore_unknown_fields = true,
+        .max_value_len = neoforge.max_install_profile_bytes,
+    });
+    defer install_profile.deinit();
+    const http_version_profile =
+        \\{
+        \\  "id":"1.12.2-forge-14.23.5.2860",
+        \\  "inheritsFrom":"1.12.2",
+        \\  "mainClass":"net.minecraft.launchwrapper.Launch",
+        \\  "minecraftArguments":"--username ${auth_player_name} --tweakClass net.minecraftforge.fml.common.launcher.FMLTweaker",
+        \\  "libraries":[
+        \\    {"name":"net.minecraftforge:forge:1.12.2-14.23.5.2860","downloads":{"artifact":{"path":"net/minecraftforge/forge/1.12.2-14.23.5.2860/forge-1.12.2-14.23.5.2860.jar","url":"","sha1":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","size":4466148}}},
+        \\    {"name":"net.minecraft:launchwrapper:1.12","downloads":{"artifact":{"path":"net/minecraft/launchwrapper/1.12/launchwrapper-1.12.jar","url":"http://libraries.minecraft.net/net/minecraft/launchwrapper/1.12/launchwrapper-1.12.jar","sha1":"cccccccccccccccccccccccccccccccccccccccc","size":32999}}}
+        \\  ]
+        \\}
+    ;
+    const service = Service.init(allocator, std.testing.io, null);
+    var resolved = try service.resolveForgeProcessorlessLegacyMetadata(
+        "1.12.2",
+        "14.23.5.2860",
+        parent,
+        install_profile.value,
+        http_version_profile,
+    );
+    parent_needs_deinit = false;
+    defer resolved.deinit();
+
+    const document = switch (resolved) {
+        .forge_legacy => |*document| document,
+        else => return error.TestExpectedEqual,
+    };
+    const launchwrapper = document.overlay.value.libraries[1].downloads.?.artifact.?;
+    try std.testing.expectEqualStrings(
+        "https://libraries.minecraft.net/net/minecraft/launchwrapper/1.12/launchwrapper-1.12.jar",
+        launchwrapper.url,
+    );
+}
+
+test "processorless forge overlay preserves legacy launch tweaker arguments" {
+    const allocator = std.testing.allocator;
+    var parent = try version_metadata.parse(allocator, legacy_forge_server_parent_fixture);
+    var parent_needs_deinit = true;
+    errdefer if (parent_needs_deinit) parent.deinit();
+    var install_profile = try std.json.parseFromSlice(neoforge.InstallProfile, allocator, processorless_forge_install_profile_fixture, .{
+        .allocate = .alloc_always,
+        .ignore_unknown_fields = true,
+        .max_value_len = neoforge.max_install_profile_bytes,
+    });
+    defer install_profile.deinit();
+    const service = Service.init(allocator, std.testing.io, null);
+    var resolved = try service.resolveForgeProcessorlessLegacyMetadata(
+        "1.12.2",
+        "14.23.5.2860",
+        parent,
+        install_profile.value,
+        processorless_forge_version_profile_fixture,
+    );
+    parent_needs_deinit = false;
+    defer resolved.deinit();
+
+    const document = switch (resolved) {
+        .forge_legacy => |*document| document,
+        else => return error.TestExpectedEqual,
+    };
+    const minecraft_arguments = document.overlay.value.minecraftArguments orelse return error.TestExpectedEqual;
+    try std.testing.expect(std.mem.indexOf(u8, minecraft_arguments, "FMLTweaker") != null);
+}
+
+test "processorless forge rejects empty legacy launch arguments" {
+    const allocator = std.testing.allocator;
+    var install_profile = try std.json.parseFromSlice(neoforge.InstallProfile, allocator, processorless_forge_install_profile_fixture, .{
+        .allocate = .alloc_always,
+        .ignore_unknown_fields = true,
+        .max_value_len = neoforge.max_install_profile_bytes,
+    });
+    defer install_profile.deinit();
+    var version_profile = try std.json.parseFromSlice(neoforge.VersionProfile, allocator, processorless_forge_version_profile_fixture, .{
+        .allocate = .alloc_always,
+        .ignore_unknown_fields = true,
+        .max_value_len = neoforge.max_version_profile_bytes,
+    });
+    defer version_profile.deinit();
+    version_profile.value.minecraftArguments = "";
+
+    try std.testing.expectError(
+        error.InvalidMinecraftArguments,
+        Service.validateProcessorlessLegacyForgeProfile(
+            "1.12.2",
+            "14.23.5.2860",
+            install_profile.value,
+            version_profile.value,
+        ),
+    );
+}
 
 test "server neoforge extras place the installer jar under the server support directory" {
     const allocator = std.testing.allocator;
