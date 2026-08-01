@@ -477,10 +477,6 @@ fn runServerInstall(
         },
     };
     defer stopped_guard.deinit();
-    if (manifest.fabric_loader != null) {
-        try stderr.writeAll("Phase 2 installs vanilla servers only\n");
-        return 1;
-    }
     if (!manifest.accept_eula) {
         manifest.accept_eula = true;
         jmcl.server_store.update(service.io, root, manifest.*) catch |err| {
@@ -498,7 +494,7 @@ fn runServerInstall(
             return 1;
         },
         error.UnsupportedServerLoader => {
-            try stderr.writeAll("Phase 2 installs vanilla servers only\n");
+            try stderr.writeAll("This server loader is not supported yet\n");
             return 1;
         },
         else => {

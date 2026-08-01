@@ -208,7 +208,11 @@ server instances under a separate servers root (`directory`). Every
 `server.*` method returns `UNSUPPORTED_PLATFORM` when the core is not running
 on Linux. `server.create` resolves the requested Minecraft version and at
 most one loader field online before atomically writing
-`servers/<id>/server.json`:
+`servers/<id>/server.json`. Use `fabric_loader` for Fabric,
+`neoforge_version` for NeoForge, or `forge_version` for Forge. Supplying more
+than one loader field is invalid. Modern Forge is supported for server
+installs; legacy Forge server manifests remain unsupported and install fails
+with `SERVER_LOADER_UNSUPPORTED`.
 
 ```json
 {"protocol":1,"id":"sc-1","method":"server.create","params":{"directory":"/path/to/servers","id":"vanilla-1-21-4","name":"Vanilla 1.21.4","version_id":"1.21.4","java_path":"/usr/bin/java"}}
@@ -217,18 +221,19 @@ most one loader field online before atomically writing
 Manifest results contain `id`, `name`, `version_id`, `fabric_loader`,
 `neoforge_version`, `forge_version`, `source`, `accept_eula`, `java_path`,
 and `installed`. Lists are sorted by id. `installed:true` requires a matching
-completed-install marker and `server.jar`; missing, malformed, or mismatched
-state yields `false`. `server.get` and `server.delete` return
+schema-v3 completed-install marker, `server.jar`, and the recorded launch
+file; missing, malformed, older-schema, or mismatched state yields `false`.
+`server.get` and `server.delete` return
 `SERVER_NOT_FOUND` when absent; create returns `SERVER_EXISTS` when the id is
 taken. Deleting a running server returns `SERVER_ALREADY_RUNNING`.
 
-`server.install` currently installs vanilla servers. It requires explicit
-`accept_eula:true`; false or absent returns `EULA_NOT_ACCEPTED`. Optional
-`store_directory`, `workers` (1–32), `retries` (0–5), and `java_paths` match
-the client install pipeline. A manifest `java_path` takes precedence over
-request candidates. Loader-bearing manifests return
-`SERVER_LOADER_UNSUPPORTED`; installing while running returns
-`SERVER_ALREADY_RUNNING`.
+`server.install` installs vanilla, NeoForge, modern Forge, and Fabric servers
+on Linux. It requires explicit `accept_eula:true`; false or absent returns
+`EULA_NOT_ACCEPTED`. Optional `store_directory`, `workers` (1–32), `retries`
+(0–5), and `java_paths` match the client install pipeline. A manifest
+`java_path` takes precedence over request candidates. Legacy Forge server
+support is deferred; those manifests return `SERVER_LOADER_UNSUPPORTED`.
+Installing while running returns `SERVER_ALREADY_RUNNING`.
 
 ```json
 {"protocol":1,"id":"si-1","method":"server.install","params":{"directory":"/path/to/servers","id":"vanilla-1-21-4","accept_eula":true,"store_directory":".jmclcore","java_paths":["/usr/bin/java"],"workers":8,"retries":2}}
@@ -236,14 +241,21 @@ request candidates. Loader-bearing manifests return
 
 The method emits the standard `started`, `file`, `retry`, and byte-level
 `progress` events, then returns the Java selection, download summary, and
-`properties_created`. It downloads Mojang's dedicated server artifact with
-exact size+SHA-1 verification, materializes `server.jar` through the shared
-artifact store, writes `eula.txt`, creates conservative default properties
-only when absent, and atomically records `.jmcl/install.json`. Reinstall is
-idempotent and reuses the verified cache object. Completion markers written
-before Phase 3 do not record the required Java major and therefore report
-`installed:false`; reinstall once to migrate them without redownloading the
-verified server jar.
+`properties_created`. NeoForge and modern Forge run their server-side
+processor chains after verified downloads complete, but that processor phase
+is silent on the RPC wire. It adds no new server events. Downloads still emit
+the existing progress events. Fabric writes a generated args file from Fabric
+Meta server metadata. The install writes `eula.txt`, creates conservative
+default properties only when absent, and atomically records
+`.jmcl/install.json`.
+
+Server install markers use schema v3. They record the requested Minecraft
+version, loader fields, required Java major, server jar integrity, and a launch
+descriptor `{mode,file,sha1,size}`. `installed:true` requires that the marker
+matches the manifest and that both `server.jar` and the launch file have the
+recorded sizes. Missing, malformed, older-schema, mismatched, or incomplete
+state returns `installed:false`; reinstall once to write a v3 marker while
+reusing verified artifact-store objects where possible.
 
 `server.properties.get` returns all decoded values as strings.
 `server.properties.set` requires a non-empty `properties` object whose values

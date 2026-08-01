@@ -62,6 +62,18 @@ zig build run -- instance list
 zig build run -- instance install vanilla-26.1
 zig build run -- instance install vanilla-26.1 --source bmclapi
 zig build run -- instance launch vanilla-26.1 --offline-name Player
+zig build run -- server create fabric-1.21.1 --version 1.21.1 --fabric-loader 0.16.10 --name "Fabric Server"
+zig build run -- server list
+zig build run -- server show fabric-1.21.1 --json
+zig build run -- server install fabric-1.21.1 --accept-eula
+zig build run -- server properties get fabric-1.21.1
+zig build run -- server properties set fabric-1.21.1 motd="JMCL Core Server"
+zig build run -- server start fabric-1.21.1
+zig build run -- server status fabric-1.21.1 --json
+zig build run -- server command fabric-1.21.1 "say hello from jmcl"
+zig build run -- server logs fabric-1.21.1 --max-bytes 65536
+zig build run -- server restart fabric-1.21.1 --grace-ms 10000
+zig build run -- server stop fabric-1.21.1
 zig build run -- rpc
 ```
 
@@ -108,11 +120,12 @@ Mojang's official service is the default. Pass `--source bmclapi`, or use
 `"source":"bmclapi"` in RPC parameters, to use BMCLAPI for users in mainland
 China. BMCLAPI responses are still checked against Mojang-provided SHA-1 values.
 
-Linux server management includes isolated server manifests, verified vanilla
-installation, atomic `server.properties` management, and detached
-start/stop/restart/status/log/command RPCs. A running server is supervised
-outside the SSH/JSON Lines session, with PID-identity verification, a console
-FIFO, bounded log rotation, and graceful-to-SIGKILL stop escalation.
+Linux server management includes isolated server manifests, verified vanilla,
+Fabric, NeoForge, and modern Forge installation, atomic `server.properties`
+management, CLI commands, and detached start/stop/restart/status/logs/command
+RPCs. Legacy Forge server support is still deferred. A running server is
+supervised outside the SSH/JSON Lines session, with PID-identity verification,
+a console FIFO, bounded log rotation, and graceful-to-SIGKILL stop escalation.
 
 See `docs/mvp.md` and `docs/protocol.md` for the current scope and protocol.
 The install-plan format is documented in `docs/install-plan.md`.

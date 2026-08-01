@@ -33,6 +33,7 @@ const max_manifest_bytes = 2 * 1024 * 1024;
 const max_metadata_bytes = 4 * 1024 * 1024;
 const max_asset_index_bytes = 16 * 1024 * 1024;
 const max_sha1_sidecar_bytes = 4 * 1024;
+const fabric_server_args_relative_path = ".jmcl/fabric_args.txt";
 
 pub const VersionSelection = struct {
     id: []const u8,
@@ -363,6 +364,21 @@ pub const Service = struct {
         var body = try self.fetchBody(url, fabric.max_profile_bytes);
         defer body.deinit();
         return fabric.parse(self.allocator, body.content);
+    }
+
+    pub fn fetchFabricServerProfile(
+        self: Service,
+        minecraft_version: []const u8,
+        loader_version: []const u8,
+    ) !std.json.Parsed(fabric.Profile) {
+        const url = try fabric.serverProfileUrlAlloc(self.allocator, minecraft_version, loader_version);
+        defer self.allocator.free(url);
+        var body = try self.fetchBody(url, fabric.max_profile_bytes);
+        defer body.deinit();
+        var profile = try fabric.parse(self.allocator, body.content);
+        errdefer profile.deinit();
+        try fabric.validateServerProfile(profile.value, minecraft_version);
+        return profile;
     }
 
     fn resolveNeoForgeMetadata(
@@ -767,12 +783,40 @@ pub const Service = struct {
         }, target);
     }
 
+    fn serverPlanLoader(kind: std.meta.Tag(ResolvedMetadata)) !install_plan.Loader {
+        return switch (kind) {
+            .vanilla => .none,
+            .fabric => error.UnsupportedServerLoader,
+            .neoforge => .neoforge,
+            .forge => .forge,
+            .forge_legacy => error.UnsupportedServerLoader,
+        };
+    }
+
     pub fn planServerInstall(
         self: Service,
         manifest: server_store.Manifest,
         target: install_plan.Target,
     ) !install_plan.Plan {
-        if (manifest.fabric_loader != null) return error.UnsupportedServerLoader;
+        if (manifest.fabric_loader) |loader_version| {
+            var metadata_document = try self.resolveMetadataPreferred(.{ .id = manifest.version_id }, manifest.source);
+            defer metadata_document.deinit();
+            var profile = try self.fetchFabricServerProfile(manifest.version_id, loader_version);
+            defer profile.deinit();
+            var integrities = try self.fetchFabricLibraryIntegrities(profile.value.libraries);
+            defer integrities.deinit();
+            var extras = try self.buildFabricServerExtras(profile.value, integrities.values);
+            defer extras.deinit();
+            var plan = try install_plan.buildServerExtras(
+                self.allocator,
+                metadata_document.value().*,
+                manifest.source,
+                target,
+                extras.files,
+            );
+            plan.value.loader = .fabric;
+            return plan;
+        }
         const selection: VersionSelection = .{
             .id = manifest.version_id,
             .neoforge_version = manifest.neoforge_version,
@@ -780,6 +824,7 @@ pub const Service = struct {
         };
         var metadata_document = try self.resolveMetadataPreferred(selection, manifest.source);
         defer metadata_document.deinit();
+        const loader = try serverPlanLoader(std.meta.activeTag(metadata_document));
         switch (metadata_document) {
             .vanilla => return install_plan.buildServer(
                 self.allocator,
@@ -797,7 +842,7 @@ pub const Service = struct {
                     target,
                     extras.files,
                 );
-                plan.value.loader = .neoforge;
+                plan.value.loader = loader;
                 return plan;
             },
             .forge => |*document| {
@@ -810,10 +855,10 @@ pub const Service = struct {
                     target,
                     extras.files,
                 );
-                plan.value.loader = .forge;
+                plan.value.loader = loader;
                 return plan;
             },
-            else => return error.UnsupportedServerLoader,
+            else => unreachable,
         }
     }
 
@@ -931,6 +976,33 @@ pub const Service = struct {
 
         const processor_java_paths = [1][]const u8{runtime.executable};
         switch (plan.value.loader) {
+            .fabric => {
+                if (manifest.fabric_loader == null) return error.ServerInstallFailed;
+                const args_bytes = fabricServerArgsFromPlanAlloc(self.allocator, plan.value.files) catch
+                    return error.ServerInstallFailed;
+                defer self.allocator.free(args_bytes);
+                var atomic = server_dir.createFileAtomic(self.io, fabric_server_args_relative_path, .{
+                    .make_path = true,
+                    .replace = true,
+                }) catch return error.ServerInstallFailed;
+                defer atomic.deinit(self.io);
+                std.Io.File.writeStreamingAll(atomic.file, self.io, args_bytes) catch
+                    return error.ServerInstallFailed;
+                atomic.file.sync(self.io) catch return error.ServerInstallFailed;
+                atomic.replace(self.io) catch return error.ServerInstallFailed;
+                const args_file = server_dir.openFile(self.io, fabric_server_args_relative_path, .{}) catch
+                    return error.ServerInstallFailed;
+                defer args_file.close(self.io);
+                const args_digest = artifact_store.hashFile(args_file, self.io) catch
+                    return error.ServerInstallFailed;
+                const args_stat = args_file.stat(self.io) catch
+                    return error.ServerInstallFailed;
+                launch_sha1_buffer = std.fmt.bytesToHex(args_digest, .lower);
+                launch_mode = .args_file;
+                launch_file = fabric_server_args_relative_path;
+                launch_sha1 = &launch_sha1_buffer;
+                launch_size = args_stat.size;
+            },
             .neoforge, .forge => {
                 const loader_version = switch (plan.value.loader) {
                     .neoforge => manifest.neoforge_version,
@@ -1328,6 +1400,39 @@ pub const Service = struct {
                 document.overlay.value.libraries,
                 document.parent.value.libraries,
             )),
+        }
+        return .{
+            .allocator = self.allocator,
+            .arena = arena,
+            .files = try files.toOwnedSlice(scratch),
+        };
+    }
+
+    fn buildFabricServerExtras(
+        self: Service,
+        profile: fabric.Profile,
+        integrities: []const fabric.LibraryIntegrity,
+    ) !InstallerExtras {
+        if (integrities.len != profile.libraries.len) return error.LibraryIntegrityCountMismatch;
+        const arena = try self.allocator.create(std.heap.ArenaAllocator);
+        errdefer self.allocator.destroy(arena);
+        arena.* = std.heap.ArenaAllocator.init(self.allocator);
+        errdefer arena.deinit();
+        const scratch = arena.allocator();
+
+        var files: std.ArrayList(install_plan.File) = .empty;
+        for (profile.libraries, integrities) |library, integrity| {
+            const artifact_path = try fabric.artifactPathAlloc(scratch, library.name);
+            const path = try std.fmt.allocPrint(scratch, "libraries/{s}", .{artifact_path});
+            const url = try fabric.artifactUrlAlloc(scratch, library.url, library.name);
+            try files.append(scratch, .{
+                .path = path,
+                .url = url,
+                .fallback_url = null,
+                .sha1 = integrity.sha1,
+                .size = integrity.size,
+                .usage = .{ .library = true },
+            });
         }
         return .{
             .allocator = self.allocator,
@@ -3080,6 +3185,20 @@ pub const Service = struct {
     }
 };
 
+fn fabricServerArgsFromPlanAlloc(allocator: std.mem.Allocator, files: []const install_plan.File) ![]u8 {
+    if (files.len == 0 or !std.mem.eql(u8, files[0].path, "server.jar")) return error.InvalidFabricServerPlan;
+    var output: std.Io.Writer.Allocating = .init(allocator);
+    errdefer output.deinit();
+    try output.writer.writeAll("-cp ");
+    for (files[1..], 0..) |file, index| {
+        if (index != 0) try output.writer.writeByte(':');
+        if (!std.mem.startsWith(u8, file.path, "libraries/")) return error.InvalidFabricServerPlan;
+        try output.writer.writeAll(file.path);
+    }
+    try output.writer.print(":server.jar\n{s}\n", .{fabric.server_main_class});
+    return output.toOwnedSlice();
+}
+
 test "executeServerInstall rejects unsupported platforms before touching the host" {
     if (builtin.os.tag == .linux) return;
     const io = std.testing.io;
@@ -3378,6 +3497,19 @@ const forge_overlay_runtime_fixture =
     \\}
 ;
 
+const fabric_server_profile_fixture =
+    \\{
+    \\  "id":"fabric-loader-0.16.10-1.21.1",
+    \\  "inheritsFrom":"1.21.1",
+    \\  "mainClass":"net.fabricmc.loader.impl.launch.knot.KnotServer",
+    \\  "libraries":[
+    \\    {"name":"net.fabricmc:tiny-mappings-parser:0.3.0+build.17","url":"https://maven.fabricmc.net/","sha1":"1111111111111111111111111111111111111111","size":10},
+    \\    {"name":"org.ow2.asm:asm:9.7.1","url":"https://maven.fabricmc.net/","sha1":"2222222222222222222222222222222222222222","size":20},
+    \\    {"name":"net.fabricmc:fabric-loader:0.16.10","url":"https://maven.fabricmc.net/","sha1":"3333333333333333333333333333333333333333","size":30}
+    \\  ]
+    \\}
+;
+
 const legacy_forge_server_parent_fixture =
     \\{
     \\  "id":"1.12.2",
@@ -3443,6 +3575,13 @@ const processorless_forge_version_profile_fixture =
     \\  ]
     \\}
 ;
+
+test "server planning keeps legacy Forge unsupported after the cut condition" {
+    try std.testing.expectError(
+        error.UnsupportedServerLoader,
+        Service.serverPlanLoader(.forge_legacy),
+    );
+}
 
 test "processorless forge upgrades trusted legacy http artifact urls" {
     const allocator = std.testing.allocator;
@@ -3590,6 +3729,133 @@ test "processorless forge rejects empty legacy launch arguments" {
             version_profile.value,
         ),
     );
+}
+
+test "fabric server args are exact deterministic and identity-free" {
+    const allocator = std.testing.allocator;
+    const files = [_]install_plan.File{
+        .{
+            .path = "server.jar",
+            .url = "https://example.invalid/server.jar",
+            .fallback_url = null,
+            .sha1 = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            .size = 1,
+            .usage = .{ .server = true },
+        },
+        .{
+            .path = "libraries/net/fabricmc/tiny-mappings-parser/0.3.0+build.17/tiny-mappings-parser-0.3.0+build.17.jar",
+            .url = "https://maven.fabricmc.net/net/fabricmc/tiny-mappings-parser/0.3.0+build.17/tiny-mappings-parser-0.3.0+build.17.jar",
+            .fallback_url = null,
+            .sha1 = "1111111111111111111111111111111111111111",
+            .size = 10,
+            .usage = .{ .library = true },
+        },
+        .{
+            .path = "libraries/org/ow2/asm/asm/9.7.1/asm-9.7.1.jar",
+            .url = "https://maven.fabricmc.net/org/ow2/asm/asm/9.7.1/asm-9.7.1.jar",
+            .fallback_url = null,
+            .sha1 = "2222222222222222222222222222222222222222",
+            .size = 20,
+            .usage = .{ .library = true },
+        },
+        .{
+            .path = "libraries/net/fabricmc/fabric-loader/0.16.10/fabric-loader-0.16.10.jar",
+            .url = "https://maven.fabricmc.net/net/fabricmc/fabric-loader/0.16.10/fabric-loader-0.16.10.jar",
+            .fallback_url = null,
+            .sha1 = "3333333333333333333333333333333333333333",
+            .size = 30,
+            .usage = .{ .library = true },
+        },
+    };
+
+    const first = try fabricServerArgsFromPlanAlloc(allocator, &files);
+    defer allocator.free(first);
+    const second = try fabricServerArgsFromPlanAlloc(allocator, &files);
+    defer allocator.free(second);
+
+    const expected =
+        "-cp libraries/net/fabricmc/tiny-mappings-parser/0.3.0+build.17/tiny-mappings-parser-0.3.0+build.17.jar" ++
+        ":libraries/org/ow2/asm/asm/9.7.1/asm-9.7.1.jar" ++
+        ":libraries/net/fabricmc/fabric-loader/0.16.10/fabric-loader-0.16.10.jar" ++
+        ":server.jar\n" ++
+        "net.fabricmc.loader.impl.launch.knot.KnotServer\n";
+    try std.testing.expectEqualStrings(expected, first);
+    try std.testing.expectEqualStrings(first, second);
+    const line_end = std.mem.indexOfScalar(u8, first, '\n') orelse return error.MissingArgsLine;
+    try std.testing.expect(std.mem.endsWith(u8, first[0..line_end], ":server.jar"));
+    try std.testing.expect(std.mem.indexOf(u8, first, "-Djmcl.server.identity") == null);
+}
+
+test "fabric server args use planned libraries instead of a drifted profile" {
+    const allocator = std.testing.allocator;
+    var drifted_profile = try fabric.parse(allocator,
+        \\{
+        \\  "id":"fabric-loader-0.16.10-1.21.1",
+        \\  "inheritsFrom":"1.21.1",
+        \\  "mainClass":"net.fabricmc.loader.impl.launch.knot.KnotServer",
+        \\  "libraries":[{"name":"net.fabricmc:drifted-loader:9.9.9","url":"https://maven.fabricmc.net/","sha1":"9999999999999999999999999999999999999999","size":99}]
+        \\}
+    );
+    defer drifted_profile.deinit();
+    const files = [_]install_plan.File{
+        .{
+            .path = "server.jar",
+            .url = "https://example.invalid/server.jar",
+            .fallback_url = null,
+            .sha1 = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            .size = 1,
+            .usage = .{ .server = true },
+        },
+        .{
+            .path = "libraries/net/fabricmc/planned-loader/1.0.0/planned-loader-1.0.0.jar",
+            .url = "https://maven.fabricmc.net/net/fabricmc/planned-loader/1.0.0/planned-loader-1.0.0.jar",
+            .fallback_url = null,
+            .sha1 = "1111111111111111111111111111111111111111",
+            .size = 10,
+            .usage = .{ .library = true },
+        },
+    };
+
+    const args = try fabricServerArgsFromPlanAlloc(allocator, &files);
+    defer allocator.free(args);
+
+    try std.testing.expect(std.mem.indexOf(u8, args, "planned-loader-1.0.0.jar") != null);
+    try std.testing.expect(std.mem.indexOf(u8, args, "drifted-loader-9.9.9.jar") == null);
+}
+
+test "fabric server extras preserve profile library order" {
+    const allocator = std.testing.allocator;
+    var profile = try fabric.parse(allocator, fabric_server_profile_fixture);
+    defer profile.deinit();
+    const integrities = [_]fabric.LibraryIntegrity{
+        .{ .sha1 = "1111111111111111111111111111111111111111", .size = 10 },
+        .{ .sha1 = "2222222222222222222222222222222222222222", .size = 20 },
+        .{ .sha1 = "3333333333333333333333333333333333333333", .size = 30 },
+    };
+    const service = Service.init(allocator, std.testing.io, null);
+
+    var extras = try service.buildFabricServerExtras(profile.value, &integrities);
+    defer extras.deinit();
+
+    try std.testing.expectEqual(@as(usize, 3), extras.files.len);
+    try std.testing.expectEqualStrings(
+        "libraries/net/fabricmc/tiny-mappings-parser/0.3.0+build.17/tiny-mappings-parser-0.3.0+build.17.jar",
+        extras.files[0].path,
+    );
+    try std.testing.expectEqualStrings(
+        "libraries/org/ow2/asm/asm/9.7.1/asm-9.7.1.jar",
+        extras.files[1].path,
+    );
+    try std.testing.expectEqualStrings(
+        "libraries/net/fabricmc/fabric-loader/0.16.10/fabric-loader-0.16.10.jar",
+        extras.files[2].path,
+    );
+    try std.testing.expectEqualStrings(
+        "https://maven.fabricmc.net/net/fabricmc/fabric-loader/0.16.10/fabric-loader-0.16.10.jar",
+        extras.files[2].url,
+    );
+    try std.testing.expect(extras.files[2].fallback_url == null);
+    try std.testing.expect(extras.files[2].usage.library);
 }
 
 test "server neoforge extras place the installer jar under the server support directory" {

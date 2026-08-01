@@ -1,16 +1,17 @@
 # Server Management
 
-Status: Phases 1–3 are implemented: server instance storage, vanilla
-installation/properties, and detached process lifecycle. Phases 4–6 remain
-the roadmap. Multi-instance Minecraft server management is
-**Linux first**—other platforms are explicitly deferred and every `server.*`
-method returns `UNSUPPORTED_PLATFORM`. The GUI talks to a server-side
-`jmcl-core` over SSH.
+Status: Phases 1 through 4 are implemented for server instance storage,
+vanilla installation/properties, detached process lifecycle, and Fabric,
+NeoForge, and modern Forge server installs. Legacy Forge server support was
+cut from Phase 4 and remains deferred. Phases 5 and 6 remain the roadmap.
+Multi-instance Minecraft server management is **Linux first**. Other platforms
+are explicitly deferred and every `server.*` method returns
+`UNSUPPORTED_PLATFORM`. The GUI talks to a server-side `jmcl-core` over SSH.
 
 ## Transport And Process Model
 
 The GUI runs `ssh user@host jmcl-core rpc` and speaks the same JSON Lines
-protocol as locally — no daemon, no HTTP layer, no new transport. The
+protocol as locally. There is no daemon, no HTTP layer, and no new transport. The
 synchronous session model and all existing methods work unchanged.
 
 One architectural rule follows from SSH being the transport: **a running
@@ -25,8 +26,8 @@ connection dies, its process group dies. Therefore:
 
 ## Reuse Inventory
 
-- Version metadata already carries the `server` download (URL + SHA-1) —
-  it flows through the same verified content-addressed pipeline and
+- Version metadata already carries the `server` download (URL + SHA-1). It
+  flows through the same verified content-addressed pipeline and
   artifact store as every other artifact.
 - **Content-addressed storage with hard links remains the file-management
   invariant on servers too**: server jars, loader libraries, installer
@@ -37,10 +38,13 @@ connection dies, its process group dies. Therefore:
   reclaims objects whose last link disappears.
 - `java.detect` / `java.select` pick the JVM.
 - `launch/process.zig` provides supervised-process primitives.
-- The content registry is directory-generic: pointing `mods.*` at a
-  server instance's game directory manages server mods with zero new code.
-- NeoForge/Forge installers natively support `--installServer`; the local
-  processor-chain executors (`loaders/*_executor.zig`) are reusable.
+- The content registry is directory-generic. Later server content work can
+  point content operations at a server instance directory, but Phase 4 does
+  not add server content RPCs.
+- NeoForge and modern Forge expose installer profiles that the local
+  processor-chain executors can run with `SIDE=server`. JMCL Core executes
+  those processor steps through its verified download pipeline instead of
+  launching the installers as server setup tools.
 
 ## Instance Model
 
@@ -50,8 +54,12 @@ Server instances are separate from client instances:
 servers/<id>/server.json        identity: id, name, version_id, loader fields,
                                 source, accept_eula, optional java_path
 servers/<id>/server.jar         verified hard link into the artifact store
+servers/<id>/libraries/         loader libraries and generated loader files
 servers/<id>/.jmcl/install.json completed-install identity, server digest,
-                                and required Java major version
+                                required Java major, and launch descriptor
+servers/<id>/.jmcl/neoforge-server/  NeoForge server-side processor support
+servers/<id>/.jmcl/forge-server/     modern Forge server-side processor support
+servers/<id>/.jmcl/fabric_args.txt   generated Fabric server args file
 servers/<id>/.jmcl/server.pid   validated detached-process state
 servers/<id>/.jmcl/console.fifo bounded single-line console command channel
 servers/<id>/logs/console.log   merged stdout/stderr with bounded rotation
@@ -65,7 +73,7 @@ Mojang requires explicit EULA acceptance: install operations require
 
 ## Phases
 
-### Phase 1 — Server instance store (implemented)
+### Phase 1: Server instance store (implemented)
 
 - `src/server/server_store.zig`: manifest CRUD with the same discipline as
   `instance_store.zig` (schema version, atomic writes, id validation).
@@ -73,7 +81,7 @@ Mojang requires explicit EULA acceptance: install operations require
 - Platform gate: every `server.*` method returns `UNSUPPORTED_PLATFORM`
   off Linux.
 
-### Phase 2 — Vanilla installation and configuration (implemented)
+### Phase 2: Vanilla installation and configuration (implemented)
 
 - `server.install` resolves Mojang metadata, selects a compatible JVM, and
   downloads `server.jar` through the shared size+SHA-1 verified artifact
@@ -87,15 +95,18 @@ Mojang requires explicit EULA acceptance: install operations require
   the file. Java properties escapes, continuations, Unicode escapes, and
   duplicate-key last-write semantics are supported.
 - Successful installation writes `.jmcl/install.json`, including the required
-  Java major used by lifecycle start. `server.get` and `server.list` report
-  `installed:true` only when its version, loader, source, server file size,
-  and current manifest still match. Missing, malformed, or pre-Phase-3
-  markers return `false`; one idempotent reinstall upgrades the marker while
-  reusing the verified cached jar.
-- Phase 2 is vanilla-only. Loader-bearing manifests return
-  `SERVER_LOADER_UNSUPPORTED` until Phase 4.
+  Java major used by lifecycle start and a launch descriptor with
+  `{mode,file,sha1,size}`. Marker schema v3 is current. v2 markers report
+  `installed:false`; one idempotent reinstall upgrades the marker while
+  reusing verified cached artifacts.
+- `server.get` and `server.list` report `installed:true` only when version,
+  loader, source, `server.jar` size, launch file size, and current manifest
+  still match. The installed check does not re-hash files at start time and
+  does not prove every loader library is still present. If `libraries/` is
+  wiped while `server.jar` and the launch file remain, reinstall is the repair
+  path.
 
-### Phase 3 — Process lifecycle (implemented)
+### Phase 3: Process lifecycle (implemented)
 
 - `server.start` requires a matching completed installation, selects the
   recorded Java major version, refuses a live server, and launches through a
@@ -122,23 +133,55 @@ Mojang requires explicit EULA acceptance: install operations require
   Java process. The log pipes and console FIFO are OS channels; no RPC process
   owns or keeps an in-memory handle to a running server.
 
-### Phase 4 — Modded servers
+### Phase 4: Modded servers (implemented for Fabric, NeoForge, modern Forge)
 
-- Fabric: fabric-installer in server mode (or the fabric server launcher),
-  producing `fabric-server-launch.jar`.
-- NeoForge/Forge: installer with `--installServer`, reusing the local
-  processor-chain executors; layout `libraries/`, `run.sh`,
-  `user_jvm_args.txt`.
-- Legacy Forge (1.7.10–1.12.2) server support evaluated separately.
+- Vanilla remains the simplest install shape: `server.jar` is downloaded
+  through the verified artifact pipeline, the launch descriptor uses
+  `mode:"jar"`, and lifecycle starts Java with `-jar server.jar nogui`.
+- NeoForge servers materialize loader libraries under root `libraries/` and
+  keep server-side processor support under `.jmcl/neoforge-server/<version>/`.
+  The local processor chain runs with `SIDE=server` and `MINECRAFT_JAR` set to
+  `server.jar`. The generated launch file is the loader's
+  `libraries/net/neoforged/neoforge/<version>/unix_args.txt`, recorded in the
+  launch descriptor as `mode:"args_file"`.
+- Modern Forge servers use the same verified processor-chain model with
+  `SIDE=server`, root `libraries/`, and support files under
+  `.jmcl/forge-server/<minecraft>-<forge>/`. The generated launch file is
+  `libraries/net/minecraftforge/forge/<minecraft>-<forge>/unix_args.txt`, also
+  recorded as `mode:"args_file"`.
+- NeoForge and modern Forge may leave `run.sh` and `user_jvm_args.txt` on disk
+  because the loader processor chain creates them. The supervisor does not use
+  them as launch surfaces. It reads `.jmcl/install.json` and launches Java with
+  the recorded args file.
+- Fabric servers are resolved from Fabric Meta `server/json`. Libraries are
+  verified through provided hashes or maven `.sha1` sidecars, then written
+  under root `libraries/`. JMCL Core generates `.jmcl/fabric_args.txt` with a
+  classpath ending in `server.jar` and the `KnotServer` main class, then
+  launches with `mode:"args_file"`.
+- The launch descriptor is exactly `{mode,file,sha1,size}`. `mode` is either
+  `jar` or `args_file`; `file` is a relative path inside the server directory;
+  `sha1` and `size` are recorded from the verified launch file at install time.
+- BMCLAPI affects Mojang metadata and the Mojang `server.jar` only. Loader
+  maven URLs for NeoForge, Forge, and Fabric stay direct so their published
+  hashes and maven sidecars remain the source of truth.
+- NeoForge and modern Forge processors execute third-party loader Java locally,
+  with the same trust posture as client loader installs. Processor downloads
+  still flow through the verified pipeline when JMCL Core planned them, but the
+  loader processor step named `DOWNLOAD_MOJMAPS` may contact Mojang mappings
+  from inside the processor process.
+- Legacy Forge server support is deferred by the Phase 4 cut condition. Legacy
+  Forge manifests continue to fail server install planning with
+  `SERVER_LOADER_UNSUPPORTED`; no legacy server directory layout is documented
+  as implemented.
 
-### Phase 5 — Server content management
+### Phase 5: Server content management
 
 - Apply and document the content-ops-on-server-directory pattern
   (`mods.list/install/set-version/enable/disable/remove/adopt` with
   `directory` = server instance root).
 - Optional: `datapack` as a fourth content kind (`world/datapacks/*.zip`).
 
-### Phase 6 — Hardening and polish
+### Phase 6: Hardening and polish
 
 - World backups (`server.backup`: tar of `world*` through the artifact
   pipeline or plain archives).

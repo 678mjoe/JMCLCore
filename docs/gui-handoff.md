@@ -177,7 +177,7 @@ on Linux:
 | `server.list` | `directory` | — | `{servers[]}` sorted by id |
 | `server.get` | `directory`, `id` | — | one server manifest; `SERVER_NOT_FOUND` |
 | `server.delete` | `directory`, `id` | — | removes the whole stopped server instance directory; `SERVER_ALREADY_RUNNING` while live |
-| `server.install` | `directory`, `id`, `accept_eula:true` | `store_directory`, `workers`, `retries`, `java_paths[]` | stopped servers only; vanilla install with progress and compatible Java selection; writes `server.jar`, `eula.txt`, defaults, and completion state |
+| `server.install` | `directory`, `id`, `accept_eula:true` | `store_directory`, `workers`, `retries`, `java_paths[]` | stopped servers only; installs vanilla, NeoForge, modern Forge, or Fabric with compatible Java selection; writes `server.jar`, loader launch files when needed, `eula.txt`, defaults, and completion state |
 | `server.start` | `directory`, `id` | `java_paths[]` | requires a matching completed install; returns detached Java/supervisor PIDs, start time, and selected Java |
 | `server.stop` | `directory`, `id` | `grace_ms` (default 10000, max 120000) | Minecraft `stop`, then bounded SIGTERM/SIGKILL escalation; returns `termination` |
 | `server.restart` | `directory`, `id` | `java_paths[]`, `grace_ms` | bounded stop followed by a fresh detached start |
@@ -188,12 +188,23 @@ on Linux:
 | `server.properties.set` | `directory`, `id`, non-empty `properties` object | — | merges string-valued keys and atomically rewrites the file; returns the full resulting object |
 
 `server.create`, `server.list`, and `server.get` include `installed`. Treat it
-as authoritative; absent, malformed, or identity-mismatched completion state
-returns `false`. `server.install` currently rejects loader-bearing manifests
-with `SERVER_LOADER_UNSUPPORTED`. It requires explicit `accept_eula:true`;
-the core never accepts Mojang's EULA implicitly. A manifest-level `java_path`
-wins over request `java_paths`. Properties are strings, including numeric and
-boolean-looking values.
+as authoritative. The v3 completion marker must match the manifest and the
+recorded server jar plus launch file sizes; absent, malformed, older-schema,
+identity-mismatched, or incomplete state returns `false`. At create time use at
+most one loader field: `fabric_loader`, `neoforge_version`, or
+`forge_version`. Vanilla, Fabric, NeoForge, and modern Forge install on Linux.
+Legacy Forge server support remains deferred and returns
+`SERVER_LOADER_UNSUPPORTED`. `server.install` requires explicit
+`accept_eula:true`; the core never accepts Mojang's EULA implicitly. A
+manifest-level `java_path` wins over request `java_paths`. Properties are
+strings, including numeric and boolean-looking values.
+
+For server installs, the only progress events are the existing download
+events. NeoForge and modern Forge may spend time in a local processor-chain
+phase after downloads, but that phase is silent and does not emit
+`processor_started` or any server-specific event. Do not wait for a new event
+type; wait for the terminal `result` or `error` for the `server.install`
+request.
 
 Running servers are detached from `jmcl-core rpc`; ending or reconnecting SSH
 must not be treated as a stop. Keep the `next_cursor` and `file_id` from every

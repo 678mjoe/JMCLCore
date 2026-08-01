@@ -50,6 +50,18 @@ zig build run -- instance list
 zig build run -- instance install vanilla-26.1
 zig build run -- instance install vanilla-26.1 --source bmclapi
 zig build run -- instance launch vanilla-26.1 --offline-name Player
+zig build run -- server create fabric-1.21.1 --version 1.21.1 --fabric-loader 0.16.10 --name "Fabric Server"
+zig build run -- server list
+zig build run -- server show fabric-1.21.1 --json
+zig build run -- server install fabric-1.21.1 --accept-eula
+zig build run -- server properties get fabric-1.21.1
+zig build run -- server properties set fabric-1.21.1 motd="JMCL Core Server"
+zig build run -- server start fabric-1.21.1
+zig build run -- server status fabric-1.21.1 --json
+zig build run -- server command fabric-1.21.1 "say hello from jmcl"
+zig build run -- server logs fabric-1.21.1 --max-bytes 65536
+zig build run -- server restart fabric-1.21.1 --grace-ms 10000
+zig build run -- server stop fabric-1.21.1
 zig build run -- rpc
 ```
 
@@ -80,9 +92,9 @@ RPC 模式从标准输入逐行读取 JSON 请求，并将 JSON 事件逐行写�
 
 默认使用 Mojang 官方服务。中国大陆用户可以传递 `--source bmclapi`，或在 RPC 参数中使用 `"source":"bmclapi"` 来使用 BMCLAPI。BMCLAPI 返回的内容仍会根据 Mojang 提供的 SHA-1 值进行校验。
 
-Linux 服务器管理现已支持独立服务器清单、经过校验的原版服务端安装、原子化
-`server.properties` 管理，以及分离式启动、停止、重启、状态、日志和命令
-RPC。运行中的服务器由 SSH/JSON Lines 会话之外的监督进程管理，并提供 PID
+Linux 服务器管理现已支持独立服务器清单、经过校验的原版、Fabric、NeoForge
+和现代 Forge 服务端安装、原子化 `server.properties` 管理、CLI 命令，以及分离式
+启动、停止、重启、状态、日志和命令 RPC。旧版 Forge 服务端支持仍然推迟。运行中的服务器由 SSH/JSON Lines 会话之外的监督进程管理，并提供 PID
 身份校验、控制台 FIFO、有限日志轮换以及从优雅停止到 SIGKILL 的升级机制。
 
 当前范围和协议说明请参阅 `docs/mvp.md` 与 `docs/protocol.md`。

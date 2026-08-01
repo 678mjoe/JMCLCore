@@ -4,6 +4,7 @@ const version_metadata = @import("../install/version_metadata.zig");
 pub const max_profile_bytes: usize = 4 * 1024 * 1024;
 pub const max_profile_libraries: usize = 1_024;
 pub const max_library_size: u64 = 256 * 1024 * 1024;
+pub const server_main_class = "net.fabricmc.loader.impl.launch.knot.KnotServer";
 
 pub const Library = struct {
     name: []const u8,
@@ -252,6 +253,7 @@ pub fn serverProfileUrlAlloc(
 pub fn validateServerProfile(profile: Profile, minecraft_version: []const u8) !void {
     try validate(profile);
     if (!std.mem.eql(u8, profile.inheritsFrom, minecraft_version)) return error.FabricParentMismatch;
+    if (!std.mem.eql(u8, profile.mainClass, server_main_class)) return error.InvalidMainClass;
 }
 
 fn validateProfileId(value: []const u8) !void {
@@ -444,7 +446,7 @@ const server_profile_fixture =
     \\  "time":"2024-11-28T13:53:11+00:00",
     \\  "type":"release",
     \\  "mainClass":"net.fabricmc.loader.impl.launch.knot.KnotServer",
-    \\  "arguments":{"game":[],"jvm":[]},
+    \\  "arguments":{"game":[]},
     \\  "libraries":[
     \\    {"name":"net.fabricmc:tiny-mappings-parser:0.3.0+build.17","url":"https://maven.fabricmc.net/","sha1":"e9dfb8e1b9e3bc0ac2a5a70a13bb9e8b036e0d1b","size":52432},
     \\    {"name":"org.ow2.asm:asm:9.7.1","url":"https://maven.fabricmc.net/","sha1":"f0ed132a49244b042cd0e15702ab9f2ce3cc8436","size":126093},
@@ -476,6 +478,30 @@ test "rejects a Fabric server profile with mismatched parent" {
     var document = try parse(std.testing.allocator, server_profile_fixture);
     defer document.deinit();
     try std.testing.expectError(error.FabricParentMismatch, validateServerProfile(document.value, "1.21.2"));
+}
+
+test "rejects a Fabric server profile without the exact server main class" {
+    var client_class = try parse(std.testing.allocator,
+        \\{
+        \\  "id":"fabric-loader-0.16.10-1.21.1",
+        \\  "inheritsFrom":"1.21.1",
+        \\  "mainClass":"net.fabricmc.loader.impl.launch.knot.KnotClient",
+        \\  "libraries":[{"name":"net.fabricmc:fabric-loader:0.16.10","url":"https://maven.fabricmc.net/"}]
+        \\}
+    );
+    defer client_class.deinit();
+    try std.testing.expectError(error.InvalidMainClass, validateServerProfile(client_class.value, "1.21.1"));
+
+    var identity_token = try parse(std.testing.allocator,
+        \\{
+        \\  "id":"fabric-loader-0.16.10-1.21.1",
+        \\  "inheritsFrom":"1.21.1",
+        \\  "mainClass":"-Djmcl.server.identity=evil",
+        \\  "libraries":[{"name":"net.fabricmc:fabric-loader:0.16.10","url":"https://maven.fabricmc.net/"}]
+        \\}
+    );
+    defer identity_token.deinit();
+    try std.testing.expectError(error.InvalidMainClass, validateServerProfile(identity_token.value, "1.21.1"));
 }
 
 test "rejects invalid Fabric server profiles" {

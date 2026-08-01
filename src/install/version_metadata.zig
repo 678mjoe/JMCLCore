@@ -91,7 +91,7 @@ pub const Argument = union(enum) {
 
 pub const Arguments = struct {
     game: []const Argument,
-    jvm: []const Argument,
+    jvm: []const Argument = &.{},
     @"default-user-jvm": ?[]const Argument = null,
 };
 
