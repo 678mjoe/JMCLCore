@@ -74,6 +74,9 @@ Cache hits jump `bytes_processed` when verification completes.
   `stdout`/`stderr` (`{"sequence":N,"encoding":"base64","end":"newline|more","data":"…"}`),
   and a terminal `result` whose `process` object reports `termination`
   (`exited|signaled|stopped|unknown`), exit code/signal, duration, and max RSS.
+  When Java selection downloads a managed runtime before spawning, a `runtime`
+  event carries the same stage/file/retry/progress payloads as
+  `java.runtime.install`.
 - Many results carry a top-level `source` field (`official`|`bmclapi`). If
   your UI lets users pick BMCLAPI, you **must visibly attribute BMCLAPI**
   (its service policy: <https://bmclapidoc.bangbang93.com/>).
@@ -115,7 +118,7 @@ CLI-equivalent `index`, `total`, and processor `name`; its result reports
 | `java.detect` | — | `paths[]` | probed runtimes + per-candidate failures |
 | `java.select` | `id` | `source`, `arch`, `paths[]` | compatible runtime (exact major + arch) |
 | `java.runtime.list` | — | `store_directory` | managed runtimes with provider, component/package, probed version, executable |
-| `java.runtime.install` | `component` or `major` (exactly one) | `store_directory`, `workers`, `retries` | stage/file/retry/progress events, runtime receipt; `JAVA_DOWNLOAD_FAILED` on download failure |
+| `java.runtime.install` | `component` or `major` (exactly one) | `provider` (`auto`\|`mojang`\|`zulu`), `platform`, `store_directory`, `workers`, `retries` | stage/file/retry/progress events, runtime receipt; `JAVA_DOWNLOAD_FAILED` on download failure |
 | `java.runtime.remove` | `runtime` | `store_directory` | removes the managed runtime tree |
 
 `launch.plan`, `launch.execute`, and `install.execute` accept
@@ -343,6 +346,8 @@ Common codes:
 - Generic: `INVALID_REQUEST`, `INVALID_PARAMS`, `METHOD_NOT_FOUND`,
   `UNSUPPORTED_PROTOCOL`, `INSTALL_ROOT_ERROR`, `STORE_ROOT_ERROR`,
   `HTTP_STATUS_ERROR`, `RESPONSE_TOO_LARGE`.
+- Java: `JAVA_NOT_FOUND`, `JAVA_INCOMPATIBLE`, `JAVA_DOWNLOAD_FAILED`
+  (managed runtime download inside `launch.execute` or `install.execute`).
 - Content: `NO_COMPATIBLE_VERSION`, `INCOMPATIBLE_VERSION`,
   `VERSION_PROJECT_MISMATCH`, `CONTENT_CONFLICT`, `CONTENT_KIND_MISMATCH`,
   `CONTENT_NOT_FOUND`, `UNSUPPORTED_PROJECT_TYPE`, `DOWNLOAD_UNAVAILABLE`,
