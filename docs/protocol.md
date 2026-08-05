@@ -611,6 +611,10 @@ flight, and jumps for cache hits when their verification completes. Use
 The byte-level events also apply to content and modpack installs because they
 share the verified installer pipeline.
 
+`install.execute` accepts the same `java_policy` parameter as `launch.execute`
+for the NeoForge/Forge processor chain, and may download a managed runtime for
+the processors the same way (default `auto`).
+
 Only after every planned file and loader processor succeeds,
 `install.execute` atomically records `.jmcl/install.json`. Instance
 `installed` status therefore never becomes true for a partial install.
@@ -671,7 +675,15 @@ See `docs/java.md` for discovery and compatibility policy.
 This method requires a version ID, native directory returned by
 `install.prepare`, and authentication session. `directory` defaults to
 `.minecraft` and is used as both the static data root and game working
-directory. It automatically selects a compatible local Java runtime.
+directory. It resolves the Java runtime through `Service.resolveGameJava`:
+`java_policy` accepts `auto` (default), `local`, or `managed`;
+`java_override` takes an explicit Java executable and is mutually exclusive
+with `java_policy`. Planning never downloads: `managed` only considers
+already-installed store runtimes, and when nothing matches the request fails
+with `JAVA_INCOMPATIBLE`. `store_directory` (default `.jmclcore`) locates
+managed runtimes. The result adds `java_source` (`local` or `managed`) and
+`forced` (true with `java_override`, which skips the exact-major and
+architecture gates).
 
 ```json
 {"protocol":1,"id":"launch-1","method":"launch.plan","params":{"id":"26.2","directory":"./.minecraft","natives_directory":".jmcl/runtime/natives/session-id","auth":{"player_name":"Player","uuid":"00000000000000000000000000000000","access_token":"secret"},"options":{"resolution_width":1280,"resolution_height":720}}}
@@ -688,7 +700,13 @@ See `docs/launch.md` for argument ordering and supported placeholders.
 This method accepts a version, one `.minecraft` directory, authentication,
 options, source, architecture, and Java candidates. It does not accept a native
 directory or client-supplied argv. The core creates and owns the runtime native
-directory internally. `directory` defaults to `.minecraft`.
+directory internally. `directory` defaults to `.minecraft`. It accepts the same
+`java_paths`, `java_policy`, `java_override`, and `store_directory` Java
+parameters as `launch.plan`; unlike planning, execution may download a managed
+runtime when policy selects one, emitting `runtime` events with the managed
+download stages before the game starts. Managed downloads fail with
+`JAVA_DOWNLOAD_FAILED`; an unsatisfiable requirement fails with
+`JAVA_INCOMPATIBLE`.
 
 ```json
 {"protocol":1,"id":"game-1","method":"launch.execute","params":{"id":"26.2","directory":"./.minecraft","auth":{"player_name":"Player","uuid":"00000000000000000000000000000000","access_token":"secret"}}}

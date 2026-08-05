@@ -84,14 +84,15 @@ by capability, never by network failure order:
 Runtimes install under the artifact store:
 
 ```text
-<store>/runtimes/<provider>-<id>/<platform>/   runtime tree
-<store>/runtimes/<provider>-<id>/<platform>/.jmcl-runtime.json   receipt
+<store>/runtimes/<provider>-<id>-<platform>/   runtime tree (flat, immutable after publish)
+<store>/runtimes/<provider>-<id>-<platform>/.jmcl-runtime.json   receipt
 ```
 
 `id` is the Mojang component name or the Zulu major version (for example
-`zulu-8`). The receipt records the provider, component or Azul
-`package_uuid`, probed major version, source URLs, hashes, and install time;
-it backs `java.runtime.list` and integrity re-verification. Installation
+`zulu-8`); `<platform>` is the install target such as `mac-os-arm64`. The
+receipt records the provider, component or Azul `package_uuid` and package
+name, probed major/version/vendor, `java_home` and executable path, file and
+byte totals, and install time; it backs `java.runtime.list`. Installation
 stages into a temporary sibling directory and atomically renames on success;
 interrupted staging directories are removed on the next attempt. Mojang
 symlink entries are recreated as symlinks with targets validated to stay

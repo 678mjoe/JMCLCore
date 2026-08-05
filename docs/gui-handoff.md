@@ -114,6 +114,19 @@ CLI-equivalent `index`, `total`, and processor `name`; its result reports
 |---|---|---|---|
 | `java.detect` | — | `paths[]` | probed runtimes + per-candidate failures |
 | `java.select` | `id` | `source`, `arch`, `paths[]` | compatible runtime (exact major + arch) |
+| `java.runtime.list` | — | `store_directory` | managed runtimes with provider, component/package, probed version, executable |
+| `java.runtime.install` | `component` or `major` (exactly one) | `store_directory`, `workers`, `retries` | stage/file/retry/progress events, runtime receipt; `JAVA_DOWNLOAD_FAILED` on download failure |
+| `java.runtime.remove` | `runtime` | `store_directory` | removes the managed runtime tree |
+
+`launch.plan`, `launch.execute`, and `install.execute` accept
+`java_policy` (`auto` default, `local`, `managed`) and `store_directory`;
+the launch methods also accept `java_override` (explicit executable, skips
+the exact-major/architecture gates, mutually exclusive with `java_policy`).
+Default `auto` covers most cases: local exact-major first, then installed
+managed runtimes, then a managed download. Pre-provision with
+`java.runtime.install` when the GUI wants explicit control (for example
+downloading Java during first-run setup); `launch.plan` never downloads and
+reports `JAVA_INCOMPATIBLE` when nothing installed matches.
 
 ### Launch
 

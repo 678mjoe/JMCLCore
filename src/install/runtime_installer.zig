@@ -385,6 +385,7 @@ fn downloadVerified(
     expected_hex: []const u8,
     executable: bool,
     sync_file: bool,
+    exact_size: bool,
     progress: *installer.ByteProgressReporter,
 ) !void {
     var atomic_file = try root.createFileAtomic(client.io, sub_path, .{
@@ -401,7 +402,8 @@ fn downloadVerified(
         &.{},
     );
     var limit_buffer: [64 * 1024]u8 = undefined;
-    const maximum = std.math.cast(usize, expected_size) orelse return error.FileTooLarge;
+    const expected = std.math.cast(usize, expected_size) orelse return error.FileTooLarge;
+    const maximum = if (exact_size) expected else expected + 4096;
     var limited = installer.LimitedWriter.init(&hashed.writer, &limit_buffer, maximum, progress);
 
     const status: u16 = blk: {
@@ -442,7 +444,7 @@ fn downloadVerified(
 
     if (status < 200 or status >= 300) return error.UnsuccessfulHttpStatus;
     const written = maximum - limited.remaining;
-    if (written != maximum) return error.DownloadSizeMismatch;
+    if (exact_size and written != maximum) return error.DownloadSizeMismatch;
     if (!digestHexMatches(Hasher, hashed.hasher.finalResult(), expected_hex)) return error.DownloadHashMismatch;
     if (executable) try atomic_file.file.setPermissions(client.io, .executable_file);
     if (sync_file) try atomic_file.file.sync(client.io);
@@ -577,6 +579,7 @@ fn worker(shared: *Shared) void {
                 file.sha1,
                 file.executable,
                 shared.options.sync_files,
+                true,
                 &byte_reporter,
             ) catch |err| {
                 if (attempt + 1 < max_attempts) {
@@ -1020,6 +1023,7 @@ pub fn installZulu(
                 archive_entry.sha1,
                 false,
                 options.sync_files,
+                false,
                 &byte_reporter,
             ) catch |err| {
                 if (attempt + 1 < max_attempts) {
