@@ -202,6 +202,12 @@ pub fn handleLine(
         try auth.writeMinecraftRefreshExchangeResult(service, writer, request.id, request.params);
     } else if (std.mem.eql(u8, request.method, "auth.minecraft.exchange")) {
         try auth.writeMinecraftExchangeResult(service, writer, request.id, request.params);
+    } else if (std.mem.eql(u8, request.method, "java.runtime.list")) {
+        try java.writeRuntimeListResult(service, writer, request.id, request.params);
+    } else if (std.mem.eql(u8, request.method, "java.runtime.install")) {
+        try java.writeRuntimeInstallResult(service, writer, request.id, request.params);
+    } else if (std.mem.eql(u8, request.method, "java.runtime.remove")) {
+        try java.writeRuntimeRemoveResult(service, writer, request.id, request.params);
     } else if (std.mem.eql(u8, request.method, "account.microsoft.save")) {
         try auth.writeAccountSaveResult(service, writer, request.id, request.params);
     } else if (std.mem.eql(u8, request.method, "account.microsoft.list")) {

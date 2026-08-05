@@ -10,6 +10,7 @@ pub const CandidateSource = enum {
     java_home,
     platform,
     path,
+    managed,
 };
 
 pub const Candidate = struct {
@@ -245,6 +246,20 @@ fn discoverJavaHomeDirectory(
         defer allocator.free(path);
         try addCandidate(allocator, candidates, seen, path, .platform, true, io);
     }
+}
+
+pub fn probeExecutable(
+    result_allocator: std.mem.Allocator,
+    temporary_allocator: std.mem.Allocator,
+    io: std.Io,
+    environ_map: *const std.process.Environ.Map,
+    executable: []const u8,
+    source: CandidateSource,
+) !Runtime {
+    return probe(result_allocator, temporary_allocator, io, environ_map, .{
+        .executable = @constCast(executable),
+        .source = source,
+    });
 }
 
 pub fn selectCompatible(

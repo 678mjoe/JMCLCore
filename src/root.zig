@@ -25,6 +25,8 @@ pub const install_plan = @import("install/plan.zig");
 pub const installer = @import("install/installer.zig");
 pub const preparer = @import("install/preparer.zig");
 pub const java_runtime = @import("install/java_runtime.zig");
+pub const java_runtime_store = @import("install/java_runtime_store.zig");
+pub const runtime_installer = @import("install/runtime_installer.zig");
 pub const launch_plan = @import("launch/plan.zig");
 pub const game_process = @import("launch/process.zig");
 pub const launch_executor = @import("launch/executor.zig");
@@ -63,6 +65,8 @@ test {
     _ = installer;
     _ = preparer;
     _ = java_runtime;
+    _ = java_runtime_store;
+    _ = runtime_installer;
     _ = launch_plan;
     _ = game_process;
     _ = launch_executor;

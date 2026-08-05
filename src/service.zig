@@ -18,6 +18,8 @@ const install_plan = @import("install/plan.zig");
 const install_executor = @import("install/installer.zig");
 const instance_store = @import("instance_store.zig");
 const java_runtime = @import("install/java_runtime.zig");
+const java_runtime_store = @import("install/java_runtime_store.zig");
+const runtime_installer = @import("install/runtime_installer.zig");
 const modrinth = @import("content/modrinth.zig");
 const mrpack = @import("modpack/mrpack.zig");
 const curseforge_pack = @import("modpack/curseforge_pack.zig");
@@ -277,6 +279,152 @@ pub const Service = struct {
         const root = try account_store.openRoot(self.io, directory);
         defer root.close(self.io);
         try account_store.delete(self.allocator, self.io, root, id);
+    }
+
+    pub const ManagedProviderChoice = enum {
+        auto,
+        mojang,
+        zulu,
+
+        pub fn parse(value: []const u8) ?ManagedProviderChoice {
+            inline for (std.meta.fields(ManagedProviderChoice)) |field| {
+                if (std.mem.eql(u8, value, field.name)) return @enumFromInt(field.value);
+            }
+            return null;
+        }
+    };
+
+    pub const ManagedInstallParams = struct {
+        component: ?[]const u8 = null,
+        major: ?u16 = null,
+        provider: ManagedProviderChoice = .auto,
+        platform: ?[]const u8 = null,
+        store_directory: []const u8 = artifact_store.default_directory,
+        workers: u8 = 8,
+        retries: u8 = 2,
+    };
+
+    pub fn listManagedRuntimes(self: Service, store_directory: []const u8) !java_runtime_store.List {
+        const store_dir = try install_executor.openRoot(self.io, store_directory);
+        defer store_dir.close(self.io);
+        var runtimes_dir = java_runtime_store.openRuntimesDir(self.io, store_dir) catch |err| switch (err) {
+            else => |other| return other,
+        };
+        defer runtimes_dir.close(self.io);
+        java_runtime_store.cleanupStaging(self.io, runtimes_dir);
+        return java_runtime_store.list(self.allocator, self.io, runtimes_dir);
+    }
+
+    pub fn removeManagedRuntime(self: Service, store_directory: []const u8, runtime_name: []const u8) !void {
+        const store_dir = try install_executor.openRoot(self.io, store_directory);
+        defer store_dir.close(self.io);
+        var runtimes_dir = try java_runtime_store.openRuntimesDir(self.io, store_dir);
+        defer runtimes_dir.close(self.io);
+        try java_runtime_store.remove(self.io, runtimes_dir, runtime_name);
+    }
+
+    fn fetchRuntimeBody(context: *anyopaque, url: []const u8, max_bytes: usize, policy: runtime_installer.FetchPolicy) anyerror![]u8 {
+        const self: *Service = @ptrCast(@alignCast(context));
+        switch (policy) {
+            .cached => |ttl| return self.fetchBodyOwned(url, max_bytes, .{ .ttl_seconds = ttl }),
+            .immutable => return self.fetchBodyOwned(url, max_bytes, .immutable),
+            .fresh_only => {
+                self.evictMetadataCache(url);
+                var body = try self.fetchBodyWithTimeout(url, max_bytes, null, metadata_fetch_timeout_ms);
+                defer body.deinit();
+                if (self.metadataCacheRoot()) |cache_root| {
+                    var root = cache_root;
+                    defer root.close(self.io);
+                    metadata_cache.store(self.io, root, url, body.content, epochSecondsNow(self.io)) catch {};
+                }
+                return self.allocator.dupe(u8, body.content);
+            },
+        }
+    }
+
+    fn fetchBodyOwned(self: Service, url: []const u8, max_bytes: usize, policy: metadata_cache.Policy) ![]u8 {
+        var cached = try self.fetchBodyCached(url, max_bytes, null, policy);
+        defer cached.deinit();
+        return self.allocator.dupe(u8, cached.body.content);
+    }
+
+    pub fn installManagedRuntime(
+        self: *Service,
+        params: ManagedInstallParams,
+        reporter: ?runtime_installer.Reporter,
+    ) !runtime_installer.Outcome {
+        if (params.component != null and params.major != null) return error.InvalidInput;
+        if (params.component == null and params.major == null) return error.InvalidInput;
+        if (params.component != null and params.provider == .zulu) return error.InvalidInput;
+
+        const platform = params.platform orelse blk: {
+            const host = install_plan.Target.host() catch return error.UnsupportedPlatform;
+            break :blk java_runtime_store.platformName(host) orelse return error.UnsupportedPlatform;
+        };
+        if (java_runtime_store.parsePlatform(platform) == null) return error.InvalidRuntimePlatform;
+
+        const store_dir = try install_executor.openRoot(self.io, params.store_directory);
+        defer store_dir.close(self.io);
+        var runtimes_dir = try java_runtime_store.openRuntimesDir(self.io, store_dir);
+        defer runtimes_dir.close(self.io);
+
+        const fetcher: runtime_installer.Fetcher = .{
+            .context = self,
+            .fetch_fn = fetchRuntimeBody,
+        };
+        const options: runtime_installer.Options = .{
+            .workers = params.workers,
+            .retries = params.retries,
+        };
+        const environ = self.environ_map orelse return error.EnvironmentUnavailable;
+
+        if (params.component) |component| {
+            return runtime_installer.installMojang(
+                self.allocator,
+                self.io,
+                environ,
+                fetcher,
+                runtimes_dir,
+                component,
+                platform,
+                options,
+                reporter,
+            );
+        }
+
+        const major = params.major.?;
+        if (params.provider != .zulu) {
+            for (runtime_installer.known_components) |entry| {
+                if (entry.major != major) continue;
+                const outcome = runtime_installer.installMojang(
+                    self.allocator,
+                    self.io,
+                    environ,
+                    fetcher,
+                    runtimes_dir,
+                    entry.name,
+                    platform,
+                    options,
+                    reporter,
+                ) catch |err| switch (err) {
+                    error.RuntimeComponentUnavailable => continue,
+                    else => |other| return other,
+                };
+                return outcome;
+            }
+            if (params.provider == .mojang) return error.RuntimeComponentUnavailable;
+        }
+        return runtime_installer.installZulu(
+            self.allocator,
+            self.io,
+            environ,
+            fetcher,
+            runtimes_dir,
+            major,
+            platform,
+            options,
+            reporter,
+        );
     }
 
     pub fn fetchVersionMetadata(

@@ -74,13 +74,13 @@ const SinkFailure = enum {
     downstream,
 };
 
-const ByteProgressReporter = struct {
+pub const ByteProgressReporter = struct {
     context: *anyopaque,
     callback: *const fn (context: *anyopaque, received: u64) void,
     received: u64 = 0,
     last_reported: u64 = 0,
 
-    fn add(reporter: *ByteProgressReporter, count: usize) void {
+    pub fn add(reporter: *ByteProgressReporter, count: usize) void {
         reporter.received += count;
         if (reporter.received - reporter.last_reported < progress_byte_interval) return;
         reporter.last_reported = reporter.received;
@@ -88,14 +88,14 @@ const ByteProgressReporter = struct {
     }
 };
 
-const LimitedWriter = struct {
+pub const LimitedWriter = struct {
     out: *std.Io.Writer,
     remaining: usize,
     progress: *ByteProgressReporter,
     failure: ?SinkFailure = null,
     interface: std.Io.Writer,
 
-    fn init(
+    pub fn init(
         out: *std.Io.Writer,
         backing: []u8,
         max_bytes: usize,

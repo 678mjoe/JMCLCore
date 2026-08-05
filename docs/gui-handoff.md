@@ -310,6 +310,9 @@ auth methods.
    surfacing the error.
 5. `account.microsoft.save|list|get|delete` stores public profile metadata
    (id, player name, client_id, xuid) — no tokens — for the account picker.
+   Unlike every other method family, their optional `directory` is a single
+   CWD-relative directory *name* (default `accounts`); absolute paths and
+   path separators are rejected (`INVALID_PARAMS`). See `docs/accounts.md`.
 
 If the IPC channel breaks mid-rotation, treat the account as needing recovery
 (new device flow); do not assume the old refresh token is valid.
@@ -366,9 +369,9 @@ zig build -Doptimize=ReleaseSafe -Dtarget=aarch64-macos
 
 Binary: `zig-out/bin/jmcl-core` (single file, no runtime dependencies).
 Default paths are CWD-relative (`instances/`, `.minecraft`, `.jmclcore`); the
-GUI should pass absolute `directory`/`store_directory` params everywhere and
-pick one shared `store_directory` so all instances dedupe into one artifact
-store. Honor `HTTP_PROXY`/`HTTPS_PROXY`/`ALL_PROXY` — the core reads them.
+GUI should pass absolute `directory`/`store_directory` params everywhere
+except the account registry (see §6), and pick one shared `store_directory`
+so all instances dedupe into one artifact store. Honor `HTTP_PROXY`/`HTTPS_PROXY`/`ALL_PROXY` — the core reads them.
 
 ## 10. CLI Equivalents (debugging)
 

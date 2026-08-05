@@ -464,7 +464,9 @@ Authentication errors use fixed error codes such as `AUTH_NETWORK_ERROR`,
 
 The account registry stores public profile metadata only and never includes
 refresh tokens or access tokens. `account.microsoft.save`, `.list`, `.get`, and
-`.delete` manage those records. The caller owns durable credentials through a
+`.delete` manage those records. Their optional `directory` (default
+`accounts`) must be a single CWD-relative directory name; absolute paths and
+path separators are rejected. The caller owns durable credentials through a
 platform secret store. See `docs/accounts.md` for the record format and refresh
 workflow.
 
