@@ -7,6 +7,7 @@ const hard_link = @import("../install/hard_link.zig");
 const install_plan = @import("../install/plan.zig");
 const installer = @import("../install/installer.zig");
 const java_runtime = @import("../install/java_runtime.zig");
+const runtime_installer = @import("../install/runtime_installer.zig");
 const launch_plan = @import("plan.zig");
 const preparer = @import("../install/preparer.zig");
 
@@ -21,6 +22,9 @@ pub const Input = struct {
     source: DownloadSource = .official,
     arch: ?install_plan.Architecture = null,
     java_paths: []const []const u8 = &.{},
+    java_policy: Service.JavaPolicy = .auto,
+    java_override: ?[]const u8 = null,
+    store_directory: []const u8 = @import("../install/artifact_store.zig").default_directory,
 };
 
 pub const StartedEvent = struct {
@@ -31,6 +35,7 @@ pub const StartedEvent = struct {
 pub const Event = union(enum) {
     started: StartedEvent,
     log: game_process.LogEvent,
+    runtime: runtime_installer.Event,
 };
 
 pub const Reporter = struct {
@@ -64,8 +69,11 @@ pub const ExecuteError = error{
     EnvironmentUnavailable,
     JavaNotFound,
     JavaIncompatible,
+    JavaDownloadFailed,
     LaunchPlanFailed,
     ProcessFailed,
+    OutOfMemory,
+    Canceled,
 };
 
 const GameReporter = struct {
@@ -81,6 +89,15 @@ const GameReporter = struct {
             } }),
             .log => |log| context.reporter.emit(.{ .log = log }),
         }
+    }
+};
+
+const RuntimeReporter = struct {
+    reporter: Reporter,
+
+    fn callback(raw_context: *anyopaque, event: runtime_installer.Event) void {
+        const context: *RuntimeReporter = @ptrCast(@alignCast(raw_context));
+        context.reporter.emit(.{ .runtime = event });
     }
 };
 
@@ -131,14 +148,31 @@ pub fn execute(service: *Service, input: Input, reporter: Reporter) ExecuteError
 
     const required_major = java_runtime.requiredMajor(metadata_value.*) catch return error.InvalidMetadata;
     const environment = service.environ_map orelse return error.EnvironmentUnavailable;
-    var detection = java_runtime.detect(
-        service.allocator,
-        service.io,
-        environment,
-        input.java_paths,
-    ) catch return error.JavaNotFound;
-    defer detection.deinit();
-    const runtime = java_runtime.selectCompatible(detection, required_major, target.arch) catch return error.JavaIncompatible;
+    var runtime_reporter_context: RuntimeReporter = .{ .reporter = reporter };
+    const runtime_reporter: ?runtime_installer.Reporter = .{
+        .context = &runtime_reporter_context,
+        .callback = RuntimeReporter.callback,
+    };
+    var java = service.resolveGameJava(.{
+        .required_major = required_major,
+        .component = if (metadata_value.javaVersion) |requirement| requirement.component else null,
+        .arch = target.arch,
+        .policy = input.java_policy,
+        .java_paths = input.java_paths,
+        .java_override = input.java_override,
+        .store_directory = input.store_directory,
+        .allow_download = true,
+    }, runtime_reporter) catch |err| switch (err) {
+        error.InvalidInput => return error.InvalidInput,
+        error.EnvironmentUnavailable => return error.EnvironmentUnavailable,
+        error.JavaNotFound => return error.JavaNotFound,
+        error.JavaIncompatible => return error.JavaIncompatible,
+        error.JavaDownloadFailed => return error.JavaDownloadFailed,
+        error.OutOfMemory => return error.OutOfMemory,
+        error.Canceled => return error.Canceled,
+    };
+    defer java.deinit();
+    const runtime = java.runtime;
     var launch = launch_plan.build(service.allocator, .{
         .metadata = metadata_value.*,
         .install = install.value,
@@ -148,6 +182,7 @@ pub fn execute(service: *Service, input: Input, reporter: Reporter) ExecuteError
         .natives_directory = native_absolute,
         .auth = input.auth,
         .options = input.options,
+        .force_java = java.forced(),
     }) catch return error.LaunchPlanFailed;
     defer launch.deinit();
 
@@ -188,6 +223,7 @@ test "started adapter includes only redacted arguments" {
                     context.seen = std.mem.eql(u8, started.redacted_argv[1], "<redacted>");
                 },
                 .log => {},
+                .runtime => {},
             }
         }
     };

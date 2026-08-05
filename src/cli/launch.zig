@@ -24,6 +24,9 @@ const LaunchExecuteCliOptions = struct {
     source: jmcl.DownloadSource = .official,
     arch: ?jmcl.install_plan.Architecture = null,
     java_paths: std.ArrayList([]const u8) = .empty,
+    java_policy: jmcl.Service.JavaPolicy = .auto,
+    java_override: ?[]const u8 = null,
+    store_directory: []const u8 = jmcl.artifact_store.default_directory,
 
     fn deinit(options: *LaunchExecuteCliOptions, allocator: std.mem.Allocator) void {
         options.java_paths.deinit(allocator);
@@ -62,6 +65,32 @@ const CliGameReporter = struct {
                     context.output_failed = true;
                 };
             },
+            .runtime => |runtime_event| {
+                switch (runtime_event) {
+                    .stage => |stage| context.stderr.print("java runtime stage: {s}\n", .{@tagName(stage)}) catch {
+                        context.output_failed = true;
+                        return;
+                    },
+                    .retry => |retry| context.stderr.print(
+                        "java runtime retry {d}/{d}: {s} ({s})\n",
+                        .{ retry.attempt, retry.max_attempts, retry.path, retry.error_name },
+                    ) catch {
+                        context.output_failed = true;
+                        return;
+                    },
+                    .progress => |progress| context.stderr.print(
+                        "java runtime download: {d}/{d} bytes\n",
+                        .{ progress.bytes_processed, progress.bytes_total },
+                    ) catch {
+                        context.output_failed = true;
+                        return;
+                    },
+                    .file => {},
+                }
+                context.stderr.flush() catch {
+                    context.output_failed = true;
+                };
+            },
         }
     }
 };
@@ -88,6 +117,9 @@ fn runLaunchExecute(
         options.source,
         options.arch,
         options.java_paths.items,
+        options.java_policy,
+        options.java_override,
+        options.store_directory,
         stdout,
         stderr,
     );
@@ -104,6 +136,9 @@ pub fn executeLaunch(
     source: jmcl.DownloadSource,
     arch: ?jmcl.install_plan.Architecture,
     java_paths: []const []const u8,
+    java_policy: jmcl.Service.JavaPolicy,
+    java_override: ?[]const u8,
+    store_directory: []const u8,
     stdout: *std.Io.Writer,
     stderr: *std.Io.Writer,
 ) !u8 {
@@ -126,6 +161,9 @@ pub fn executeLaunch(
             .source = source,
             .arch = arch,
             .java_paths = java_paths,
+            .java_policy = java_policy,
+            .java_override = java_override,
+            .store_directory = store_directory,
         },
         .{ .context = &reporter_context, .callback = CliGameReporter.callback },
     ) catch |err| {
@@ -166,12 +204,19 @@ fn parseLaunchExecuteOptions(allocator: std.mem.Allocator, args: []const []const
             options.arch = jmcl.install_plan.Architecture.parse(value) orelse return error.InvalidArguments;
         } else if (std.mem.eql(u8, argument, "--java")) {
             try options.java_paths.append(allocator, value);
+        } else if (std.mem.eql(u8, argument, "--java-policy")) {
+            options.java_policy = jmcl.Service.JavaPolicy.parse(value) orelse return error.InvalidArguments;
+        } else if (std.mem.eql(u8, argument, "--java-override")) {
+            options.java_override = value;
+        } else if (std.mem.eql(u8, argument, "--store")) {
+            options.store_directory = value;
         } else {
             return error.InvalidArguments;
         }
         index += 2;
     }
     if (options.offline_name == null) return error.InvalidArguments;
+    if (options.java_override != null and options.java_paths.items.len != 0) return error.InvalidArguments;
     return options;
 }
 

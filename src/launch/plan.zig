@@ -39,6 +39,7 @@ pub const Input = struct {
     natives_directory: []const u8,
     auth: Auth,
     options: Options = .{},
+    force_java: bool = false,
 };
 
 pub const Data = struct {
@@ -114,9 +115,11 @@ pub fn build(allocator: std.mem.Allocator, input: Input) !Plan {
         return error.InvalidAuthSession;
     }
     const required_major = try java_runtime.requiredMajor(input.metadata);
-    if (input.runtime.major_version != required_major) return error.JavaVersionIncompatible;
-    if (input.runtime.architecture == null or input.runtime.architecture.? != input.install.target.arch) {
-        return error.JavaArchitectureIncompatible;
+    if (!input.force_java) {
+        if (input.runtime.major_version != required_major) return error.JavaVersionIncompatible;
+        if (input.runtime.architecture == null or input.runtime.architecture.? != input.install.target.arch) {
+            return error.JavaArchitectureIncompatible;
+        }
     }
 
     const arena = try allocator.create(std.heap.ArenaAllocator);

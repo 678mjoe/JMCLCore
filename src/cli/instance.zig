@@ -296,6 +296,7 @@ const InstanceInstallOptions = struct {
     workers: u8 = 8,
     retries: u8 = 2,
     java_paths: std.ArrayList([]const u8) = .empty,
+    java_policy: jmcl.Service.JavaPolicy = .auto,
 
     fn deinit(options: *InstanceInstallOptions, allocator: std.mem.Allocator) void {
         options.java_paths.deinit(allocator);
@@ -339,6 +340,7 @@ fn runInstanceInstall(
         options.workers,
         options.retries,
         options.java_paths.items,
+        options.java_policy,
         stdout,
         stderr,
     );
@@ -372,6 +374,8 @@ fn parseInstanceInstallOptions(allocator: std.mem.Allocator, args: []const []con
             if (options.retries > 5) return error.InvalidArguments;
         } else if (std.mem.eql(u8, argument, "--java")) {
             try options.java_paths.append(allocator, value);
+        } else if (std.mem.eql(u8, argument, "--java-policy")) {
+            options.java_policy = jmcl.Service.JavaPolicy.parse(value) orelse return error.InvalidArguments;
         } else return error.InvalidArguments;
         index += 2;
     }
@@ -381,9 +385,12 @@ fn parseInstanceInstallOptions(allocator: std.mem.Allocator, args: []const []con
 const InstanceLaunchOptions = struct {
     id: []const u8,
     instances_directory: []const u8 = jmcl.instance_store.default_root,
+    store_directory: []const u8 = jmcl.artifact_store.default_directory,
     offline_name: ?[]const u8 = null,
     arch: ?jmcl.install_plan.Architecture = null,
     java_paths: std.ArrayList([]const u8) = .empty,
+    java_policy: jmcl.Service.JavaPolicy = .auto,
+    java_override: ?[]const u8 = null,
 
     fn deinit(options: *InstanceLaunchOptions, allocator: std.mem.Allocator) void {
         options.java_paths.deinit(allocator);
@@ -424,6 +431,9 @@ fn runInstanceLaunch(
         document.value.source,
         options.arch,
         options.java_paths.items,
+        options.java_policy,
+        options.java_override,
+        options.store_directory,
         stdout,
         stderr,
     );
@@ -441,16 +451,23 @@ fn parseInstanceLaunchOptions(allocator: std.mem.Allocator, args: []const []cons
         const value = args[index + 1];
         if (std.mem.eql(u8, argument, "--instances-directory")) {
             options.instances_directory = value;
+        } else if (std.mem.eql(u8, argument, "--store-directory")) {
+            options.store_directory = value;
         } else if (std.mem.eql(u8, argument, "--offline-name")) {
             options.offline_name = value;
         } else if (std.mem.eql(u8, argument, "--arch")) {
             options.arch = jmcl.install_plan.Architecture.parse(value) orelse return error.InvalidArguments;
         } else if (std.mem.eql(u8, argument, "--java")) {
             try options.java_paths.append(allocator, value);
+        } else if (std.mem.eql(u8, argument, "--java-policy")) {
+            options.java_policy = jmcl.Service.JavaPolicy.parse(value) orelse return error.InvalidArguments;
+        } else if (std.mem.eql(u8, argument, "--java-override")) {
+            options.java_override = value;
         } else return error.InvalidArguments;
         index += 2;
     }
     if (options.offline_name == null) return error.InvalidArguments;
+    if (options.java_override != null and options.java_paths.items.len != 0) return error.InvalidArguments;
     return options;
 }
 

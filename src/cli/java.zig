@@ -235,14 +235,14 @@ const JavaRuntimeCliOptions = struct {
     json: bool = false,
 };
 
-const CliRuntimeReporter = struct {
+pub const CliRuntimeReporter = struct {
     mutex: std.Io.Mutex = .init,
     io: std.Io,
     writer: *std.Io.Writer,
     output_failed: bool = false,
     last_percent: u64 = 0,
 
-    fn callback(raw_context: *anyopaque, event: jmcl.runtime_installer.Event) void {
+    pub fn callback(raw_context: *anyopaque, event: jmcl.runtime_installer.Event) void {
         const context: *CliRuntimeReporter = @ptrCast(@alignCast(raw_context));
         context.mutex.lockUncancelable(context.io);
         defer context.mutex.unlock(context.io);

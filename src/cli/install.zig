@@ -1,6 +1,7 @@
 const std = @import("std");
 const jmcl = @import("jmcl_core");
 const common = @import("common.zig");
+const cli_java = @import("java.zig");
 
 pub fn run(
     service: *jmcl.Service,
@@ -130,6 +131,7 @@ const InstallExecuteCliOptions = struct {
     arch: ?jmcl.install_plan.Architecture = null,
     workers: u8 = 8,
     retries: u8 = 2,
+    java_policy: jmcl.Service.JavaPolicy = .auto,
 };
 
 pub const CliInstallReporter = struct {
@@ -227,6 +229,7 @@ fn runInstallExecute(
         options.workers,
         options.retries,
         &.{},
+        options.java_policy,
         stdout,
         stderr,
     );
@@ -246,6 +249,7 @@ pub fn executeInstall(
     workers: u8,
     retries: u8,
     java_paths: []const []const u8,
+    java_policy: jmcl.Service.JavaPolicy,
     stdout: *std.Io.Writer,
     stderr: *std.Io.Writer,
 ) !u8 {
@@ -302,6 +306,31 @@ pub fn executeInstall(
     };
     if (reporter_context.output_failed) return error.WriteFailed;
 
+    var processor_java_paths: []const []const u8 = java_paths;
+    var processor_java: ?jmcl.Service.GameJava = null;
+    defer if (processor_java) |*resolved| resolved.deinit();
+    if (plan.value.loader == .neoforge or plan.value.loader == .forge) {
+        var runtime_reporter_context: cli_java.CliRuntimeReporter = .{
+            .io = service.io,
+            .writer = stderr,
+        };
+        processor_java = service.resolveGameJava(.{
+            .required_major = plan.value.java_major_version,
+            .arch = target.arch,
+            .policy = java_policy,
+            .java_paths = java_paths,
+            .store_directory = store_directory,
+            .allow_download = true,
+        }, .{
+            .context = &runtime_reporter_context,
+            .callback = cli_java.CliRuntimeReporter.callback,
+        }) catch |err| {
+            try stderr.print("processor Java resolution failed: {s}\n", .{@errorName(err)});
+            return 1;
+        };
+        processor_java_paths = &.{processor_java.?.runtime.executable};
+    }
+
     if (plan.value.loader == .neoforge) {
         const loader_version = neoforge_version.?;
         var processor_reporter: CliProcessorReporter = .{ .writer = stderr };
@@ -314,7 +343,7 @@ pub fn executeInstall(
             loader_version,
             plan.value.version_id,
             .{
-                .java_paths = java_paths,
+                .java_paths = processor_java_paths,
                 .required_major = plan.value.java_major_version,
             },
             .{ .context = &processor_reporter, .callback = CliProcessorReporter.callback },
@@ -339,7 +368,7 @@ pub fn executeInstall(
             loader_version,
             plan.value.version_id,
             .{
-                .java_paths = java_paths,
+                .java_paths = processor_java_paths,
                 .required_major = plan.value.java_major_version,
             },
             .{ .context = &processor_reporter, .callback = CliProcessorReporter.callback },
@@ -414,6 +443,8 @@ fn parseInstallExecuteOptions(args: []const []const u8) !InstallExecuteCliOption
         } else if (std.mem.eql(u8, argument, "--retries")) {
             options.retries = std.fmt.parseInt(u8, value, 10) catch return error.InvalidArguments;
             if (options.retries > 5) return error.InvalidArguments;
+        } else if (std.mem.eql(u8, argument, "--java-policy")) {
+            options.java_policy = jmcl.Service.JavaPolicy.parse(value) orelse return error.InvalidArguments;
         } else {
             return error.InvalidArguments;
         }

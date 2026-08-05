@@ -247,14 +247,14 @@ pub fn writeRuntimeListResult(
     try writer.writeByte('\n');
 }
 
-const ProtocolRuntimeReporter = struct {
+pub const ProtocolRuntimeReporter = struct {
     mutex: std.Io.Mutex = .init,
     io: std.Io,
     writer: *std.Io.Writer,
     request_id: []const u8,
     output_failed: bool = false,
 
-    fn callback(raw_context: *anyopaque, event: core.runtime_installer.Event) void {
+    pub fn callback(raw_context: *anyopaque, event: core.runtime_installer.Event) void {
         const context: *ProtocolRuntimeReporter = @ptrCast(@alignCast(raw_context));
         context.mutex.lockUncancelable(context.io);
         defer context.mutex.unlock(context.io);
@@ -269,7 +269,7 @@ const ProtocolRuntimeReporter = struct {
     }
 };
 
-fn writeRuntimeEvent(
+pub fn writeRuntimeEvent(
     writer: *std.Io.Writer,
     request_id: []const u8,
     event: core.runtime_installer.Event,

@@ -5,6 +5,7 @@ const protocol = @import("protocol.zig");
 const writeError = protocol.writeError;
 const writeEventHeader = protocol.writeEventHeader;
 const writeSourceField = protocol.writeSourceField;
+const java = @import("java.zig");
 
 const LaunchPlanParams = struct {
     id: []const u8,
@@ -18,6 +19,9 @@ const LaunchPlanParams = struct {
     source: core.DownloadSource = .official,
     arch: ?core.install_plan.Architecture = null,
     java_paths: []const []const u8 = &.{},
+    java_policy: []const u8 = "auto",
+    java_override: ?[]const u8 = null,
+    store_directory: []const u8 = core.artifact_store.default_directory,
 };
 
 const LaunchExecuteParams = struct {
@@ -31,6 +35,9 @@ const LaunchExecuteParams = struct {
     source: core.DownloadSource = .official,
     arch: ?core.install_plan.Architecture = null,
     java_paths: []const []const u8 = &.{},
+    java_policy: []const u8 = "auto",
+    java_override: ?[]const u8 = null,
+    store_directory: []const u8 = core.artifact_store.default_directory,
 };
 
 const ProtocolGameReporter = struct {
@@ -89,9 +96,25 @@ fn writeGameEvent(context: *ProtocolGameReporter, event: core.launch_executor.Ev
             try json.write(std.base64.standard.Encoder.encode(&encoded, log.bytes));
             try json.endObject();
         },
+        .runtime => |runtime_event| {
+            try java.writeRuntimeEvent(context.writer, context.request_id, runtime_event);
+            return;
+        },
     }
     try json.endObject();
     try context.writer.writeByte('\n');
+}
+
+fn parseJavaPolicy(
+    writer: *std.Io.Writer,
+    request_id: []const u8,
+    value: []const u8,
+) std.Io.Writer.Error!?core.Service.JavaPolicy {
+    const policy = core.Service.JavaPolicy.parse(value) orelse {
+        try writeError(writer, request_id, "INVALID_PARAMS", "java_policy must be auto, local, or managed");
+        return null;
+    };
+    return policy;
 }
 
 pub fn writeExecuteResult(
@@ -118,6 +141,11 @@ pub fn writeExecuteResult(
         try writeError(writer, request_id, "INVALID_PARAMS", "launch.execute directory, version, and access token are invalid");
         return;
     }
+    const policy = (try parseJavaPolicy(writer, request_id, input.java_policy)) orelse return;
+    if (input.java_override != null and input.java_paths.len != 0) {
+        try writeError(writer, request_id, "INVALID_PARAMS", "java_override is mutually exclusive with java_paths");
+        return;
+    }
 
     var reporter_context: ProtocolGameReporter = .{
         .writer = writer,
@@ -138,6 +166,9 @@ pub fn writeExecuteResult(
             .source = input.source,
             .arch = input.arch,
             .java_paths = input.java_paths,
+            .java_policy = policy,
+            .java_override = input.java_override,
+            .store_directory = input.store_directory,
         },
         .{ .context = &reporter_context, .callback = ProtocolGameReporter.callback },
     ) catch |err| {
@@ -153,6 +184,7 @@ pub fn writeExecuteResult(
             error.EnvironmentUnavailable => try writeError(writer, request_id, "ENVIRONMENT_UNAVAILABLE", "Process environment is unavailable"),
             error.JavaNotFound => try writeError(writer, request_id, "JAVA_NOT_FOUND", "No Java executable candidates were found"),
             error.JavaIncompatible => try writeError(writer, request_id, "JAVA_INCOMPATIBLE", "No Java runtime matches the required version and architecture"),
+            error.JavaDownloadFailed => try writeError(writer, request_id, "JAVA_DOWNLOAD_FAILED", "The managed Java runtime download failed"),
             error.LaunchPlanFailed => try writeError(writer, request_id, "LAUNCH_PLAN_ERROR", "Failed to generate launch arguments"),
             error.ProcessFailed => try writeError(writer, request_id, "PROCESS_ERROR", "Failed to start or supervise the game process"),
             else => try writeError(writer, request_id, "LAUNCH_ERROR", "Failed to execute the game launch"),
@@ -199,6 +231,11 @@ pub fn writePlanResult(
     const input = params.value;
     if (input.id.len == 0 or input.directory.len == 0 or input.natives_directory.len == 0) {
         try writeError(writer, request_id, "INVALID_PARAMS", "launch.plan paths and version id must not be empty");
+        return;
+    }
+    const policy = (try parseJavaPolicy(writer, request_id, input.java_policy)) orelse return;
+    if (input.java_override != null and input.java_paths.len != 0) {
+        try writeError(writer, request_id, "INVALID_PARAMS", "java_override is mutually exclusive with java_paths");
         return;
     }
 
@@ -250,23 +287,27 @@ pub fn writePlanResult(
         try writeError(writer, request_id, "INVALID_METADATA", "Version metadata contains an invalid Java requirement");
         return;
     };
-    var detection = core.java_runtime.detect(
-        service.allocator,
-        service.io,
-        service.environ_map orelse {
-            try writeError(writer, request_id, "ENVIRONMENT_UNAVAILABLE", "Process environment is unavailable");
-            return;
-        },
-        input.java_paths,
-    ) catch {
-        try writeError(writer, request_id, "JAVA_NOT_FOUND", "No Java executable candidates were found");
+    var resolved_java = service.resolveGameJava(.{
+        .required_major = required_major,
+        .component = if (metadata_value.javaVersion) |requirement| requirement.component else null,
+        .arch = target.arch,
+        .policy = policy,
+        .java_paths = input.java_paths,
+        .java_override = input.java_override,
+        .store_directory = input.store_directory,
+        .allow_download = false,
+    }, null) catch |err| {
+        switch (err) {
+            error.InvalidInput => try writeError(writer, request_id, "INVALID_PARAMS", "launch.plan Java parameters are invalid"),
+            error.EnvironmentUnavailable => try writeError(writer, request_id, "ENVIRONMENT_UNAVAILABLE", "Process environment is unavailable"),
+            error.JavaNotFound => try writeError(writer, request_id, "JAVA_NOT_FOUND", "No Java executable candidates were found"),
+            error.JavaIncompatible => try writeError(writer, request_id, "JAVA_INCOMPATIBLE", "No Java runtime matches the required version and architecture"),
+            else => try writeError(writer, request_id, "JAVA_INCOMPATIBLE", "No Java runtime matches the required version and architecture"),
+        }
         return;
     };
-    defer detection.deinit();
-    const runtime = core.java_runtime.selectCompatible(detection, required_major, target.arch) catch {
-        try writeError(writer, request_id, "JAVA_INCOMPATIBLE", "No Java runtime matches the required version and architecture");
-        return;
-    };
+    defer resolved_java.deinit();
+    const runtime = resolved_java.runtime;
 
     var launch = core.launch_plan.build(service.allocator, .{
         .metadata = metadata_value.*,
@@ -277,9 +318,11 @@ pub fn writePlanResult(
         .natives_directory = input.natives_directory,
         .auth = input.auth,
         .options = input.options,
+        .force_java = resolved_java.forced(),
     }) catch |err| {
         switch (err) {
             error.InvalidAuthSession => try writeError(writer, request_id, "INVALID_AUTH", "Authentication fields must not be empty"),
+            error.JavaVersionIncompatible, error.JavaArchitectureIncompatible => try writeError(writer, request_id, "JAVA_INCOMPATIBLE", "The selected Java runtime does not match the required version and architecture"),
             error.UnknownPlaceholder, error.UnsupportedRulePattern => try writeError(writer, request_id, "UNSUPPORTED_METADATA", "Version metadata contains an unsupported launch expression"),
             else => try writeError(writer, request_id, "LAUNCH_PLAN_ERROR", "Failed to generate launch arguments"),
         }
@@ -298,6 +341,10 @@ pub fn writePlanResult(
     try json.write(required_major);
     try json.objectField("runtime");
     try json.write(runtime);
+    try json.objectField("java_source");
+    try json.write(@tagName(resolved_java.source));
+    try json.objectField("forced");
+    try json.write(resolved_java.forced());
     try json.objectField("launch");
     try writeLaunchSummary(&json, launch.value);
     try json.endObject();

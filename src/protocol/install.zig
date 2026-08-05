@@ -5,6 +5,7 @@ const protocol = @import("protocol.zig");
 const writeError = protocol.writeError;
 const writeEventHeader = protocol.writeEventHeader;
 const writeSourceField = protocol.writeSourceField;
+const java = @import("java.zig");
 
 const InstallPlanParams = struct {
     id: []const u8,
@@ -22,6 +23,7 @@ const InstallExecuteParams = struct {
     neoforge_version: ?[]const u8 = null,
     forge_version: ?[]const u8 = null,
     java_paths: []const []const u8 = &.{},
+    java_policy: []const u8 = "auto",
     directory: []const u8 = ".minecraft",
     store_directory: []const u8 = core.artifact_store.default_directory,
     source: core.DownloadSource = .official,
@@ -176,6 +178,10 @@ pub fn writeExecuteResult(
         try writeError(writer, request_id, "INVALID_PARAMS", "install.execute parameters are out of range");
         return;
     }
+    const java_policy = core.Service.JavaPolicy.parse(params.value.java_policy) orelse {
+        try writeError(writer, request_id, "INVALID_PARAMS", "java_policy must be auto, local, or managed");
+        return;
+    };
 
     const host = core.install_plan.Target.host() catch {
         try writeError(writer, request_id, "UNSUPPORTED_PLATFORM", "The host platform is not supported");
@@ -244,6 +250,39 @@ pub fn writeExecuteResult(
         .context = &processor_reporter_context,
         .callback = ProtocolProcessorReporter.callback,
     };
+    var processor_java_paths: []const []const u8 = params.value.java_paths;
+    var processor_java: ?core.Service.GameJava = null;
+    defer if (processor_java) |*resolved| resolved.deinit();
+    if (plan.value.loader == .neoforge or plan.value.loader == .forge) {
+        var runtime_reporter_context: java.ProtocolRuntimeReporter = .{
+            .io = service.io,
+            .writer = writer,
+            .request_id = request_id,
+        };
+        processor_java = service.resolveGameJava(.{
+            .required_major = plan.value.java_major_version,
+            .arch = target.arch,
+            .policy = java_policy,
+            .java_paths = params.value.java_paths,
+            .store_directory = params.value.store_directory,
+            .allow_download = true,
+        }, .{
+            .context = &runtime_reporter_context,
+            .callback = java.ProtocolRuntimeReporter.callback,
+        }) catch |err| {
+            if (runtime_reporter_context.output_failed) return error.WriteFailed;
+            switch (err) {
+                error.EnvironmentUnavailable => try writeError(writer, request_id, "ENVIRONMENT_UNAVAILABLE", "Process environment is unavailable"),
+                error.JavaNotFound => try writeError(writer, request_id, "JAVA_NOT_FOUND", "No Java executable candidates were found"),
+                error.JavaIncompatible => try writeError(writer, request_id, "JAVA_INCOMPATIBLE", "No Java runtime is available for the processor chain"),
+                error.JavaDownloadFailed => try writeError(writer, request_id, "JAVA_DOWNLOAD_FAILED", "The managed Java runtime download failed"),
+                else => try writeError(writer, request_id, "JAVA_INCOMPATIBLE", "No Java runtime is available for the processor chain"),
+            }
+            return;
+        };
+        if (runtime_reporter_context.output_failed) return error.WriteFailed;
+        processor_java_paths = &.{processor_java.?.runtime.executable};
+    }
     if (plan.value.loader == .neoforge) {
         const loader_version = params.value.neoforge_version.?;
         const patched = core.neoforge_executor.run(
@@ -255,7 +294,7 @@ pub fn writeExecuteResult(
             loader_version,
             plan.value.version_id,
             .{
-                .java_paths = params.value.java_paths,
+                .java_paths = processor_java_paths,
                 .required_major = plan.value.java_major_version,
             },
             processor_reporter,
@@ -285,7 +324,7 @@ pub fn writeExecuteResult(
             loader_version,
             plan.value.version_id,
             .{
-                .java_paths = params.value.java_paths,
+                .java_paths = processor_java_paths,
                 .required_major = plan.value.java_major_version,
             },
             processor_reporter,
