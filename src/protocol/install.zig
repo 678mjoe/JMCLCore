@@ -178,7 +178,7 @@ pub fn writeExecuteResult(
         try writeError(writer, request_id, "INVALID_PARAMS", "install.execute parameters are out of range");
         return;
     }
-    const java_policy = core.Service.JavaPolicy.parse(params.value.java_policy) orelse {
+    const java_policy = core.java_managed.Policy.parse(params.value.java_policy) orelse {
         try writeError(writer, request_id, "INVALID_PARAMS", "java_policy must be auto, local, or managed");
         return;
     };
@@ -251,7 +251,7 @@ pub fn writeExecuteResult(
         .callback = ProtocolProcessorReporter.callback,
     };
     var processor_java_paths: []const []const u8 = params.value.java_paths;
-    var processor_java: ?core.Service.GameJava = null;
+    var processor_java: ?core.java_managed.Result = null;
     defer if (processor_java) |*resolved| resolved.deinit();
     if (plan.value.loader == .neoforge or plan.value.loader == .forge) {
         var runtime_reporter_context: java.ProtocolRuntimeReporter = .{

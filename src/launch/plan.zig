@@ -1,6 +1,6 @@
 const std = @import("std");
 const install_plan = @import("../install/plan.zig");
-const java_runtime = @import("../install/java_runtime.zig");
+const java_runtime = @import("../java/java_runtime.zig");
 const metadata = @import("../install/version_metadata.zig");
 
 pub const Auth = struct {

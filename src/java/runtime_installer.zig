@@ -1,9 +1,9 @@
 const std = @import("std");
 const builtin = @import("builtin");
-const installer = @import("installer.zig");
+const installer = @import("../install/installer.zig");
 const java_runtime = @import("java_runtime.zig");
 const store = @import("java_runtime_store.zig");
-const https_fallback = @import("https_fallback.zig");
+const https_fallback = @import("../install/https_fallback.zig");
 
 const Sha1 = std.crypto.hash.Sha1;
 const Sha256 = std.crypto.hash.sha2.Sha256;

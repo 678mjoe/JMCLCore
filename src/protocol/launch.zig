@@ -109,8 +109,8 @@ fn parseJavaPolicy(
     writer: *std.Io.Writer,
     request_id: []const u8,
     value: []const u8,
-) std.Io.Writer.Error!?core.Service.JavaPolicy {
-    const policy = core.Service.JavaPolicy.parse(value) orelse {
+) std.Io.Writer.Error!?core.java_managed.Policy {
+    const policy = core.java_managed.Policy.parse(value) orelse {
         try writeError(writer, request_id, "INVALID_PARAMS", "java_policy must be auto, local, or managed");
         return null;
     };

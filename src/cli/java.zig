@@ -228,7 +228,7 @@ const JavaRuntimeCliOptions = struct {
     store_directory: []const u8 = jmcl.artifact_store.default_directory,
     component: ?[]const u8 = null,
     major: ?u16 = null,
-    provider: jmcl.Service.ManagedProviderChoice = .auto,
+    provider: jmcl.java_managed.ProviderChoice = .auto,
     platform: ?[]const u8 = null,
     workers: u8 = 8,
     retries: u8 = 2,
@@ -429,7 +429,7 @@ fn runJavaRuntimeInstall(
                 return 2;
             }
         } else if (std.mem.eql(u8, argument, "--provider")) {
-            options.provider = jmcl.Service.ManagedProviderChoice.parse(value) orelse {
+            options.provider = jmcl.java_managed.ProviderChoice.parse(value) orelse {
                 try stderr.writeAll("provider must be auto, mojang, or zulu\n");
                 return 2;
             };

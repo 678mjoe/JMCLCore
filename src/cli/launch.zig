@@ -24,7 +24,7 @@ const LaunchExecuteCliOptions = struct {
     source: jmcl.DownloadSource = .official,
     arch: ?jmcl.install_plan.Architecture = null,
     java_paths: std.ArrayList([]const u8) = .empty,
-    java_policy: jmcl.Service.JavaPolicy = .auto,
+    java_policy: jmcl.java_managed.Policy = .auto,
     java_override: ?[]const u8 = null,
     store_directory: []const u8 = jmcl.artifact_store.default_directory,
 
@@ -136,7 +136,7 @@ pub fn executeLaunch(
     source: jmcl.DownloadSource,
     arch: ?jmcl.install_plan.Architecture,
     java_paths: []const []const u8,
-    java_policy: jmcl.Service.JavaPolicy,
+    java_policy: jmcl.java_managed.Policy,
     java_override: ?[]const u8,
     store_directory: []const u8,
     stdout: *std.Io.Writer,
@@ -205,7 +205,7 @@ fn parseLaunchExecuteOptions(allocator: std.mem.Allocator, args: []const []const
         } else if (std.mem.eql(u8, argument, "--java")) {
             try options.java_paths.append(allocator, value);
         } else if (std.mem.eql(u8, argument, "--java-policy")) {
-            options.java_policy = jmcl.Service.JavaPolicy.parse(value) orelse return error.InvalidArguments;
+            options.java_policy = jmcl.java_managed.Policy.parse(value) orelse return error.InvalidArguments;
         } else if (std.mem.eql(u8, argument, "--java-override")) {
             options.java_override = value;
         } else if (std.mem.eql(u8, argument, "--store")) {

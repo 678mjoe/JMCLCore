@@ -1,7 +1,7 @@
 const std = @import("std");
 const builtin = @import("builtin");
-const install_plan = @import("plan.zig");
-const version_metadata = @import("version_metadata.zig");
+const install_plan = @import("../install/plan.zig");
+const version_metadata = @import("../install/version_metadata.zig");
 
 const max_probe_output = 256 * 1024;
 

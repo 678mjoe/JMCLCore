@@ -296,7 +296,7 @@ const InstanceInstallOptions = struct {
     workers: u8 = 8,
     retries: u8 = 2,
     java_paths: std.ArrayList([]const u8) = .empty,
-    java_policy: jmcl.Service.JavaPolicy = .auto,
+    java_policy: jmcl.java_managed.Policy = .auto,
 
     fn deinit(options: *InstanceInstallOptions, allocator: std.mem.Allocator) void {
         options.java_paths.deinit(allocator);
@@ -375,7 +375,7 @@ fn parseInstanceInstallOptions(allocator: std.mem.Allocator, args: []const []con
         } else if (std.mem.eql(u8, argument, "--java")) {
             try options.java_paths.append(allocator, value);
         } else if (std.mem.eql(u8, argument, "--java-policy")) {
-            options.java_policy = jmcl.Service.JavaPolicy.parse(value) orelse return error.InvalidArguments;
+            options.java_policy = jmcl.java_managed.Policy.parse(value) orelse return error.InvalidArguments;
         } else return error.InvalidArguments;
         index += 2;
     }
@@ -389,7 +389,7 @@ const InstanceLaunchOptions = struct {
     offline_name: ?[]const u8 = null,
     arch: ?jmcl.install_plan.Architecture = null,
     java_paths: std.ArrayList([]const u8) = .empty,
-    java_policy: jmcl.Service.JavaPolicy = .auto,
+    java_policy: jmcl.java_managed.Policy = .auto,
     java_override: ?[]const u8 = null,
 
     fn deinit(options: *InstanceLaunchOptions, allocator: std.mem.Allocator) void {
@@ -460,7 +460,7 @@ fn parseInstanceLaunchOptions(allocator: std.mem.Allocator, args: []const []cons
         } else if (std.mem.eql(u8, argument, "--java")) {
             try options.java_paths.append(allocator, value);
         } else if (std.mem.eql(u8, argument, "--java-policy")) {
-            options.java_policy = jmcl.Service.JavaPolicy.parse(value) orelse return error.InvalidArguments;
+            options.java_policy = jmcl.java_managed.Policy.parse(value) orelse return error.InvalidArguments;
         } else if (std.mem.eql(u8, argument, "--java-override")) {
             options.java_override = value;
         } else return error.InvalidArguments;

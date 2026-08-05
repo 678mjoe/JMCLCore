@@ -6,8 +6,9 @@ const game_process = @import("process.zig");
 const hard_link = @import("../install/hard_link.zig");
 const install_plan = @import("../install/plan.zig");
 const installer = @import("../install/installer.zig");
-const java_runtime = @import("../install/java_runtime.zig");
-const runtime_installer = @import("../install/runtime_installer.zig");
+const java_runtime = @import("../java/java_runtime.zig");
+const runtime_installer = @import("../java/runtime_installer.zig");
+const java_managed = @import("../java/managed.zig");
 const launch_plan = @import("plan.zig");
 const preparer = @import("../install/preparer.zig");
 
@@ -22,7 +23,7 @@ pub const Input = struct {
     source: DownloadSource = .official,
     arch: ?install_plan.Architecture = null,
     java_paths: []const []const u8 = &.{},
-    java_policy: Service.JavaPolicy = .auto,
+    java_policy: java_managed.Policy = .auto,
     java_override: ?[]const u8 = null,
     store_directory: []const u8 = @import("../install/artifact_store.zig").default_directory,
 };

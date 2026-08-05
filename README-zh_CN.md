@@ -4,7 +4,7 @@
 
 JMCL Core 是一个使用 Zig 编写的 Minecraft: Java Edition 启动器核心。它被设计为由独立的图形界面通过基于标准输入和标准输出的版本化 JSON Lines RPC 协议进行驱动。
 
-项目目前提供协议和 CLI 基础、Mojang 元数据解析、完整的静态安装、基于内容寻址的硬链接存储、并发且经过校验的下载、安全的原生库解压、旧版资源映射、Java 运行时选择、启动规划，以及受监督的游戏进程执行。项目还提供可配置的 Microsoft 身份验证和不保存凭据的公开账户注册表；多版本 Java 的下载与管理计划在未来实现。
+项目目前提供协议和 CLI 基础、Mojang 元数据解析、完整的静态安装、基于内容寻址的硬链接存储、并发且经过校验的下载、安全的原生库解压、旧版资源映射、支持 Mojang 与 Azul Zulu 托管运行时下载的 Java 运行时选择、启动规划，以及受监督的游戏进程执行。项目还提供可配置的 Microsoft 身份验证和不保存凭据的公开账户注册表。
 
 ## 注意
 
@@ -43,6 +43,10 @@ zig build run -- install prepare 1.6.4 --directory ./.minecraft
 zig build run -- store gc --store-directory ./.jmclcore
 zig build run -- java detect
 zig build run -- java select 26.2
+zig build run -- java runtime list
+zig build run -- java runtime install --component java-runtime-gamma
+zig build run -- java runtime install --major 8
+zig build run -- java runtime remove mojang-java-runtime-gamma-mac-os-arm64
 zig build run -- launch execute 26.1 --directory ./.minecraft --offline-name Player
 zig build run -- instance create vanilla-26.1 --version 26.1 --name "Vanilla 26.1"
 zig build run -- instance create fabric-1.21.1 --version 1.21.1 --fabric-loader 0.16.10 --name "Fabric 1.21.1"
@@ -80,6 +84,8 @@ RPC 模式从标准输入逐行读取 JSON 请求，并将 JSON 事件逐行写�
 {"protocol":1,"id":"request-10","method":"java.select","params":{"id":"26.2"}}
 {"protocol":1,"id":"request-11","method":"launch.plan","params":{"id":"26.2","directory":"./.minecraft","natives_directory":".jmcl/runtime/natives/session-id","auth":{"player_name":"Player","uuid":"uuid","access_token":"secret"}}}
 {"protocol":1,"id":"request-12","method":"launch.execute","params":{"id":"26.2","directory":"./.minecraft","auth":{"player_name":"Player","uuid":"uuid","access_token":"secret"}}}
+{"protocol":1,"id":"request-13","method":"java.runtime.install","params":{"major":17}}
+{"protocol":1,"id":"request-14","method":"java.runtime.list"}
 ```
 
 当省略 `--directory` 或 RPC 的 `directory` 字段时，安装、准备和启动命令默认使用 `./.minecraft`。静态运行时文件、原生库工作目录、日志、选项、存档和资源包均位于这一目录树中。
@@ -89,6 +95,8 @@ RPC 模式从标准输入逐行读取 JSON 请求，并将 JSON 事件逐行写�
 实例默认使用记录在 `instance.json` 中的下载源。向 `instance install` 传递 `--source bmclapi` 可临时覆盖一次镜像源。使用 BMCLAPI 规划时，如果镜像元数据不可用，程序会自动通过 Mojang 重试；静态文件仍优先使用 BMCLAPI，并以官方源作为回退。
 
 经过校验的不可变文件只会在 `./.jmclcore/objects` 下存储一次，并通过硬链接物化到 `.minecraft` 中。使用 `--store-directory PATH` 可选择其他存储位置。跨文件系统放置文件时会自动回退到原子复制。
+
+托管 Java 运行时会从 Mojang 运行时目录下载到制品存储的 `runtimes/` 目录下；对于 Mojang 未提供的平台（例如 macOS arm64 上的 Java 8）会回退到 Azul Zulu。启动和安装命令接受 `--java-policy auto|local|managed`（RPC `java_policy`）来控制本地与托管运行时的优先级，并支持 `--java-override`（RPC `java_override`）强制指定 Java 可执行文件。
 
 默认使用 Mojang 官方服务。中国大陆用户可以传递 `--source bmclapi`，或在 RPC 参数中使用 `"source":"bmclapi"` 来使用 BMCLAPI。BMCLAPI 返回的内容仍会根据 Mojang 提供的 SHA-1 值进行校验。
 
@@ -101,7 +109,7 @@ Linux 服务器管理现已支持独立服务器清单、经过校验的原版�
 安装计划格式见 `docs/install-plan.md`。
 下载执行流程见 `docs/installer.md`。
 运行时准备流程见 `docs/preparer.md`。
-Java 选择见 `docs/java.md`。
+Java 选择与托管运行时见 `docs/java.md`。
 启动参数生成见 `docs/launch.md`。
 实例管理见 `docs/instances.md`。
 Linux 优先的服务器管理功能见 `docs/server.md`。

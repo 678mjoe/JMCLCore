@@ -1,6 +1,6 @@
 const std = @import("std");
 const builtin = @import("builtin");
-const install_plan = @import("plan.zig");
+const install_plan = @import("../install/plan.zig");
 
 pub const directory_name = "runtimes";
 pub const receipt_name = ".jmcl-runtime.json";

@@ -332,7 +332,7 @@ pub fn writeRuntimeInstallResult(
         return;
     };
     defer params.deinit();
-    const provider = core.Service.ManagedProviderChoice.parse(params.value.provider) orelse {
+    const provider = core.java_managed.ProviderChoice.parse(params.value.provider) orelse {
         try writeError(writer, request_id, "INVALID_PARAMS", "provider must be auto, mojang, or zulu");
         return;
     };

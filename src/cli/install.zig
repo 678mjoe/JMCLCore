@@ -131,7 +131,7 @@ const InstallExecuteCliOptions = struct {
     arch: ?jmcl.install_plan.Architecture = null,
     workers: u8 = 8,
     retries: u8 = 2,
-    java_policy: jmcl.Service.JavaPolicy = .auto,
+    java_policy: jmcl.java_managed.Policy = .auto,
 };
 
 pub const CliInstallReporter = struct {
@@ -249,7 +249,7 @@ pub fn executeInstall(
     workers: u8,
     retries: u8,
     java_paths: []const []const u8,
-    java_policy: jmcl.Service.JavaPolicy,
+    java_policy: jmcl.java_managed.Policy,
     stdout: *std.Io.Writer,
     stderr: *std.Io.Writer,
 ) !u8 {
@@ -307,7 +307,7 @@ pub fn executeInstall(
     if (reporter_context.output_failed) return error.WriteFailed;
 
     var processor_java_paths: []const []const u8 = java_paths;
-    var processor_java: ?jmcl.Service.GameJava = null;
+    var processor_java: ?jmcl.java_managed.Result = null;
     defer if (processor_java) |*resolved| resolved.deinit();
     if (plan.value.loader == .neoforge or plan.value.loader == .forge) {
         var runtime_reporter_context: cli_java.CliRuntimeReporter = .{
@@ -444,7 +444,7 @@ fn parseInstallExecuteOptions(args: []const []const u8) !InstallExecuteCliOption
             options.retries = std.fmt.parseInt(u8, value, 10) catch return error.InvalidArguments;
             if (options.retries > 5) return error.InvalidArguments;
         } else if (std.mem.eql(u8, argument, "--java-policy")) {
-            options.java_policy = jmcl.Service.JavaPolicy.parse(value) orelse return error.InvalidArguments;
+            options.java_policy = jmcl.java_managed.Policy.parse(value) orelse return error.InvalidArguments;
         } else {
             return error.InvalidArguments;
         }

@@ -17,9 +17,10 @@ const metadata_cache = @import("install/metadata_cache.zig");
 const install_plan = @import("install/plan.zig");
 const install_executor = @import("install/installer.zig");
 const instance_store = @import("instance_store.zig");
-const java_runtime = @import("install/java_runtime.zig");
-const java_runtime_store = @import("install/java_runtime_store.zig");
-const runtime_installer = @import("install/runtime_installer.zig");
+const java_runtime = @import("java/java_runtime.zig");
+const java_managed = @import("java/managed.zig");
+const java_runtime_store = @import("java/java_runtime_store.zig");
+const runtime_installer = @import("java/runtime_installer.zig");
 const modrinth = @import("content/modrinth.zig");
 const mrpack = @import("modpack/mrpack.zig");
 const curseforge_pack = @import("modpack/curseforge_pack.zig");
@@ -281,48 +282,6 @@ pub const Service = struct {
         try account_store.delete(self.allocator, self.io, root, id);
     }
 
-    pub const ManagedProviderChoice = enum {
-        auto,
-        mojang,
-        zulu,
-
-        pub fn parse(value: []const u8) ?ManagedProviderChoice {
-            inline for (std.meta.fields(ManagedProviderChoice)) |field| {
-                if (std.mem.eql(u8, value, field.name)) return @enumFromInt(field.value);
-            }
-            return null;
-        }
-    };
-
-    pub const ManagedInstallParams = struct {
-        component: ?[]const u8 = null,
-        major: ?u16 = null,
-        provider: ManagedProviderChoice = .auto,
-        platform: ?[]const u8 = null,
-        store_directory: []const u8 = artifact_store.default_directory,
-        workers: u8 = 8,
-        retries: u8 = 2,
-    };
-
-    pub fn listManagedRuntimes(self: Service, store_directory: []const u8) !java_runtime_store.List {
-        const store_dir = try install_executor.openRoot(self.io, store_directory);
-        defer store_dir.close(self.io);
-        var runtimes_dir = java_runtime_store.openRuntimesDir(self.io, store_dir) catch |err| switch (err) {
-            else => |other| return other,
-        };
-        defer runtimes_dir.close(self.io);
-        java_runtime_store.cleanupStaging(self.io, runtimes_dir);
-        return java_runtime_store.list(self.allocator, self.io, runtimes_dir);
-    }
-
-    pub fn removeManagedRuntime(self: Service, store_directory: []const u8, runtime_name: []const u8) !void {
-        const store_dir = try install_executor.openRoot(self.io, store_directory);
-        defer store_dir.close(self.io);
-        var runtimes_dir = try java_runtime_store.openRuntimesDir(self.io, store_dir);
-        defer runtimes_dir.close(self.io);
-        try java_runtime_store.remove(self.io, runtimes_dir, runtime_name);
-    }
-
     fn fetchRuntimeBody(context: *anyopaque, url: []const u8, max_bytes: usize, policy: runtime_installer.FetchPolicy) anyerror![]u8 {
         const self: *Service = @ptrCast(@alignCast(context));
         switch (policy) {
@@ -348,305 +307,32 @@ pub const Service = struct {
         return self.allocator.dupe(u8, cached.body.content);
     }
 
+    fn runtimeFetcher(self: *Service) runtime_installer.Fetcher {
+        return .{ .context = self, .fetch_fn = fetchRuntimeBody };
+    }
+
+    pub fn listManagedRuntimes(self: Service, store_directory: []const u8) !java_runtime_store.List {
+        return java_managed.list(self.allocator, self.io, store_directory);
+    }
+
+    pub fn removeManagedRuntime(self: Service, store_directory: []const u8, runtime_name: []const u8) !void {
+        return java_managed.remove(self.io, store_directory, runtime_name);
+    }
+
     pub fn installManagedRuntime(
         self: *Service,
-        params: ManagedInstallParams,
+        params: java_managed.InstallParams,
         reporter: ?runtime_installer.Reporter,
     ) !runtime_installer.Outcome {
-        if (params.component != null and params.major != null) return error.InvalidInput;
-        if (params.component == null and params.major == null) return error.InvalidInput;
-        if (params.component != null and params.provider == .zulu) return error.InvalidInput;
-
-        const platform = params.platform orelse blk: {
-            const host = install_plan.Target.host() catch return error.UnsupportedPlatform;
-            break :blk java_runtime_store.platformName(host) orelse return error.UnsupportedPlatform;
-        };
-        if (java_runtime_store.parsePlatform(platform) == null) return error.InvalidRuntimePlatform;
-
-        const store_dir = try install_executor.openRoot(self.io, params.store_directory);
-        defer store_dir.close(self.io);
-        var runtimes_dir = try java_runtime_store.openRuntimesDir(self.io, store_dir);
-        defer runtimes_dir.close(self.io);
-
-        const fetcher: runtime_installer.Fetcher = .{
-            .context = self,
-            .fetch_fn = fetchRuntimeBody,
-        };
-        const options: runtime_installer.Options = .{
-            .workers = params.workers,
-            .retries = params.retries,
-        };
-        const environ = self.environ_map orelse return error.EnvironmentUnavailable;
-
-        if (params.component) |component| {
-            return runtime_installer.installMojang(
-                self.allocator,
-                self.io,
-                environ,
-                fetcher,
-                runtimes_dir,
-                component,
-                platform,
-                options,
-                reporter,
-            );
-        }
-
-        const major = params.major.?;
-        if (params.provider != .zulu) {
-            for (runtime_installer.known_components) |entry| {
-                if (entry.major != major) continue;
-                const outcome = runtime_installer.installMojang(
-                    self.allocator,
-                    self.io,
-                    environ,
-                    fetcher,
-                    runtimes_dir,
-                    entry.name,
-                    platform,
-                    options,
-                    reporter,
-                ) catch |err| switch (err) {
-                    error.RuntimeComponentUnavailable => continue,
-                    else => |other| return other,
-                };
-                return outcome;
-            }
-            if (params.provider == .mojang) return error.RuntimeComponentUnavailable;
-        }
-        return runtime_installer.installZulu(
-            self.allocator,
-            self.io,
-            environ,
-            fetcher,
-            runtimes_dir,
-            major,
-            platform,
-            options,
-            reporter,
-        );
-    }
-
-    pub const JavaPolicy = enum {
-        auto,
-        local,
-        managed,
-
-        pub fn parse(value: []const u8) ?JavaPolicy {
-            inline for (std.meta.fields(JavaPolicy)) |field| {
-                if (std.mem.eql(u8, value, field.name)) return @enumFromInt(field.value);
-            }
-            return null;
-        }
-    };
-
-    pub const GameJavaRequest = struct {
-        required_major: u16,
-        component: ?[]const u8 = null,
-        arch: install_plan.Architecture,
-        policy: JavaPolicy = .auto,
-        java_paths: []const []const u8 = &.{},
-        java_override: ?[]const u8 = null,
-        store_directory: []const u8 = artifact_store.default_directory,
-        allow_download: bool = false,
-    };
-
-    pub const GameJavaSource = enum {
-        local,
-        managed,
-        forced,
-    };
-
-    pub const GameJava = struct {
-        arena: *std.heap.ArenaAllocator,
-        runtime: java_runtime.Runtime,
-        source: GameJavaSource,
-
-        pub fn forced(self: GameJava) bool {
-            return self.source == .forced;
-        }
-
-        pub fn deinit(self: *GameJava) void {
-            const allocator = self.arena.child_allocator;
-            self.arena.deinit();
-            allocator.destroy(self.arena);
-            self.* = undefined;
-        }
-    };
-
-    pub const ResolveGameJavaError = error{
-        InvalidInput,
-        EnvironmentUnavailable,
-        JavaNotFound,
-        JavaIncompatible,
-        JavaDownloadFailed,
-        OutOfMemory,
-        Canceled,
-    };
-
-    fn dupeGameJavaRuntime(allocator: std.mem.Allocator, runtime: java_runtime.Runtime) !java_runtime.Runtime {
-        var copy = runtime;
-        copy.executable = try allocator.dupe(u8, runtime.executable);
-        copy.specification_version = try allocator.dupe(u8, runtime.specification_version);
-        copy.os_arch = try allocator.dupe(u8, runtime.os_arch);
-        if (runtime.version) |value| copy.version = try allocator.dupe(u8, value);
-        if (runtime.runtime_version) |value| copy.runtime_version = try allocator.dupe(u8, value);
-        if (runtime.vendor) |value| copy.vendor = try allocator.dupe(u8, value);
-        if (runtime.java_home) |value| copy.java_home = try allocator.dupe(u8, value);
-        if (runtime.vm_name) |value| copy.vm_name = try allocator.dupe(u8, value);
-        if (runtime.os_version) |value| copy.os_version = try allocator.dupe(u8, value);
-        return copy;
-    }
-
-    const LocalGameJava = struct {
-        runtime: ?java_runtime.Runtime,
-        probed: usize,
-    };
-
-    fn tryLocalGameJava(self: *Service, arena: std.mem.Allocator, request: GameJavaRequest) ResolveGameJavaError!LocalGameJava {
-        const environ = self.environ_map orelse return error.EnvironmentUnavailable;
-        var detection = java_runtime.detect(self.allocator, self.io, environ, request.java_paths) catch |err| switch (err) {
-            error.OutOfMemory => return error.OutOfMemory,
-            else => return .{ .runtime = null, .probed = 0 },
-        };
-        defer detection.deinit();
-        const runtime = java_runtime.selectCompatible(detection, request.required_major, request.arch) catch |err| switch (err) {
-            error.NoCompatibleJava => return .{ .runtime = null, .probed = detection.runtimes.len },
-        };
-        return .{ .runtime = try dupeGameJavaRuntime(arena, runtime), .probed = detection.runtimes.len };
-    }
-
-    fn managedGameJavaCandidates(
-        self: *Service,
-        arena: std.mem.Allocator,
-        request: GameJavaRequest,
-    ) ResolveGameJavaError!?java_runtime.Runtime {
-        var runtimes = self.listManagedRuntimes(request.store_directory) catch |err| switch (err) {
-            error.OutOfMemory => return error.OutOfMemory,
-            else => return null,
-        };
-        defer runtimes.deinit();
-        const host = install_plan.Target.host() catch return null;
-        const environ = self.environ_map orelse return error.EnvironmentUnavailable;
-
-        var pass: usize = 0;
-        while (pass < 2) : (pass += 1) {
-            for (runtimes.items) |document| {
-                const receipt = document.value();
-                if (receipt.major_version != request.required_major) continue;
-                const platform = java_runtime_store.parsePlatform(receipt.platform) orelse continue;
-                if (platform.os != host.os or platform.arch != request.arch) continue;
-                if (pass == 0) {
-                    const component = request.component orelse break;
-                    const receipt_component = receipt.component orelse continue;
-                    if (!std.mem.eql(u8, receipt_component, component)) continue;
-                }
-                const executable = std.fs.path.join(arena, &.{
-                    request.store_directory,
-                    java_runtime_store.directory_name,
-                    document.name,
-                    receipt.executable,
-                }) catch return error.OutOfMemory;
-                const runtime = java_runtime.probeExecutable(
-                    arena,
-                    self.allocator,
-                    self.io,
-                    environ,
-                    executable,
-                    .managed,
-                ) catch continue;
-                return runtime;
-            }
-        }
-        return null;
-    }
-
-    fn downloadGameJava(
-        self: *Service,
-        arena: std.mem.Allocator,
-        request: GameJavaRequest,
-        reporter: ?runtime_installer.Reporter,
-    ) ResolveGameJavaError!?java_runtime.Runtime {
-        var outcome = self.installManagedRuntime(.{
-            .major = request.required_major,
-            .store_directory = request.store_directory,
-        }, reporter) catch |err| switch (err) {
-            error.OutOfMemory => return error.OutOfMemory,
-            error.Canceled => return error.Canceled,
-            else => return error.JavaDownloadFailed,
-        };
-        defer outcome.deinit();
-        const environ = self.environ_map orelse return error.EnvironmentUnavailable;
-        const executable = std.fs.path.join(arena, &.{
-            request.store_directory,
-            java_runtime_store.directory_name,
-            outcome.runtime_name,
-            outcome.receipt.executable,
-        }) catch return error.OutOfMemory;
-        const runtime = java_runtime.probeExecutable(
-            arena,
-            self.allocator,
-            self.io,
-            environ,
-            executable,
-            .managed,
-        ) catch return error.JavaIncompatible;
-        return runtime;
+        return java_managed.install(self.allocator, self.io, self.environ_map, self.runtimeFetcher(), params, reporter);
     }
 
     pub fn resolveGameJava(
         self: *Service,
-        request: GameJavaRequest,
+        request: java_managed.Request,
         reporter: ?runtime_installer.Reporter,
-    ) ResolveGameJavaError!GameJava {
-        if (request.required_major == 0) return error.InvalidInput;
-        const arena = try self.allocator.create(std.heap.ArenaAllocator);
-        errdefer self.allocator.destroy(arena);
-        arena.* = std.heap.ArenaAllocator.init(self.allocator);
-        errdefer arena.deinit();
-        const result_allocator = arena.allocator();
-
-        if (request.java_override) |override| {
-            if (request.java_paths.len != 0) return error.InvalidInput;
-            if (!std.fs.path.isAbsolute(override)) return error.InvalidInput;
-            const environ = self.environ_map orelse return error.EnvironmentUnavailable;
-            const runtime = java_runtime.probeExecutable(
-                result_allocator,
-                self.allocator,
-                self.io,
-                environ,
-                override,
-                .explicit,
-            ) catch return error.JavaNotFound;
-            return .{ .arena = arena, .runtime = runtime, .source = .forced };
-        }
-
-        var probed: usize = 0;
-        if (request.policy != .managed) {
-            const local = try self.tryLocalGameJava(result_allocator, request);
-            probed += local.probed;
-            if (local.runtime) |runtime| {
-                return .{ .arena = arena, .runtime = runtime, .source = .local };
-            }
-        }
-        if (request.policy != .local) {
-            if (try self.managedGameJavaCandidates(result_allocator, request)) |runtime| {
-                return .{ .arena = arena, .runtime = runtime, .source = .managed };
-            }
-        }
-        if (request.policy == .managed) {
-            const local = try self.tryLocalGameJava(result_allocator, request);
-            probed += local.probed;
-            if (local.runtime) |runtime| {
-                return .{ .arena = arena, .runtime = runtime, .source = .local };
-            }
-        }
-        if (request.allow_download and request.policy != .local) {
-            if (try self.downloadGameJava(result_allocator, request, reporter)) |runtime| {
-                return .{ .arena = arena, .runtime = runtime, .source = .managed };
-            }
-        }
-        return if (probed > 0) error.JavaIncompatible else error.JavaNotFound;
+    ) java_managed.ResolveError!java_managed.Result {
+        return java_managed.resolve(self.allocator, self.io, self.environ_map, self.runtimeFetcher(), request, reporter);
     }
 
     pub fn fetchVersionMetadata(

@@ -9,11 +9,9 @@ JSON Lines RPC protocol over standard input and output.
 The project currently provides the protocol and CLI foundation, Mojang metadata
 resolution, complete static installs, content-addressed hard-link storage,
 concurrent verified downloads, secure native extraction, legacy asset projection,
-Java runtime selection, launch planning, and supervised game execution.
-Configurable Microsoft authentication and a credentialless public account
-registry are available; support for
-downloading and managing multiple Java versions is planned for a future
-milestone.
+Java runtime selection with managed Mojang and Azul Zulu runtime downloads,
+launch planning, and supervised game execution. Configurable Microsoft
+authentication and a credentialless public account registry are available.
 
 ## NOTICE
 
@@ -55,6 +53,10 @@ zig build run -- install prepare 1.6.4 --directory ./.minecraft
 zig build run -- store gc --store-directory ./.jmclcore
 zig build run -- java detect
 zig build run -- java select 26.2
+zig build run -- java runtime list
+zig build run -- java runtime install --component java-runtime-gamma
+zig build run -- java runtime install --major 8
+zig build run -- java runtime remove mojang-java-runtime-gamma-mac-os-arm64
 zig build run -- launch execute 26.1 --directory ./.minecraft --offline-name Player
 zig build run -- instance create vanilla-26.1 --version 26.1 --name "Vanilla 26.1"
 zig build run -- instance create fabric-1.21.1 --version 1.21.1 --fabric-loader 0.16.10 --name "Fabric 1.21.1"
@@ -94,6 +96,8 @@ written to standard output while RPC mode is active.
 {"protocol":1,"id":"request-10","method":"java.select","params":{"id":"26.2"}}
 {"protocol":1,"id":"request-11","method":"launch.plan","params":{"id":"26.2","directory":"./.minecraft","natives_directory":".jmcl/runtime/natives/session-id","auth":{"player_name":"Player","uuid":"uuid","access_token":"secret"}}}
 {"protocol":1,"id":"request-12","method":"launch.execute","params":{"id":"26.2","directory":"./.minecraft","auth":{"player_name":"Player","uuid":"uuid","access_token":"secret"}}}
+{"protocol":1,"id":"request-13","method":"java.runtime.install","params":{"major":17}}
+{"protocol":1,"id":"request-14","method":"java.runtime.list"}
 ```
 
 Install, preparation, and launch commands default to `./.minecraft` when
@@ -116,6 +120,13 @@ materialized into `.minecraft` with hard links. Use `--store-directory PATH` to
 select another store. Cross-filesystem placements automatically fall back to
 atomic copies.
 
+Managed Java runtimes download into the artifact store under `runtimes/` from
+Mojang's runtime catalog, with an Azul Zulu fallback for platforms Mojang does
+not ship (for example Java 8 on macOS arm64). Launch and install commands
+accept `--java-policy auto|local|managed` (RPC `java_policy`) to control
+whether local or managed runtimes are preferred, and `--java-override` (RPC
+`java_override`) to force a specific Java executable.
+
 Mojang's official service is the default. Pass `--source bmclapi`, or use
 `"source":"bmclapi"` in RPC parameters, to use BMCLAPI for users in mainland
 China. BMCLAPI responses are still checked against Mojang-provided SHA-1 values.
@@ -131,7 +142,7 @@ See `docs/mvp.md` and `docs/protocol.md` for the current scope and protocol.
 The install-plan format is documented in `docs/install-plan.md`.
 Download execution is documented in `docs/installer.md`.
 Runtime preparation is documented in `docs/preparer.md`.
-Java selection is documented in `docs/java.md`.
+Java selection and managed runtimes are documented in `docs/java.md`.
 Launch argument generation is documented in `docs/launch.md`.
 Instance management is documented in `docs/instances.md`.
 Linux-first server management is documented in `docs/server.md`.
