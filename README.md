@@ -69,7 +69,12 @@ zig build run -- instance worlds show vanilla-26.1 "New World"
 zig build run -- instance worlds rename vanilla-26.1 "New World" "Survival Run"
 zig build run -- instance worlds duplicate vanilla-26.1 "Survival Run" "Backup"
 zig build run -- instance worlds delete vanilla-26.1 "Backup"
+zig build run -- instance worlds export vanilla-26.1 "Survival Run" /tmp/survival.zip
+zig build run -- instance worlds backup vanilla-26.1 "Survival Run" --label "pre boss"
+zig build run -- instance worlds restore vanilla-26.1 "Survival Run-20240102-030405-pre-boss.zip" --replace
 zig build run -- server worlds list fabric-1.21.1
+zig build run -- server worlds backup fabric-1.21.1 --label full
+zig build run -- server worlds restore fabric-1.21.1 world-20240102-030405-full.zip --replace
 zig build run -- server create fabric-1.21.1 --version 1.21.1 --fabric-loader 0.16.10 --name "Fabric Server"
 zig build run -- server list
 zig build run -- server show fabric-1.21.1 --json
@@ -139,9 +144,11 @@ China. BMCLAPI responses are still checked against Mojang-provided SHA-1 values.
 
 Save/world management covers listing with parsed `level.dat` metadata
 (name, game version, game mode, size, icon, session lock) plus crash-safe
-rename, duplicate, and delete operations. Worlds are mutable instance-private
-state and never enter the artifact store. Servers get read-only world
-inspection. See `docs/worlds.md`.
+rename, duplicate, and delete operations, zip export/import, and timestamped
+backups under `backups/` with restore. Worlds are mutable instance-private
+state and never enter the artifact store. Servers get the same archive flow
+plus stopped-gated world rename/delete with dimension-sibling coupling. See
+`docs/worlds.md`.
 
 Linux server management includes isolated server manifests, verified vanilla,
 Fabric, NeoForge, and modern Forge installation, atomic `server.properties`

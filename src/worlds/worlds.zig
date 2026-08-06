@@ -1,11 +1,16 @@
 const std = @import("std");
 const nbt = @import("nbt.zig");
+const zip_writer = @import("zip_writer.zig");
+const zip_reader = @import("../install/zip_reader.zig");
 
 pub const max_world_name_bytes: usize = 255;
 pub const max_worlds: usize = 1024;
 pub const max_level_dat_bytes: usize = 32 * 1024 * 1024;
 pub const max_icon_bytes: usize = 64 * 1024;
 pub const saves_directory_name = "saves";
+pub const backups_directory_name = "backups";
+pub const max_import_bytes: usize = 1024 * 1024 * 1024;
+pub const max_backup_label_bytes: usize = 40;
 pub const level_dat_name = "level.dat";
 pub const icon_name = "icon.png";
 pub const session_lock_name = "session.lock";
@@ -368,6 +373,394 @@ pub fn remove(io: std.Io, saves_dir: std.Io.Dir, name: []const u8) !void {
     };
 }
 
+pub const ExportResult = struct {
+    size_bytes: u64,
+    files: u32,
+};
+
+fn addWorldToZip(zip: *zip_writer.Writer, io: std.Io, parent_dir: std.Io.Dir, dir_name: []const u8, prefix: []const u8, files: *u32) !void {
+    var child_dir = try parent_dir.openDir(io, dir_name, .{ .iterate = true });
+    defer child_dir.close(io);
+    try addDirToZip(zip, io, child_dir, prefix, files);
+}
+
+fn addDirToZip(zip: *zip_writer.Writer, io: std.Io, dir: std.Io.Dir, prefix: []const u8, files: *u32) anyerror!void {
+    var iterator = dir.iterate();
+    while (try iterator.next(io)) |entry| {
+        if (entry.kind == .file and std.mem.eql(u8, entry.name, session_lock_name)) continue;
+        if (isTempName(entry.name)) continue;
+        var path_buffer: [4096]u8 = undefined;
+        const rel = std.fmt.bufPrint(&path_buffer, "{s}/{s}", .{ prefix, entry.name }) catch
+            return error.EntryNameTooLong;
+        switch (entry.kind) {
+            .file => {
+                try zip.addFile(rel, dir, entry.name);
+                files.* += 1;
+            },
+            .directory => {
+                const stat = dir.statFile(io, entry.name, .{}) catch null;
+                const seconds = if (stat) |value| value.mtime.toSeconds() else 0;
+                try zip.addDirectory(rel, seconds);
+                var child_dir = try dir.openDir(io, entry.name, .{ .iterate = true });
+                defer child_dir.close(io);
+                try addDirToZip(zip, io, child_dir, rel, files);
+            },
+            else => return error.UnsupportedEntry,
+        }
+    }
+}
+
+pub fn exportWorldSet(backing: std.mem.Allocator, io: std.Io, parent_dir: std.Io.Dir, names: []const []const u8, dest_dir: std.Io.Dir, dest_path: []const u8) !ExportResult {
+    for (names) |name| try ensureMutable(io, parent_dir, name);
+
+    var zip = try zip_writer.Writer.create(backing, io, dest_dir, dest_path);
+    var files: u32 = 0;
+    for (names) |name| {
+        addWorldToZip(&zip, io, parent_dir, name, name, &files) catch |err| {
+            zip.abort();
+            return err;
+        };
+    }
+    const size = zip.finish() catch |err| {
+        zip.abort();
+        return err;
+    };
+    return .{ .size_bytes = size, .files = files };
+}
+
+pub fn exportWorld(backing: std.mem.Allocator, io: std.Io, saves_dir: std.Io.Dir, name: []const u8, dest_dir: std.Io.Dir, dest_path: []const u8) !ExportResult {
+    return exportWorldSet(backing, io, saves_dir, &.{name}, dest_dir, dest_path);
+}
+
+fn validateEntryPath(name: []const u8) !void {
+    if (name.len == 0 or name.len > zip_reader.max_entry_name_bytes) return error.ArchiveInvalid;
+    if (name[0] == '/') return error.ArchiveInvalid;
+    for (name) |byte| {
+        if (byte == 0 or byte == '\\' or byte == ':') return error.ArchiveInvalid;
+    }
+    var parts = std.mem.splitScalar(u8, name, '/');
+    while (parts.next()) |part| {
+        if (std.mem.eql(u8, part, "..")) return error.ArchiveInvalid;
+    }
+}
+
+fn topComponent(name: []const u8) []const u8 {
+    const slash = std.mem.indexOfScalar(u8, name, '/') orelse return name;
+    return name[0..slash];
+}
+
+fn writeEntryFile(io: std.Io, dest_dir: std.Io.Dir, rel_path: []const u8, bytes: []const u8) !void {
+    if (std.mem.lastIndexOfScalar(u8, rel_path, '/')) |slash| {
+        try dest_dir.createDirPath(io, rel_path[0..slash]);
+    }
+    try dest_dir.writeFile(io, .{ .sub_path = rel_path, .data = bytes });
+}
+
+const Extracted = struct {
+    arena: std.heap.ArenaAllocator,
+    jar: []u8,
+    entries: std.ArrayList(zip_reader.Entry),
+
+    fn deinit(extracted: *Extracted) void {
+        extracted.arena.deinit();
+    }
+};
+
+fn loadArchive(backing: std.mem.Allocator, io: std.Io, source_dir: std.Io.Dir, source_path: []const u8) !Extracted {
+    var extracted: Extracted = .{
+        .arena = std.heap.ArenaAllocator.init(backing),
+        .jar = undefined,
+        .entries = .empty,
+    };
+    errdefer extracted.deinit();
+    const allocator = extracted.arena.allocator();
+    extracted.jar = source_dir.readFileAlloc(io, source_path, allocator, .limited(max_import_bytes + 1)) catch |err| switch (err) {
+        error.FileNotFound => return error.BackupNotFound,
+        else => |other| return other,
+    };
+    if (extracted.jar.len > max_import_bytes) return error.ArchiveTooLarge;
+    var iterator = zip_reader.entries(extracted.jar) catch return error.ArchiveInvalid;
+    while (iterator.next() catch return error.ArchiveInvalid) |entry| {
+        validateEntryPath(entry.name) catch return error.ArchiveInvalid;
+        try extracted.entries.append(allocator, entry);
+    }
+    if (extracted.entries.items.len == 0) return error.ArchiveInvalid;
+    return extracted;
+}
+
+fn commonPrefix(entries: []const zip_reader.Entry) ?[]const u8 {
+    var prefix: ?[]const u8 = null;
+    for (entries) |entry| {
+        const slash = std.mem.indexOfScalar(u8, entry.name, '/') orelse return null;
+        const top = entry.name[0..slash];
+        if (prefix) |existing| {
+            if (!std.mem.eql(u8, existing, top)) return null;
+        } else {
+            prefix = top;
+        }
+    }
+    return prefix;
+}
+
+fn extractEntries(backing: std.mem.Allocator, io: std.Io, jar: []const u8, entries: []const zip_reader.Entry, staging_dir: std.Io.Dir, strip: ?[]const u8) !void {
+    var scratch = std.heap.ArenaAllocator.init(backing);
+    defer scratch.deinit();
+    for (entries) |entry| {
+        var rel = entry.name;
+        if (strip) |prefix| {
+            if (std.mem.eql(u8, rel, prefix)) continue;
+            if (rel.len > prefix.len and std.mem.startsWith(u8, rel, prefix) and rel[prefix.len] == '/') {
+                rel = rel[prefix.len + 1 ..];
+            }
+        }
+        if (rel.len == 0) continue;
+        if (rel[rel.len - 1] == '/') {
+            try staging_dir.createDirPath(io, rel[0 .. rel.len - 1]);
+            continue;
+        }
+        if (std.mem.eql(u8, rel, session_lock_name)) continue;
+        const bytes = zip_reader.readAlloc(scratch.allocator(), jar, entry, max_import_bytes) catch return error.ArchiveInvalid;
+        try writeEntryFile(io, staging_dir, rel, bytes);
+        _ = scratch.reset(.retain_capacity);
+    }
+}
+
+fn fileStem(path: []const u8) []const u8 {
+    const base = std.fs.path.basename(path);
+    const extension = std.fs.path.extension(base);
+    return base[0 .. base.len - extension.len];
+}
+
+pub fn importWorld(backing: std.mem.Allocator, io: std.Io, saves_dir: std.Io.Dir, source_dir: std.Io.Dir, source_path: []const u8, name: ?[]const u8, replace: bool) ![]u8 {
+    var extracted = try loadArchive(backing, io, source_dir, source_path);
+    defer extracted.deinit();
+
+    const prefix = commonPrefix(extracted.entries.items);
+    const target = name orelse prefix orelse fileStem(source_path);
+    try validateName(target);
+    const target_copy = try backing.dupe(u8, target);
+    errdefer backing.free(target_copy);
+
+    var random_bytes: [8]u8 = undefined;
+    try io.randomSecure(&random_bytes);
+    var name_buffer: [max_world_name_bytes + 32]u8 = undefined;
+    const staging_name = try tempName(&name_buffer, copy_marker, target, std.mem.readInt(u64, &random_bytes, .little));
+    saves_dir.deleteTree(io, staging_name) catch {};
+    defer saves_dir.deleteTree(io, staging_name) catch {};
+
+    {
+        var staging_dir = try saves_dir.createDirPathOpen(io, staging_name, .{});
+        defer staging_dir.close(io);
+        try extractEntries(backing, io, extracted.jar, extracted.entries.items, staging_dir, prefix);
+    }
+
+    var trash_name: ?[]const u8 = null;
+    defer if (trash_name) |trash| saves_dir.deleteTree(io, trash) catch {};
+    if (statOptional(io, saves_dir, target)) {
+        if (!replace) return error.WorldExists;
+        var trash_buffer: [max_world_name_bytes + 32]u8 = undefined;
+        const trash = try tempName(&trash_buffer, trash_marker, target, std.mem.readInt(u64, &random_bytes, .little));
+        try saves_dir.rename(target, saves_dir, trash, io);
+        trash_name = trash;
+    }
+    saves_dir.rename(staging_name, saves_dir, target, io) catch |err| {
+        if (trash_name) |trash| saves_dir.rename(trash, saves_dir, target, io) catch {};
+        return err;
+    };
+    return target_copy;
+}
+
+pub fn importWorldSet(backing: std.mem.Allocator, io: std.Io, parent_dir: std.Io.Dir, source_dir: std.Io.Dir, source_path: []const u8, replace: bool) !void {
+    var extracted = try loadArchive(backing, io, source_dir, source_path);
+    defer extracted.deinit();
+    const allocator = extracted.arena.allocator();
+
+    var components: std.ArrayList([]const u8) = .empty;
+    for (extracted.entries.items) |entry| {
+        if (std.mem.indexOfScalar(u8, entry.name, '/') == null) return error.ArchiveInvalid;
+        const top = topComponent(entry.name);
+        validateName(top) catch return error.ArchiveInvalid;
+        var found = false;
+        for (components.items) |existing| {
+            if (std.mem.eql(u8, existing, top)) found = true;
+        }
+        if (!found) try components.append(allocator, top);
+    }
+
+    var random_bytes: [8]u8 = undefined;
+    try io.randomSecure(&random_bytes);
+    var name_buffer: [max_world_name_bytes + 32]u8 = undefined;
+    const staging_name = try tempName(&name_buffer, copy_marker, "import", std.mem.readInt(u64, &random_bytes, .little));
+    parent_dir.deleteTree(io, staging_name) catch {};
+    defer parent_dir.deleteTree(io, staging_name) catch {};
+
+    {
+        var staging_dir = try parent_dir.createDirPathOpen(io, staging_name, .{});
+        defer staging_dir.close(io);
+        try extractEntries(backing, io, extracted.jar, extracted.entries.items, staging_dir, null);
+    }
+
+    for (components.items) |component| {
+        var trash_buffer: [max_world_name_bytes + 32]u8 = undefined;
+        var trash_name: ?[]const u8 = null;
+        if (statOptional(io, parent_dir, component)) {
+            if (!replace) return error.WorldExists;
+            const trash = try tempName(&trash_buffer, trash_marker, component, std.mem.readInt(u64, &random_bytes, .little));
+            try parent_dir.rename(component, parent_dir, trash, io);
+            trash_name = trash;
+        }
+        var rel_buffer: [max_world_name_bytes + 40]u8 = undefined;
+        const staging_rel = std.fmt.bufPrint(&rel_buffer, "{s}/{s}", .{ staging_name, component }) catch
+            return error.InvalidName;
+        parent_dir.rename(staging_rel, parent_dir, component, io) catch |err| {
+            if (trash_name) |trash| parent_dir.rename(trash, parent_dir, component, io) catch {};
+            return err;
+        };
+        if (trash_name) |trash| parent_dir.deleteTree(io, trash) catch {};
+    }
+}
+
+pub fn sanitizeLabel(allocator: std.mem.Allocator, label: []const u8) !?[]u8 {
+    if (label.len == 0) return null;
+    var out: std.ArrayList(u8) = .empty;
+    for (label) |byte| {
+        if (out.items.len >= max_backup_label_bytes) break;
+        if (std.ascii.isAlphanumeric(byte) or byte == '-' or byte == '_' or byte == '.') {
+            try out.append(allocator, byte);
+        } else if (out.items.len > 0 and out.items[out.items.len - 1] != '-') {
+            try out.append(allocator, '-');
+        }
+    }
+    while (out.items.len > 0 and (out.items[out.items.len - 1] == '-' or out.items[out.items.len - 1] == '.')) {
+        _ = out.pop();
+    }
+    if (out.items.len == 0) return null;
+    return try out.toOwnedSlice(allocator);
+}
+
+pub fn backupFileName(buffer: []u8, world: []const u8, now_ms: i64, label: ?[]const u8) ![]const u8 {
+    const epoch_seconds_value: std.time.epoch.EpochSeconds = .{ .secs = @intCast(@divFloor(now_ms, 1000)) };
+    const epoch_day = epoch_seconds_value.getEpochDay();
+    const year_day = epoch_day.calculateYearDay();
+    const month_day = year_day.calculateMonthDay();
+    const day_seconds = epoch_seconds_value.getDaySeconds();
+    return if (label) |text|
+        std.fmt.bufPrint(buffer, "{s}-{d:0>4}{d:0>2}{d:0>2}-{d:0>2}{d:0>2}{d:0>2}-{s}.zip", .{
+            world, year_day.year, month_day.month.numeric(), month_day.day_index + 1,
+            day_seconds.getHoursIntoDay(), day_seconds.getMinutesIntoHour(), day_seconds.getSecondsIntoMinute(), text,
+        }) catch return error.InvalidName
+    else
+        std.fmt.bufPrint(buffer, "{s}-{d:0>4}{d:0>2}{d:0>2}-{d:0>2}{d:0>2}{d:0>2}.zip", .{
+            world, year_day.year, month_day.month.numeric(), month_day.day_index + 1,
+            day_seconds.getHoursIntoDay(), day_seconds.getMinutesIntoHour(), day_seconds.getSecondsIntoMinute(),
+        }) catch return error.InvalidName;
+}
+
+pub fn backupWorld(backing: std.mem.Allocator, io: std.Io, parent_dir: std.Io.Dir, backups_dir: std.Io.Dir, name: []const u8, label: ?[]const u8, now_ms: i64) ![]u8 {
+    var arena = std.heap.ArenaAllocator.init(backing);
+    defer arena.deinit();
+    const clean_label = if (label) |text| try sanitizeLabel(arena.allocator(), text) else null;
+
+    var name_buffer: [max_world_name_bytes + max_backup_label_bytes + 32]u8 = undefined;
+    const file_name = try backupFileName(&name_buffer, name, now_ms, clean_label);
+    if (statOptional(io, backups_dir, file_name)) return error.WorldExists;
+    _ = try exportWorld(backing, io, parent_dir, name, backups_dir, file_name);
+    return try backing.dupe(u8, file_name);
+}
+
+pub const BackupInfo = struct {
+    file: []const u8,
+    world: ?[]const u8,
+    created_ms: i64,
+    size_bytes: u64,
+};
+
+pub const BackupList = struct {
+    arena: *std.heap.ArenaAllocator,
+    backups: []BackupInfo,
+
+    pub fn deinit(list_self: *BackupList) void {
+        const allocator = list_self.arena.child_allocator;
+        list_self.arena.deinit();
+        allocator.destroy(list_self.arena);
+        list_self.* = undefined;
+    }
+};
+
+fn parseBackupName(file: []const u8) ?[]const u8 {
+    if (!std.mem.endsWith(u8, file, ".zip")) return null;
+    const stem = file[0 .. file.len - 4];
+    var index: usize = 0;
+    while (index + 16 <= stem.len) : (index += 1) {
+        if (stem[index] != '-') continue;
+        const marker = stem[index + 1 .. index + 16];
+        var digits = true;
+        for (marker[0..8]) |byte| {
+            if (!std.ascii.isDigit(byte)) digits = false;
+        }
+        if (marker[8] != '-') digits = false;
+        for (marker[9..15]) |byte| {
+            if (!std.ascii.isDigit(byte)) digits = false;
+        }
+        if (!digits) continue;
+        const after = index + 16;
+        if (after != stem.len and stem[after] != '-') continue;
+        if (index == 0) return null;
+        return stem[0..index];
+    }
+    return null;
+}
+
+pub fn listBackups(backing: std.mem.Allocator, io: std.Io, backups_dir: std.Io.Dir) !BackupList {
+    const arena = try backing.create(std.heap.ArenaAllocator);
+    errdefer backing.destroy(arena);
+    arena.* = std.heap.ArenaAllocator.init(backing);
+    errdefer arena.deinit();
+    const allocator = arena.allocator();
+
+    var backups: std.ArrayList(BackupInfo) = .empty;
+    var iterator = backups_dir.iterate();
+    while (try iterator.next(io)) |entry| {
+        if (entry.kind != .file) continue;
+        if (!std.mem.endsWith(u8, entry.name, ".zip")) continue;
+        if (backups.items.len >= max_worlds) return error.TooManyWorlds;
+        const stat = backups_dir.statFile(io, entry.name, .{}) catch continue;
+        try backups.append(allocator, .{
+            .file = try allocator.dupe(u8, entry.name),
+            .world = if (parseBackupName(entry.name)) |world| try allocator.dupe(u8, world) else null,
+            .created_ms = stat.mtime.toMilliseconds(),
+            .size_bytes = stat.size,
+        });
+    }
+    std.mem.sort(BackupInfo, backups.items, {}, struct {
+        fn lessThan(_: void, a: BackupInfo, b: BackupInfo) bool {
+            return a.created_ms > b.created_ms;
+        }
+    }.lessThan);
+    return .{ .arena = arena, .backups = try backups.toOwnedSlice(allocator) };
+}
+
+pub fn emptyBackupList(backing: std.mem.Allocator) !BackupList {
+    const arena = try backing.create(std.heap.ArenaAllocator);
+    errdefer backing.destroy(arena);
+    arena.* = std.heap.ArenaAllocator.init(backing);
+    return .{ .arena = arena, .backups = &.{} };
+}
+
+pub fn validateBackupFileName(file: []const u8) !void {
+    if (file.len == 0 or file.len > max_world_name_bytes + max_backup_label_bytes + 32) return error.InvalidName;
+    if (!std.mem.endsWith(u8, file, ".zip")) return error.InvalidName;
+    if (std.mem.indexOfAny(u8, file, "/\\") != null) return error.InvalidName;
+}
+
+pub fn deleteBackup(io: std.Io, backups_dir: std.Io.Dir, file: []const u8) !void {
+    try validateBackupFileName(file);
+    backups_dir.deleteFile(io, file) catch |err| switch (err) {
+        error.FileNotFound => return error.BackupNotFound,
+        else => |other| return other,
+    };
+}
+
 pub const VersionRelation = enum {
     same,
     different,
@@ -499,4 +892,111 @@ test "list reports metadata and skips temp directories" {
     try std.testing.expect(worlds.worlds[0].meta == null);
     try std.testing.expectEqualStrings("Locked", worlds.worlds[1].name);
     try std.testing.expect(worlds.worlds[1].locked);
+}
+
+test "export and import round-trip a world" {
+    const io = std.testing.io;
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    try tmp.dir.createDirPath(io, "saves");
+    var saves_dir = try tmp.dir.openDir(io, "saves", .{ .iterate = true });
+    defer saves_dir.close(io);
+    try saves_dir.createDirPath(io, "Alpha/region");
+    var region = try saves_dir.openDir(io, "Alpha/region", .{});
+    try region.writeFile(io, .{ .sub_path = "r.0.0.mca", .data = "chunk-data" });
+    region.close(io);
+    var alpha = try saves_dir.openDir(io, "Alpha", .{});
+    try alpha.writeFile(io, .{ .sub_path = "level.dat", .data = "nbt" });
+    try alpha.writeFile(io, .{ .sub_path = session_lock_name, .data = "lock" });
+    alpha.close(io);
+    try saves_dir.deleteFile(io, "Alpha/" ++ session_lock_name);
+
+    const result = try exportWorld(std.testing.allocator, io, saves_dir, "Alpha", tmp.dir, "alpha.zip");
+    try std.testing.expect(result.files == 2);
+    try std.testing.expect(result.size_bytes > 0);
+
+    const imported = try importWorld(std.testing.allocator, io, saves_dir, tmp.dir, "alpha.zip", "Beta", false);
+    defer std.testing.allocator.free(imported);
+    try std.testing.expectEqualStrings("Beta", imported);
+    const level = try saves_dir.readFileAlloc(io, "Beta/level.dat", std.testing.allocator, .limited(64));
+    defer std.testing.allocator.free(level);
+    try std.testing.expectEqualStrings("nbt", level);
+    const chunk = try saves_dir.readFileAlloc(io, "Beta/region/r.0.0.mca", std.testing.allocator, .limited(64));
+    defer std.testing.allocator.free(chunk);
+    try std.testing.expectEqualStrings("chunk-data", chunk);
+    try std.testing.expectError(error.FileNotFound, saves_dir.statFile(io, "Beta/" ++ session_lock_name, .{}));
+
+    try std.testing.expectError(error.WorldExists, importWorld(std.testing.allocator, io, saves_dir, tmp.dir, "alpha.zip", "Beta", false));
+}
+
+test "import replace swaps the existing world" {
+    const io = std.testing.io;
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    try tmp.dir.createDirPath(io, "saves");
+    var saves_dir = try tmp.dir.openDir(io, "saves", .{ .iterate = true });
+    defer saves_dir.close(io);
+    try saves_dir.createDirPath(io, "Alpha");
+    var alpha = try saves_dir.openDir(io, "Alpha", .{});
+    try alpha.writeFile(io, .{ .sub_path = "level.dat", .data = "old" });
+    alpha.close(io);
+    _ = try exportWorld(std.testing.allocator, io, saves_dir, "Alpha", tmp.dir, "alpha.zip");
+    try saves_dir.deleteFile(io, "Alpha/level.dat");
+    var alpha2 = try saves_dir.openDir(io, "Alpha", .{});
+    try alpha2.writeFile(io, .{ .sub_path = "level.dat", .data = "corrupted" });
+    try alpha2.writeFile(io, .{ .sub_path = "extra.txt", .data = "junk" });
+    alpha2.close(io);
+
+    const imported = try importWorld(std.testing.allocator, io, saves_dir, tmp.dir, "alpha.zip", "Alpha", true);
+    defer std.testing.allocator.free(imported);
+    const level = try saves_dir.readFileAlloc(io, "Alpha/level.dat", std.testing.allocator, .limited(64));
+    defer std.testing.allocator.free(level);
+    try std.testing.expectEqualStrings("old", level);
+    try std.testing.expectError(error.FileNotFound, saves_dir.statFile(io, "Alpha/extra.txt", .{}));
+}
+
+test "backup list parses names with and without labels" {
+    try std.testing.expectEqualStrings("Alpha", parseBackupName("Alpha-20240102-030405.zip").?);
+    try std.testing.expectEqualStrings("My World", parseBackupName("My World-20240102-030405-pre-boss.zip").?);
+    try std.testing.expect(parseBackupName("random.zip") == null);
+    try std.testing.expect(parseBackupName("Alpha-20240102-030405") == null);
+    try std.testing.expect(parseBackupName("-20240102-030405.zip") == null);
+}
+
+test "entry path validation rejects traversal" {
+    try validateEntryPath("world/level.dat");
+    try std.testing.expectError(error.ArchiveInvalid, validateEntryPath("../evil"));
+    try std.testing.expectError(error.ArchiveInvalid, validateEntryPath("a/../../evil"));
+    try std.testing.expectError(error.ArchiveInvalid, validateEntryPath("/abs"));
+    try std.testing.expectError(error.ArchiveInvalid, validateEntryPath("C:\\evil"));
+}
+
+test "backup and delete round-trip through backups dir" {
+    const io = std.testing.io;
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    try tmp.dir.createDirPath(io, "saves");
+    var saves_dir = try tmp.dir.openDir(io, "saves", .{ .iterate = true });
+    defer saves_dir.close(io);
+    try saves_dir.createDirPath(io, "Alpha");
+    var alpha = try saves_dir.openDir(io, "Alpha", .{});
+    try alpha.writeFile(io, .{ .sub_path = "level.dat", .data = "nbt" });
+    alpha.close(io);
+    try tmp.dir.createDirPath(io, "backups");
+    var backups_dir = try tmp.dir.openDir(io, "backups", .{ .iterate = true });
+    defer backups_dir.close(io);
+
+    const file = try backupWorld(std.testing.allocator, io, saves_dir, backups_dir, "Alpha", "pre boss", 1704164646000);
+    defer std.testing.allocator.free(file);
+    try std.testing.expectEqualStrings("Alpha-20240102-030406-pre-boss.zip", file);
+
+    var backups = try listBackups(std.testing.allocator, io, backups_dir);
+    defer backups.deinit();
+    try std.testing.expectEqual(@as(usize, 1), backups.backups.len);
+    try std.testing.expectEqualStrings("Alpha", backups.backups[0].world.?);
+    try std.testing.expect(backups.backups[0].size_bytes > 0);
+
+    try deleteBackup(io, backups_dir, file);
+    try std.testing.expectError(error.BackupNotFound, deleteBackup(io, backups_dir, file));
+    try std.testing.expectError(error.InvalidName, deleteBackup(io, backups_dir, "../escape.zip"));
 }

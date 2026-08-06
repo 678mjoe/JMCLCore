@@ -1,10 +1,10 @@
 # Worlds
 
-JMCL Core manages save/world directories for client instances and exposes
-read-only world inspection for managed servers. Worlds are **mutable,
-instance-private state**: they never enter the content-addressed artifact
-store, are never hard-linked, and are never shared between instances. All
-operations are plain filesystem moves and copies with crash-safe staging.
+JMCL Core manages save/world directories for client instances and managed
+servers. Worlds are **mutable, instance-private state**: they never enter the
+content-addressed artifact store, are never hard-linked, and are never shared
+between instances. All operations are plain filesystem moves and copies with
+crash-safe staging.
 
 ## Storage model
 
@@ -63,6 +63,51 @@ while the target name is taken (`WORLD_EXISTS`).
 Stale `.jmcl-copy-*`/`.jmcl-trash-*` directories left by crashes are removed
 on the next `worlds.list`.
 
+## Export, import, and backups
+
+`worlds.export` streams a world into a standard zip archive (deflate,
+data-descriptor free, written atomically via temp-name + rename). Entries are
+prefixed with the world directory name; `session.lock` and staging/trash
+directories are excluded. The zip writer is hand-rolled
+(`src/worlds/zip_writer.zig`) with the same limits as the reader: at most
+65535 entries, 4096-byte entry names, 4 GiB per file and per archive.
+Exporting a locked world fails with `WORLD_LOCKED`.
+
+`worlds.import` extracts a world zip into `saves/`. Safety rules: entries
+with absolute paths, `..` components, backslashes, drive letters, or NUL
+bytes are rejected (`WORLD_ARCHIVE_INVALID`); archives over 1 GiB compressed
+fail with `WORLD_ARCHIVE_TOO_LARGE`. When every entry shares one top-level
+directory the prefix is stripped and becomes the default world name; a
+caller `name` overrides it, and without a prefix the zip file stem is used.
+Extraction stages into `.jmcl-copy-<random>` and renames into place; an
+existing target fails with `WORLD_EXISTS` unless `replace:true`, which swaps
+the old directory to `.jmcl-trash-<random>` first (full replacement: files
+added since the backup do not survive).
+
+`worlds.backup` is managed export into the `backups/` directory next to
+`saves/` (i.e. `<game dir>/backups/`), named
+`<world>-<YYYYmmdd-HHMMSS>[-label].zip`. The label is sanitized to
+`[A-Za-z0-9._-]` (max 40 bytes). `worlds.backups` lists that directory
+(`{file, world, created_ms, size_bytes}`, newest first; `world` is parsed
+from the file name and `null` for foreign zips). `worlds.restore` is
+`worlds.import` from the backups directory and `worlds.backups.delete`
+removes one backup (`BACKUP_NOT_FOUND`).
+
+Server worlds support the same archive operations plus mutations, all gated
+on the stopped-server lifecycle guard (`SERVER_ALREADY_RUNNING`):
+
+- **server.worlds.rename / server.worlds.delete**: renaming the base world
+  (the `level-name` directory) also renames existing `_nether`/`_the_end`
+  siblings and rewrites `level-name` in `server.properties`; deleting the
+  base world cascades to those siblings. Renaming or deleting a sibling
+  alone touches only that directory.
+- **server.worlds.backup** without a `world` packs the base world plus all
+  existing dimension siblings into one zip under `servers/<id>/backups/`;
+  with `world` it packs that directory only.
+- **server.worlds.restore** requires every entry to sit under a top-level
+  world directory and restores each one (staging + rename, `replace`
+  semantics as above).
+
 ## RPC
 
 Client operations take the instance game directory (the same `directory`
@@ -90,14 +135,45 @@ Server parity is read-only and Linux-gated like every `server.*` method:
 {"protocol":1,"id":"w-7","method":"server.worlds.get","params":{"directory":"/path/to/servers","id":"my-server","world":"world"}}
 ```
 
+Archive operations:
+
+```json
+{"protocol":1,"id":"w-8","method":"worlds.export","params":{"directory":"/path/to/instances/my-instance/.minecraft","world":"My World","file":"/tmp/my-world.zip"}}
+{"protocol":1,"id":"w-9","method":"worlds.import","params":{"directory":"/path/to/instances/my-instance/.minecraft","file":"/tmp/my-world.zip","name":"Imported","replace":false}}
+{"protocol":1,"id":"w-10","method":"worlds.backup","params":{"directory":"/path/to/instances/my-instance/.minecraft","world":"My World","label":"pre boss"}}
+{"protocol":1,"id":"w-11","method":"worlds.backups","params":{"directory":"/path/to/instances/my-instance/.minecraft"}}
+{"protocol":1,"id":"w-12","method":"worlds.restore","params":{"directory":"/path/to/instances/my-instance/.minecraft","backup":"My World-20240102-030405-pre-boss.zip","replace":true}}
+{"protocol":1,"id":"w-13","method":"worlds.backups.delete","params":{"directory":"/path/to/instances/my-instance/.minecraft","backup":"My World-20240102-030405-pre-boss.zip"}}
+```
+
+`worlds.export` returns `{file, size_bytes, files}`. `worlds.import` and
+`worlds.restore` return the resulting `world` entry. `worlds.backup` and
+`worlds.backups.delete` return `{"backup":"<file>"}` / `{"deleted":"<file>"}`
+and `worlds.backups` returns `{backups:[{file, world, created_ms,
+size_bytes}]}`.
+
 `server.worlds.list` resolves `level-name` from `server.properties` and lists
 the base world plus existing `_nether`/`_the_end` siblings; dimension
 directories have no `level.dat`, so their metadata fields are `null`.
 
+Server mutations and archives (all require a stopped server):
+
+```json
+{"protocol":1,"id":"w-14","method":"server.worlds.rename","params":{"directory":"/path/to/servers","id":"my-server","world":"world","new_name":"survival"}}
+{"protocol":1,"id":"w-15","method":"server.worlds.delete","params":{"directory":"/path/to/servers","id":"my-server","world":"world_the_end"}}
+{"protocol":1,"id":"w-16","method":"server.worlds.backup","params":{"directory":"/path/to/servers","id":"my-server","label":"full"}}
+{"protocol":1,"id":"w-17","method":"server.worlds.backups","params":{"directory":"/path/to/servers","id":"my-server"}}
+{"protocol":1,"id":"w-18","method":"server.worlds.restore","params":{"directory":"/path/to/servers","id":"my-server","backup":"world-20240102-030405-full.zip","replace":true}}
+{"protocol":1,"id":"w-19","method":"server.worlds.backups.delete","params":{"directory":"/path/to/servers","id":"my-server","backup":"world-20240102-030405-full.zip"}}
+```
+
 Error codes: `WORLD_NOT_FOUND`, `WORLD_EXISTS`, `WORLD_LOCKED`,
 `WORLD_INVALID_LEVEL_DATA`, `WORLD_ICON_TOO_LARGE`, `WORLD_LIST_FAILED`,
 `WORLD_GET_FAILED`, `WORLD_RENAME_FAILED`, `WORLD_COPY_FAILED`,
-`WORLD_DELETE_FAILED`; invalid names and out-of-range input use
+`WORLD_DELETE_FAILED`, `BACKUP_NOT_FOUND`, `WORLD_ARCHIVE_TOO_LARGE`,
+`WORLD_ARCHIVE_INVALID`, `WORLD_EXPORT_FAILED`, `WORLD_IMPORT_FAILED`,
+`WORLD_BACKUP_FAILED`, `WORLD_RESTORE_FAILED`; server mutations add
+`SERVER_ALREADY_RUNNING`; invalid names and out-of-range input use
 `INVALID_PARAMS`.
 
 ## CLI
@@ -109,8 +185,21 @@ jmcl-core instance worlds rename ID WORLD NEW_NAME [--instances-directory PATH]
 jmcl-core instance worlds duplicate ID WORLD NEW_NAME [--instances-directory PATH]
 jmcl-core instance worlds delete ID WORLD [--instances-directory PATH]
 
+jmcl-core instance worlds export ID WORLD FILE [--instances-directory PATH]
+jmcl-core instance worlds import ID FILE [--name NAME] [--replace] [--instances-directory PATH]
+jmcl-core instance worlds backup ID WORLD [--label LABEL] [--instances-directory PATH]
+jmcl-core instance worlds backups ID [--instances-directory PATH] [--json]
+jmcl-core instance worlds restore ID BACKUP [--name NAME] [--replace] [--instances-directory PATH]
+jmcl-core instance worlds backups-delete ID BACKUP [--instances-directory PATH]
+
 jmcl-core server worlds list ID [--servers-directory PATH] [--json]
 jmcl-core server worlds show ID WORLD [--servers-directory PATH] [--json]
+jmcl-core server worlds rename ID WORLD NEW_NAME [--servers-directory PATH]
+jmcl-core server worlds delete ID WORLD [--servers-directory PATH]
+jmcl-core server worlds backup ID [WORLD] [--label LABEL] [--servers-directory PATH]
+jmcl-core server worlds backups ID [--servers-directory PATH] [--json]
+jmcl-core server worlds restore ID BACKUP [--replace] [--servers-directory PATH]
+jmcl-core server worlds backups-delete ID BACKUP [--servers-directory PATH]
 ```
 
 `instance.delete` removes the whole instance tree, so instance worlds need no
@@ -118,7 +207,6 @@ registry entries, no GC rules, and no store interaction.
 
 ## Out of scope
 
-Zip export/import (`worlds.export`/`worlds.import`) and per-world
-backup/restore are planned as a follow-up phase; the zip writer does not
-exist yet. Server-side world mutations (rename/delete/backup) ship with that
-phase together with the stopped-server requirement.
+In-game (live) export while a world is open, incremental backups, backup
+retention policies, and RCON-driven save flushing before backup are not
+implemented; back up stopped servers/quiescent worlds only.

@@ -195,10 +195,34 @@ pub fn handleLine(
         try worlds.writeWorldsDuplicateResult(service, writer, request.id, request.params);
     } else if (std.mem.eql(u8, request.method, "worlds.delete")) {
         try worlds.writeWorldsDeleteResult(service, writer, request.id, request.params);
+    } else if (std.mem.eql(u8, request.method, "worlds.export")) {
+        try worlds.writeWorldsExportResult(service, writer, request.id, request.params);
+    } else if (std.mem.eql(u8, request.method, "worlds.import")) {
+        try worlds.writeWorldsImportResult(service, writer, request.id, request.params);
+    } else if (std.mem.eql(u8, request.method, "worlds.backup")) {
+        try worlds.writeWorldsBackupResult(service, writer, request.id, request.params);
+    } else if (std.mem.eql(u8, request.method, "worlds.backups")) {
+        try worlds.writeWorldsBackupsResult(service, writer, request.id, request.params);
+    } else if (std.mem.eql(u8, request.method, "worlds.restore")) {
+        try worlds.writeWorldsRestoreResult(service, writer, request.id, request.params);
+    } else if (std.mem.eql(u8, request.method, "worlds.backups.delete")) {
+        try worlds.writeWorldsBackupDeleteResult(service, writer, request.id, request.params);
     } else if (std.mem.eql(u8, request.method, "server.worlds.list")) {
         try worlds.writeServerWorldsListResult(service, writer, request.id, request.params);
     } else if (std.mem.eql(u8, request.method, "server.worlds.get")) {
         try worlds.writeServerWorldsGetResult(service, writer, request.id, request.params);
+    } else if (std.mem.eql(u8, request.method, "server.worlds.rename")) {
+        try worlds.writeServerWorldsRenameResult(service, writer, request.id, request.params);
+    } else if (std.mem.eql(u8, request.method, "server.worlds.delete")) {
+        try worlds.writeServerWorldsDeleteResult(service, writer, request.id, request.params);
+    } else if (std.mem.eql(u8, request.method, "server.worlds.backup")) {
+        try worlds.writeServerWorldsBackupResult(service, writer, request.id, request.params);
+    } else if (std.mem.eql(u8, request.method, "server.worlds.backups")) {
+        try worlds.writeServerWorldsBackupsResult(service, writer, request.id, request.params);
+    } else if (std.mem.eql(u8, request.method, "server.worlds.restore")) {
+        try worlds.writeServerWorldsRestoreResult(service, writer, request.id, request.params);
+    } else if (std.mem.eql(u8, request.method, "server.worlds.backups.delete")) {
+        try worlds.writeServerWorldsBackupDeleteResult(service, writer, request.id, request.params);
     } else if (std.mem.eql(u8, request.method, "java.detect")) {
         try java.writeDetectResult(service, writer, request.id, request.params);
     } else if (std.mem.eql(u8, request.method, "java.select")) {

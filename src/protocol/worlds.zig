@@ -51,6 +51,9 @@ fn mapWorldsError(err: anyerror, fallback_code: []const u8, fallback_message: []
         error.InvalidLevelData => .{ .code = "WORLD_INVALID_LEVEL_DATA", .message = "The world level.dat is malformed" },
         error.IconTooLarge => .{ .code = "WORLD_ICON_TOO_LARGE", .message = "The world icon exceeds the size limit" },
         error.UnsupportedEntry => .{ .code = "WORLD_COPY_FAILED", .message = "The world contains unsupported entries" },
+        error.BackupNotFound => .{ .code = "BACKUP_NOT_FOUND", .message = "The backup file does not exist" },
+        error.ArchiveTooLarge, error.TooManyEntries, error.FileTooLarge, error.EntryNameTooLong => .{ .code = "WORLD_ARCHIVE_TOO_LARGE", .message = "The archive exceeds the supported size limits" },
+        error.ArchiveInvalid, error.EntryNameInvalid => .{ .code = "WORLD_ARCHIVE_INVALID", .message = "The archive is not a valid world zip" },
         else => .{ .code = fallback_code, .message = fallback_message },
     };
 }
@@ -399,6 +402,505 @@ pub fn writeServerWorldsListResult(
     try json.beginArray();
     for (worlds.worlds) |info| try writeWorldEntry(&json, info, params.value.minecraft_version);
     try json.endArray();
+    try json.endObject();
+    try json.endObject();
+    try writer.writeByte('\n');
+}
+
+const WorldsExportParams = struct {
+    directory: []const u8 = core.instance_store.default_root,
+    world: []const u8,
+    file: []const u8,
+};
+
+const WorldsImportParams = struct {
+    directory: []const u8 = core.instance_store.default_root,
+    file: []const u8,
+    name: ?[]const u8 = null,
+    replace: bool = false,
+    minecraft_version: ?[]const u8 = null,
+};
+
+const WorldsBackupParams = struct {
+    directory: []const u8 = core.instance_store.default_root,
+    world: []const u8,
+    label: ?[]const u8 = null,
+};
+
+const WorldsRestoreParams = struct {
+    directory: []const u8 = core.instance_store.default_root,
+    backup: []const u8,
+    name: ?[]const u8 = null,
+    replace: bool = false,
+    minecraft_version: ?[]const u8 = null,
+};
+
+const WorldsBackupTargetParams = struct {
+    directory: []const u8 = core.instance_store.default_root,
+    backup: []const u8,
+};
+
+pub fn writeWorldsExportResult(
+    service: *core.Service,
+    writer: *std.Io.Writer,
+    request_id: []const u8,
+    params_value: ?std.json.Value,
+) std.Io.Writer.Error!void {
+    var params = try parseParams(WorldsExportParams, service, writer, request_id, params_value, "world export") orelse return;
+    defer params.deinit();
+    if (params.value.directory.len == 0 or params.value.world.len == 0 or params.value.file.len == 0) {
+        try writeError(writer, request_id, "INVALID_PARAMS", "world export requires directory, world, and file");
+        return;
+    }
+    const result = service.exportWorld(params.value.directory, params.value.world, params.value.file) catch |err| {
+        const mapped = mapWorldsError(err, "WORLD_EXPORT_FAILED", "Failed to export the world");
+        try writeError(writer, request_id, mapped.code, mapped.message);
+        return;
+    };
+
+    var json: std.json.Stringify = .{ .writer = writer };
+    try writeEventHeader(&json, request_id, "result");
+    try json.objectField("result");
+    try json.beginObject();
+    try json.objectField("stage");
+    try json.write("worlds.export");
+    try json.objectField("file");
+    try json.write(params.value.file);
+    try json.objectField("size_bytes");
+    try json.write(result.size_bytes);
+    try json.objectField("files");
+    try json.write(result.files);
+    try json.endObject();
+    try json.endObject();
+    try writer.writeByte('\n');
+}
+
+pub fn writeWorldsImportResult(
+    service: *core.Service,
+    writer: *std.Io.Writer,
+    request_id: []const u8,
+    params_value: ?std.json.Value,
+) std.Io.Writer.Error!void {
+    var params = try parseParams(WorldsImportParams, service, writer, request_id, params_value, "world import") orelse return;
+    defer params.deinit();
+    if (params.value.directory.len == 0 or params.value.file.len == 0) {
+        try writeError(writer, request_id, "INVALID_PARAMS", "world import requires directory and file");
+        return;
+    }
+    const name = service.importWorld(params.value.directory, params.value.file, params.value.name, params.value.replace) catch |err| {
+        const mapped = mapWorldsError(err, "WORLD_IMPORT_FAILED", "Failed to import the world");
+        try writeError(writer, request_id, mapped.code, mapped.message);
+        return;
+    };
+    defer service.allocator.free(name);
+    var worlds = service.getWorld(params.value.directory, name) catch |err| {
+        const mapped = mapWorldsError(err, "WORLD_GET_FAILED", "Failed to inspect the imported world");
+        try writeError(writer, request_id, mapped.code, mapped.message);
+        return;
+    };
+    defer worlds.deinit();
+
+    var json: std.json.Stringify = .{ .writer = writer };
+    try writeEventHeader(&json, request_id, "result");
+    try json.objectField("result");
+    try json.beginObject();
+    try json.objectField("stage");
+    try json.write("worlds.import");
+    try json.objectField("world");
+    try writeWorldEntry(&json, worlds.worlds[0], params.value.minecraft_version);
+    try json.endObject();
+    try json.endObject();
+    try writer.writeByte('\n');
+}
+
+pub fn writeWorldsBackupResult(
+    service: *core.Service,
+    writer: *std.Io.Writer,
+    request_id: []const u8,
+    params_value: ?std.json.Value,
+) std.Io.Writer.Error!void {
+    var params = try parseParams(WorldsBackupParams, service, writer, request_id, params_value, "world backup") orelse return;
+    defer params.deinit();
+    if (params.value.directory.len == 0 or params.value.world.len == 0) {
+        try writeError(writer, request_id, "INVALID_PARAMS", "world backup requires directory and world");
+        return;
+    }
+    const file = service.backupWorld(params.value.directory, params.value.world, params.value.label) catch |err| {
+        const mapped = mapWorldsError(err, "WORLD_BACKUP_FAILED", "Failed to back up the world");
+        try writeError(writer, request_id, mapped.code, mapped.message);
+        return;
+    };
+    defer service.allocator.free(file);
+
+    var json: std.json.Stringify = .{ .writer = writer };
+    try writeEventHeader(&json, request_id, "result");
+    try json.objectField("result");
+    try json.beginObject();
+    try json.objectField("stage");
+    try json.write("worlds.backup");
+    try json.objectField("backup");
+    try json.write(file);
+    try json.endObject();
+    try json.endObject();
+    try writer.writeByte('\n');
+}
+
+fn writeBackupEntry(json: *std.json.Stringify, backup: core.worlds.BackupInfo) std.Io.Writer.Error!void {
+    try json.beginObject();
+    try json.objectField("file");
+    try json.write(backup.file);
+    try json.objectField("world");
+    if (backup.world) |world| {
+        try json.write(world);
+    } else {
+        try json.write(@as(?[]const u8, null));
+    }
+    try json.objectField("created_ms");
+    try json.write(backup.created_ms);
+    try json.objectField("size_bytes");
+    try json.write(backup.size_bytes);
+    try json.endObject();
+}
+
+pub fn writeWorldsBackupsResult(
+    service: *core.Service,
+    writer: *std.Io.Writer,
+    request_id: []const u8,
+    params_value: ?std.json.Value,
+) std.Io.Writer.Error!void {
+    var params = try parseParams(WorldsListParams, service, writer, request_id, params_value, "world backups listing") orelse return;
+    defer params.deinit();
+    if (params.value.directory.len == 0) {
+        try writeError(writer, request_id, "INVALID_PARAMS", "world backups listing directory must not be empty");
+        return;
+    }
+    var backups = service.listWorldBackups(params.value.directory) catch |err| {
+        const mapped = mapWorldsError(err, "WORLD_BACKUP_FAILED", "Failed to list world backups");
+        try writeError(writer, request_id, mapped.code, mapped.message);
+        return;
+    };
+    defer backups.deinit();
+
+    var json: std.json.Stringify = .{ .writer = writer };
+    try writeEventHeader(&json, request_id, "result");
+    try json.objectField("result");
+    try json.beginObject();
+    try json.objectField("stage");
+    try json.write("worlds.backups");
+    try json.objectField("backups");
+    try json.beginArray();
+    for (backups.backups) |backup| try writeBackupEntry(&json, backup);
+    try json.endArray();
+    try json.endObject();
+    try json.endObject();
+    try writer.writeByte('\n');
+}
+
+pub fn writeWorldsRestoreResult(
+    service: *core.Service,
+    writer: *std.Io.Writer,
+    request_id: []const u8,
+    params_value: ?std.json.Value,
+) std.Io.Writer.Error!void {
+    var params = try parseParams(WorldsRestoreParams, service, writer, request_id, params_value, "world restore") orelse return;
+    defer params.deinit();
+    if (params.value.directory.len == 0 or params.value.backup.len == 0) {
+        try writeError(writer, request_id, "INVALID_PARAMS", "world restore requires directory and backup");
+        return;
+    }
+    const name = service.restoreWorldBackup(params.value.directory, params.value.backup, params.value.name, params.value.replace) catch |err| {
+        const mapped = mapWorldsError(err, "WORLD_RESTORE_FAILED", "Failed to restore the backup");
+        try writeError(writer, request_id, mapped.code, mapped.message);
+        return;
+    };
+    defer service.allocator.free(name);
+    var worlds = service.getWorld(params.value.directory, name) catch |err| {
+        const mapped = mapWorldsError(err, "WORLD_GET_FAILED", "Failed to inspect the restored world");
+        try writeError(writer, request_id, mapped.code, mapped.message);
+        return;
+    };
+    defer worlds.deinit();
+
+    var json: std.json.Stringify = .{ .writer = writer };
+    try writeEventHeader(&json, request_id, "result");
+    try json.objectField("result");
+    try json.beginObject();
+    try json.objectField("stage");
+    try json.write("worlds.restore");
+    try json.objectField("world");
+    try writeWorldEntry(&json, worlds.worlds[0], params.value.minecraft_version);
+    try json.endObject();
+    try json.endObject();
+    try writer.writeByte('\n');
+}
+
+pub fn writeWorldsBackupDeleteResult(
+    service: *core.Service,
+    writer: *std.Io.Writer,
+    request_id: []const u8,
+    params_value: ?std.json.Value,
+) std.Io.Writer.Error!void {
+    var params = try parseParams(WorldsBackupTargetParams, service, writer, request_id, params_value, "world backup deletion") orelse return;
+    defer params.deinit();
+    if (params.value.directory.len == 0 or params.value.backup.len == 0) {
+        try writeError(writer, request_id, "INVALID_PARAMS", "world backup deletion requires directory and backup");
+        return;
+    }
+    service.deleteWorldBackup(params.value.directory, params.value.backup) catch |err| {
+        const mapped = mapWorldsError(err, "WORLD_BACKUP_FAILED", "Failed to delete the backup");
+        try writeError(writer, request_id, mapped.code, mapped.message);
+        return;
+    };
+
+    var json: std.json.Stringify = .{ .writer = writer };
+    try writeEventHeader(&json, request_id, "result");
+    try json.objectField("result");
+    try json.beginObject();
+    try json.objectField("stage");
+    try json.write("worlds.backups.delete");
+    try json.objectField("deleted");
+    try json.write(params.value.backup);
+    try json.endObject();
+    try json.endObject();
+    try writer.writeByte('\n');
+}
+
+const ServerWorldsRenameParams = struct {
+    directory: []const u8 = core.server_store.default_root,
+    id: []const u8,
+    world: []const u8,
+    new_name: []const u8,
+};
+
+const ServerWorldsBackupParams = struct {
+    directory: []const u8 = core.server_store.default_root,
+    id: []const u8,
+    world: ?[]const u8 = null,
+    label: ?[]const u8 = null,
+};
+
+const ServerWorldsRestoreParams = struct {
+    directory: []const u8 = core.server_store.default_root,
+    id: []const u8,
+    backup: []const u8,
+    replace: bool = false,
+};
+
+const ServerWorldsBackupTargetParams = struct {
+    directory: []const u8 = core.server_store.default_root,
+    id: []const u8,
+    backup: []const u8,
+};
+
+fn writeServerWorldFailure(writer: *std.Io.Writer, request_id: []const u8, err: anyerror, fallback_code: []const u8, fallback_message: []const u8) std.Io.Writer.Error!void {
+    switch (err) {
+        error.ServerNotFound => try writeError(writer, request_id, "SERVER_NOT_FOUND", "No server matches the given id"),
+        error.ServerAlreadyRunning => try writeError(writer, request_id, "SERVER_ALREADY_RUNNING", "Stop the server before modifying its worlds"),
+        else => {
+            const mapped = mapWorldsError(err, fallback_code, fallback_message);
+            try writeError(writer, request_id, mapped.code, mapped.message);
+        },
+    }
+}
+
+pub fn writeServerWorldsRenameResult(
+    service: *core.Service,
+    writer: *std.Io.Writer,
+    request_id: []const u8,
+    params_value: ?std.json.Value,
+) std.Io.Writer.Error!void {
+    if (!try server_protocol.requireLinux(writer, request_id)) return;
+    var params = try parseParams(ServerWorldsRenameParams, service, writer, request_id, params_value, "server world rename") orelse return;
+    defer params.deinit();
+    const input = params.value;
+    if (input.directory.len == 0 or input.id.len == 0 or input.world.len == 0 or input.new_name.len == 0) {
+        try writeError(writer, request_id, "INVALID_PARAMS", "server world rename requires directory, id, world, and new_name");
+        return;
+    }
+    service.serverRenameWorld(input.directory, input.id, input.world, input.new_name) catch |err| {
+        try writeServerWorldFailure(writer, request_id, err, "WORLD_RENAME_FAILED", "Failed to rename the server world");
+        return;
+    };
+
+    var json: std.json.Stringify = .{ .writer = writer };
+    try writeEventHeader(&json, request_id, "result");
+    try json.objectField("result");
+    try json.beginObject();
+    try json.objectField("stage");
+    try json.write("server.worlds.rename");
+    try json.objectField("renamed");
+    try json.beginObject();
+    try json.objectField("old_name");
+    try json.write(input.world);
+    try json.objectField("new_name");
+    try json.write(input.new_name);
+    try json.endObject();
+    try json.endObject();
+    try json.endObject();
+    try writer.writeByte('\n');
+}
+
+pub fn writeServerWorldsDeleteResult(
+    service: *core.Service,
+    writer: *std.Io.Writer,
+    request_id: []const u8,
+    params_value: ?std.json.Value,
+) std.Io.Writer.Error!void {
+    if (!try server_protocol.requireLinux(writer, request_id)) return;
+    var params = try parseParams(ServerWorldsTargetParams, service, writer, request_id, params_value, "server world deletion") orelse return;
+    defer params.deinit();
+    const input = params.value;
+    if (input.directory.len == 0 or input.id.len == 0 or input.world.len == 0) {
+        try writeError(writer, request_id, "INVALID_PARAMS", "server world deletion requires directory, id, and world");
+        return;
+    }
+    service.serverDeleteWorld(input.directory, input.id, input.world) catch |err| {
+        try writeServerWorldFailure(writer, request_id, err, "WORLD_DELETE_FAILED", "Failed to delete the server world");
+        return;
+    };
+
+    var json: std.json.Stringify = .{ .writer = writer };
+    try writeEventHeader(&json, request_id, "result");
+    try json.objectField("result");
+    try json.beginObject();
+    try json.objectField("stage");
+    try json.write("server.worlds.delete");
+    try json.objectField("deleted");
+    try json.write(input.world);
+    try json.endObject();
+    try json.endObject();
+    try writer.writeByte('\n');
+}
+
+pub fn writeServerWorldsBackupResult(
+    service: *core.Service,
+    writer: *std.Io.Writer,
+    request_id: []const u8,
+    params_value: ?std.json.Value,
+) std.Io.Writer.Error!void {
+    if (!try server_protocol.requireLinux(writer, request_id)) return;
+    var params = try parseParams(ServerWorldsBackupParams, service, writer, request_id, params_value, "server worlds backup") orelse return;
+    defer params.deinit();
+    const input = params.value;
+    if (input.directory.len == 0 or input.id.len == 0) {
+        try writeError(writer, request_id, "INVALID_PARAMS", "server worlds backup requires directory and id");
+        return;
+    }
+    const file = service.serverBackupWorlds(input.directory, input.id, input.world, input.label) catch |err| {
+        try writeServerWorldFailure(writer, request_id, err, "WORLD_BACKUP_FAILED", "Failed to back up the server worlds");
+        return;
+    };
+    defer service.allocator.free(file);
+
+    var json: std.json.Stringify = .{ .writer = writer };
+    try writeEventHeader(&json, request_id, "result");
+    try json.objectField("result");
+    try json.beginObject();
+    try json.objectField("stage");
+    try json.write("server.worlds.backup");
+    try json.objectField("backup");
+    try json.write(file);
+    try json.endObject();
+    try json.endObject();
+    try writer.writeByte('\n');
+}
+
+pub fn writeServerWorldsBackupsResult(
+    service: *core.Service,
+    writer: *std.Io.Writer,
+    request_id: []const u8,
+    params_value: ?std.json.Value,
+) std.Io.Writer.Error!void {
+    if (!try server_protocol.requireLinux(writer, request_id)) return;
+    var params = try parseParams(ServerWorldsListParams, service, writer, request_id, params_value, "server backups listing") orelse return;
+    defer params.deinit();
+    const input = params.value;
+    if (input.directory.len == 0 or input.id.len == 0) {
+        try writeError(writer, request_id, "INVALID_PARAMS", "server backups listing requires directory and id");
+        return;
+    }
+    var backups = service.serverListWorldBackups(input.directory, input.id) catch |err| {
+        try writeServerWorldFailure(writer, request_id, err, "WORLD_BACKUP_FAILED", "Failed to list backups");
+        return;
+    };
+    defer backups.deinit();
+
+    var json: std.json.Stringify = .{ .writer = writer };
+    try writeEventHeader(&json, request_id, "result");
+    try json.objectField("result");
+    try json.beginObject();
+    try json.objectField("stage");
+    try json.write("server.worlds.backups");
+    try json.objectField("id");
+    try json.write(input.id);
+    try json.objectField("backups");
+    try json.beginArray();
+    for (backups.backups) |backup| try writeBackupEntry(&json, backup);
+    try json.endArray();
+    try json.endObject();
+    try json.endObject();
+    try writer.writeByte('\n');
+}
+
+pub fn writeServerWorldsRestoreResult(
+    service: *core.Service,
+    writer: *std.Io.Writer,
+    request_id: []const u8,
+    params_value: ?std.json.Value,
+) std.Io.Writer.Error!void {
+    if (!try server_protocol.requireLinux(writer, request_id)) return;
+    var params = try parseParams(ServerWorldsRestoreParams, service, writer, request_id, params_value, "server worlds restore") orelse return;
+    defer params.deinit();
+    const input = params.value;
+    if (input.directory.len == 0 or input.id.len == 0 or input.backup.len == 0) {
+        try writeError(writer, request_id, "INVALID_PARAMS", "server worlds restore requires directory, id, and backup");
+        return;
+    }
+    service.serverRestoreWorlds(input.directory, input.id, input.backup, input.replace) catch |err| {
+        try writeServerWorldFailure(writer, request_id, err, "WORLD_RESTORE_FAILED", "Failed to restore the backup");
+        return;
+    };
+
+    var json: std.json.Stringify = .{ .writer = writer };
+    try writeEventHeader(&json, request_id, "result");
+    try json.objectField("result");
+    try json.beginObject();
+    try json.objectField("stage");
+    try json.write("server.worlds.restore");
+    try json.objectField("restored");
+    try json.write(input.backup);
+    try json.endObject();
+    try json.endObject();
+    try writer.writeByte('\n');
+}
+
+pub fn writeServerWorldsBackupDeleteResult(
+    service: *core.Service,
+    writer: *std.Io.Writer,
+    request_id: []const u8,
+    params_value: ?std.json.Value,
+) std.Io.Writer.Error!void {
+    if (!try server_protocol.requireLinux(writer, request_id)) return;
+    var params = try parseParams(ServerWorldsBackupTargetParams, service, writer, request_id, params_value, "server backup deletion") orelse return;
+    defer params.deinit();
+    const input = params.value;
+    if (input.directory.len == 0 or input.id.len == 0 or input.backup.len == 0) {
+        try writeError(writer, request_id, "INVALID_PARAMS", "server backup deletion requires directory, id, and backup");
+        return;
+    }
+    service.serverDeleteWorldBackup(input.directory, input.id, input.backup) catch |err| {
+        try writeServerWorldFailure(writer, request_id, err, "WORLD_BACKUP_FAILED", "Failed to delete the backup");
+        return;
+    };
+
+    var json: std.json.Stringify = .{ .writer = writer };
+    try writeEventHeader(&json, request_id, "result");
+    try json.objectField("result");
+    try json.beginObject();
+    try json.objectField("stage");
+    try json.write("server.worlds.backups.delete");
+    try json.objectField("deleted");
+    try json.write(input.backup);
     try json.endObject();
     try json.endObject();
     try writer.writeByte('\n');

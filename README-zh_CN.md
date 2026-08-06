@@ -59,6 +59,10 @@ zig build run -- instance worlds show vanilla-26.1 "New World"
 zig build run -- instance worlds rename vanilla-26.1 "New World" "Survival Run"
 zig build run -- instance worlds duplicate vanilla-26.1 "Survival Run" "Backup"
 zig build run -- instance worlds delete vanilla-26.1 "Backup"
+zig build run -- instance worlds export vanilla-26.1 "Survival Run" /tmp/survival.zip
+zig build run -- instance worlds backup vanilla-26.1 "Survival Run" --label "pre boss"
+zig build run -- instance worlds restore vanilla-26.1 "Survival Run-20240102-030405-pre-boss.zip" --replace
+zig build run -- server worlds backup fabric-1.21.1 --label full
 zig build run -- server worlds list fabric-1.21.1
 zig build run -- server create fabric-1.21.1 --version 1.21.1 --fabric-loader 0.16.10 --name "Fabric Server"
 zig build run -- server list
@@ -106,7 +110,7 @@ RPC 模式从标准输入逐行读取 JSON 请求，并将 JSON 事件逐行写�
 
 默认使用 Mojang 官方服务。中国大陆用户可以传递 `--source bmclapi`，或在 RPC 参数中使用 `"source":"bmclapi"` 来使用 BMCLAPI。BMCLAPI 返回的内容仍会根据 Mojang 提供的 SHA-1 值进行校验。
 
-存档/世界管理支持带 `level.dat` 解析元数据(名称、游戏版本、游戏模式、体积、图标、会话锁)的列表,以及崩溃安全的重命名、复制和删除操作。存档是可变的实例私有状态,绝不进入制品存储。服务端提供只读的世界查看。详见 `docs/worlds.md`。
+存档/世界管理支持带 `level.dat` 解析元数据(名称、游戏版本、游戏模式、体积、图标、会话锁)的列表、崩溃安全的重命名/复制/删除、zip 导出/导入,以及 `backups/` 下的时间戳备份与恢复。存档是可变的实例私有状态,绝不进入制品存储。服务端提供相同的归档流程,外加要求停机的主世界重命名/删除(联动维度目录)。详见 `docs/worlds.md`。
 
 Linux 服务器管理现已支持独立服务器清单、经过校验的原版、Fabric、NeoForge
 和现代 Forge 服务端安装、原子化 `server.properties` 管理、CLI 命令，以及分离式

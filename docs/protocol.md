@@ -227,12 +227,31 @@ hardcore, cheats, last played) that is `null` for unreadable worlds, plus
 {"protocol":1,"id":"w-2","method":"worlds.duplicate","params":{"directory":"/path/to/instances/my-instance/.minecraft","world":"My World","new_name":"Backup"}}
 ```
 
+`worlds.export` streams a world to a standard zip (`file` is the
+destination path; returns `{file, size_bytes, files}`) and `worlds.import`
+extracts one (`file`, optional `name` and `replace:false`; returns the
+world entry; traversal entries are rejected with `WORLD_ARCHIVE_INVALID`).
+`worlds.backup` (`world`, optional `label`), `worlds.backups`,
+`worlds.restore` (`backup`, optional `name`/`replace`), and
+`worlds.backups.delete` (`backup`) manage timestamped zips under
+`<game dir>/backups/`. Exports refuse locked worlds; imports and restores
+fail with `WORLD_EXISTS` unless `replace:true`, which fully replaces the
+target.
+
 `server.worlds.list` and `server.worlds.get` are the read-only server
 parity: they take the servers `directory` plus `id`, resolve `level-name`
 from `server.properties`, and inspect the base world and its
-`_nether`/`_the_end` siblings. Like every `server.*` method they return
-`UNSUPPORTED_PLATFORM` off Linux. Server-side world mutations ship with the
-backup phase. See `docs/worlds.md`.
+`_nether`/`_the_end` siblings. `server.worlds.rename` and
+`server.worlds.delete` mutate them, with base-world coupling: renaming the
+`level-name` world also renames existing dimension siblings and rewrites
+`level-name` in `server.properties`; deleting it cascades to the siblings.
+`server.worlds.backup` (optional `world`, `label`), `server.worlds.backups`,
+`server.worlds.restore` (`backup`, `replace`), and
+`server.worlds.backups.delete` mirror the client archive flow under
+`servers/<id>/backups/`; a backup without `world` packs the base world plus
+existing siblings into one multi-root zip. All server mutations require a
+stopped server (`SERVER_ALREADY_RUNNING`). Like every `server.*` method they
+return `UNSUPPORTED_PLATFORM` off Linux. See `docs/worlds.md`.
 
 ## Server Instance Management
 

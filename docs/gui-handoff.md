@@ -202,6 +202,12 @@ worlds in use by a running game (`session.lock` present -> `WORLD_LOCKED`):
 | `worlds.rename` | `directory`, `world`, `new_name` | `minecraft_version` | renames the directory AND rewrites `LevelName` inside `level.dat` atomically; returns the renamed entry |
 | `worlds.duplicate` | `directory`, `world`, `new_name` | `minecraft_version` | plain recursive copy (no links, `session.lock` excluded); returns the new entry |
 | `worlds.delete` | `directory`, `world` | — | permanent; confirm in the GUI first |
+| `worlds.export` | `directory`, `world`, `file` | — | writes a standard zip; returns `{file, size_bytes, files}`; refuses locked worlds |
+| `worlds.import` | `directory`, `file` | `name`, `replace` | extracts a world zip; default name from the zip prefix or file stem; returns the world entry |
+| `worlds.backup` | `directory`, `world` | `label` | timestamped zip into `<game dir>/backups/`; returns `{backup}` |
+| `worlds.backups` | `directory` | — | `{backups[]}` newest first: `file`, `world` (nullable), `created_ms`, `size_bytes` |
+| `worlds.restore` | `directory`, `backup` | `name`, `replace` | import from the backups directory; `WORLD_EXISTS` unless `replace:true` (full swap) |
+| `worlds.backups.delete` | `directory`, `backup` | — | `BACKUP_NOT_FOUND` for missing files |
 
 World entries: `name` (directory), parsed `level.dat` metadata
 (`level_name`, `version_name`, `version_id`, `game_mode`, `hardcore`,
@@ -233,6 +239,12 @@ on Linux:
 | `server.properties.set` | `directory`, `id`, non-empty `properties` object | — | merges string-valued keys and atomically rewrites the file; returns the full resulting object |
 | `server.worlds.list` | `directory`, `id` | `minecraft_version` | read-only; base world from `level-name` plus existing `_nether`/`_the_end` siblings |
 | `server.worlds.get` | `directory`, `id`, `world` | `minecraft_version` | read-only; one entry plus `icon_png_base64` |
+| `server.worlds.rename` | `directory`, `id`, `world`, `new_name` | — | stopped server only; renaming the `level-name` world also renames existing dimension siblings and rewrites `level-name` in `server.properties` |
+| `server.worlds.delete` | `directory`, `id`, `world` | — | stopped server only; deleting the base world cascades to `_nether`/`_the_end` siblings |
+| `server.worlds.backup` | `directory`, `id` | `world`, `label` | stopped server only; without `world` packs base + existing siblings into one zip under `servers/<id>/backups/`; returns `{backup}` |
+| `server.worlds.backups` | `directory`, `id` | — | `{backups[]}` newest first |
+| `server.worlds.restore` | `directory`, `id`, `backup` | `replace` | stopped server only; restores every top-level world directory in the zip; `WORLD_EXISTS` unless `replace:true` |
+| `server.worlds.backups.delete` | `directory`, `id`, `backup` | — | `BACKUP_NOT_FOUND` for missing files |
 
 `server.create`, `server.list`, and `server.get` include `installed`. Treat it
 as authoritative. The v3 completion marker must match the manifest and the

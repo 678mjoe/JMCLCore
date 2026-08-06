@@ -27,6 +27,7 @@ pub const preparer = @import("install/preparer.zig");
 pub const java_managed = @import("java/managed.zig");
 pub const worlds = @import("worlds/worlds.zig");
 pub const nbt = @import("worlds/nbt.zig");
+pub const zip_writer = @import("worlds/zip_writer.zig");
 pub const java_runtime = @import("java/java_runtime.zig");
 pub const java_runtime_store = @import("java/java_runtime_store.zig");
 pub const runtime_installer = @import("java/runtime_installer.zig");
@@ -70,6 +71,7 @@ test {
     _ = java_managed;
     _ = worlds;
     _ = nbt;
+    _ = zip_writer;
     _ = java_runtime;
     _ = java_runtime_store;
     _ = runtime_installer;

@@ -5,6 +5,9 @@ const InstanceWorldsOptions = struct {
     id: []const u8,
     world: ?[]const u8 = null,
     new_name: ?[]const u8 = null,
+    name: ?[]const u8 = null,
+    label: ?[]const u8 = null,
+    replace: bool = false,
     instances_directory: []const u8 = jmcl.instance_store.default_root,
     json: bool = false,
 };
@@ -22,6 +25,15 @@ fn parseInstanceArgs(
         } else if (std.mem.eql(u8, argument, "--instances-directory") and index + 1 < args.len) {
             options.instances_directory = args[index + 1];
             index += 2;
+        } else if (std.mem.eql(u8, argument, "--name") and index + 1 < args.len) {
+            options.name = args[index + 1];
+            index += 2;
+        } else if (std.mem.eql(u8, argument, "--label") and index + 1 < args.len) {
+            options.label = args[index + 1];
+            index += 2;
+        } else if (std.mem.eql(u8, argument, "--replace")) {
+            options.replace = true;
+            index += 1;
         } else if (options.world == null) {
             options.world = argument;
             index += 1;
@@ -110,6 +122,12 @@ fn reportWorldsError(stderr: *std.Io.Writer, operation: []const u8, err: anyerro
         error.WorldLocked => "the world is in use by a running game",
         error.InvalidLevelData => "the world level.dat is malformed",
         error.UnsupportedEntry => "the world contains unsupported entries",
+        error.BackupNotFound => "backup file not found",
+        error.ArchiveTooLarge, error.TooManyEntries, error.FileTooLarge, error.EntryNameTooLong => "the archive exceeds the supported size limits",
+        error.ArchiveInvalid, error.EntryNameInvalid => "the archive is not a valid world zip",
+        error.ServerNotFound => "server not found",
+        error.ServerAlreadyRunning => "stop the server before modifying its worlds",
+        error.UnsupportedPlatform => "server world management is only supported on Linux",
         else => @errorName(err),
     };
     try stderr.print("failed to {s} world: {s}\n", .{ operation, message });
@@ -154,8 +172,192 @@ pub fn runInstanceWorlds(
     if (args.len >= 1 and std.mem.eql(u8, args[0], "rename")) return runInstanceRename(service, args[1..], stdout, stderr);
     if (args.len >= 1 and std.mem.eql(u8, args[0], "duplicate")) return runInstanceDuplicate(service, args[1..], stdout, stderr);
     if (args.len >= 1 and std.mem.eql(u8, args[0], "delete")) return runInstanceDelete(service, args[1..], stdout, stderr);
-    try stderr.writeAll("usage: jmcl-core instance worlds <list|show|rename|duplicate|delete> ID [WORLD] [NEW_NAME] [--instances-directory PATH] [--json]\n");
+    if (args.len >= 1 and std.mem.eql(u8, args[0], "export")) return runInstanceExport(service, args[1..], stdout, stderr);
+    if (args.len >= 1 and std.mem.eql(u8, args[0], "import")) return runInstanceImport(service, args[1..], stdout, stderr);
+    if (args.len >= 1 and std.mem.eql(u8, args[0], "backup")) return runInstanceBackup(service, args[1..], stdout, stderr);
+    if (args.len >= 1 and std.mem.eql(u8, args[0], "backups")) return runInstanceBackups(service, args[1..], stdout, stderr);
+    if (args.len >= 1 and std.mem.eql(u8, args[0], "restore")) return runInstanceRestore(service, args[1..], stdout, stderr);
+    if (args.len >= 1 and std.mem.eql(u8, args[0], "backups-delete")) return runInstanceBackupDelete(service, args[1..], stdout, stderr);
+    try stderr.writeAll("usage: jmcl-core instance worlds <list|show|rename|duplicate|delete|export|import|backup|backups|restore|backups-delete> ID [ARGS] [--instances-directory PATH] [--json]\n");
     return 2;
+}
+
+fn runInstanceExport(
+    service: *jmcl.Service,
+    args: []const []const u8,
+    stdout: *std.Io.Writer,
+    stderr: *std.Io.Writer,
+) !u8 {
+    if (args.len == 0) {
+        try stderr.writeAll("usage: jmcl-core instance worlds export ID WORLD FILE [--instances-directory PATH]\n");
+        return 2;
+    }
+    var options: InstanceWorldsOptions = .{ .id = args[0] };
+    jmcl.instance_store.validateId(options.id) catch return error.InvalidArguments;
+    try parseInstanceArgs(&options, args[1..]);
+    const world_name = options.world orelse return error.InvalidArguments;
+    const file = options.new_name orelse return error.InvalidArguments;
+
+    const context = (try openInstanceContext(service, stderr, options)) orelse return 1;
+    defer service.allocator.free(context.minecraft_path);
+    defer service.allocator.free(context.minecraft_version);
+
+    const result = service.exportWorld(context.minecraft_path, world_name, file) catch |err| return reportWorldsError(stderr, "export", err);
+    try stdout.print("exported {s} -> {s} ({d} bytes, {d} files)\n", .{ world_name, file, result.size_bytes, result.files });
+    return 0;
+}
+
+fn runInstanceImport(
+    service: *jmcl.Service,
+    args: []const []const u8,
+    stdout: *std.Io.Writer,
+    stderr: *std.Io.Writer,
+) !u8 {
+    if (args.len == 0) {
+        try stderr.writeAll("usage: jmcl-core instance worlds import ID FILE [--name NAME] [--replace] [--instances-directory PATH]\n");
+        return 2;
+    }
+    var options: InstanceWorldsOptions = .{ .id = args[0] };
+    jmcl.instance_store.validateId(options.id) catch return error.InvalidArguments;
+    try parseInstanceArgs(&options, args[1..]);
+    const file = options.world orelse return error.InvalidArguments;
+
+    const context = (try openInstanceContext(service, stderr, options)) orelse return 1;
+    defer service.allocator.free(context.minecraft_path);
+    defer service.allocator.free(context.minecraft_version);
+
+    const name = service.importWorld(context.minecraft_path, file, options.name, options.replace) catch |err| return reportWorldsError(stderr, "import", err);
+    defer service.allocator.free(name);
+    try stdout.print("imported {s}\n", .{name});
+    return 0;
+}
+
+fn runInstanceBackup(
+    service: *jmcl.Service,
+    args: []const []const u8,
+    stdout: *std.Io.Writer,
+    stderr: *std.Io.Writer,
+) !u8 {
+    if (args.len == 0) {
+        try stderr.writeAll("usage: jmcl-core instance worlds backup ID WORLD [--label LABEL] [--instances-directory PATH]\n");
+        return 2;
+    }
+    var options: InstanceWorldsOptions = .{ .id = args[0] };
+    jmcl.instance_store.validateId(options.id) catch return error.InvalidArguments;
+    try parseInstanceArgs(&options, args[1..]);
+    const world_name = options.world orelse return error.InvalidArguments;
+
+    const context = (try openInstanceContext(service, stderr, options)) orelse return 1;
+    defer service.allocator.free(context.minecraft_path);
+    defer service.allocator.free(context.minecraft_version);
+
+    const file = service.backupWorld(context.minecraft_path, world_name, options.label) catch |err| return reportWorldsError(stderr, "back up", err);
+    defer service.allocator.free(file);
+    try stdout.print("backup: {s}\n", .{file});
+    return 0;
+}
+
+fn printBackupRows(stdout: *std.Io.Writer, backups: []const jmcl.worlds.BackupInfo) !void {
+    for (backups) |backup| {
+        try stdout.print("{s}\t{s}\t{d}\t{d}\n", .{ backup.file, backup.world orelse "-", backup.created_ms, backup.size_bytes });
+    }
+}
+
+fn runInstanceBackups(
+    service: *jmcl.Service,
+    args: []const []const u8,
+    stdout: *std.Io.Writer,
+    stderr: *std.Io.Writer,
+) !u8 {
+    if (args.len == 0) {
+        try stderr.writeAll("usage: jmcl-core instance worlds backups ID [--instances-directory PATH] [--json]\n");
+        return 2;
+    }
+    var options: InstanceWorldsOptions = .{ .id = args[0] };
+    jmcl.instance_store.validateId(options.id) catch return error.InvalidArguments;
+    try parseInstanceArgs(&options, args[1..]);
+    if (options.world != null) return error.InvalidArguments;
+
+    const context = (try openInstanceContext(service, stderr, options)) orelse return 1;
+    defer service.allocator.free(context.minecraft_path);
+    defer service.allocator.free(context.minecraft_version);
+
+    var backups = service.listWorldBackups(context.minecraft_path) catch |err| return reportWorldsError(stderr, "list backups for", err);
+    defer backups.deinit();
+
+    if (options.json) {
+        var json: std.json.Stringify = .{ .writer = stdout };
+        try json.beginObject();
+        try json.objectField("backups");
+        try json.beginArray();
+        for (backups.backups) |backup| {
+            try json.beginObject();
+            try json.objectField("file");
+            try json.write(backup.file);
+            try json.objectField("world");
+            try json.write(backup.world);
+            try json.objectField("created_ms");
+            try json.write(backup.created_ms);
+            try json.objectField("size_bytes");
+            try json.write(backup.size_bytes);
+            try json.endObject();
+        }
+        try json.endArray();
+        try json.endObject();
+        try stdout.writeByte('\n');
+        return 0;
+    }
+    try printBackupRows(stdout, backups.backups);
+    return 0;
+}
+
+fn runInstanceRestore(
+    service: *jmcl.Service,
+    args: []const []const u8,
+    stdout: *std.Io.Writer,
+    stderr: *std.Io.Writer,
+) !u8 {
+    if (args.len == 0) {
+        try stderr.writeAll("usage: jmcl-core instance worlds restore ID BACKUP [--name NAME] [--replace] [--instances-directory PATH]\n");
+        return 2;
+    }
+    var options: InstanceWorldsOptions = .{ .id = args[0] };
+    jmcl.instance_store.validateId(options.id) catch return error.InvalidArguments;
+    try parseInstanceArgs(&options, args[1..]);
+    const backup = options.world orelse return error.InvalidArguments;
+
+    const context = (try openInstanceContext(service, stderr, options)) orelse return 1;
+    defer service.allocator.free(context.minecraft_path);
+    defer service.allocator.free(context.minecraft_version);
+
+    const name = service.restoreWorldBackup(context.minecraft_path, backup, options.name, options.replace) catch |err| return reportWorldsError(stderr, "restore", err);
+    defer service.allocator.free(name);
+    try stdout.print("restored {s}\n", .{name});
+    return 0;
+}
+
+fn runInstanceBackupDelete(
+    service: *jmcl.Service,
+    args: []const []const u8,
+    stdout: *std.Io.Writer,
+    stderr: *std.Io.Writer,
+) !u8 {
+    if (args.len == 0) {
+        try stderr.writeAll("usage: jmcl-core instance worlds backups-delete ID BACKUP [--instances-directory PATH]\n");
+        return 2;
+    }
+    var options: InstanceWorldsOptions = .{ .id = args[0] };
+    jmcl.instance_store.validateId(options.id) catch return error.InvalidArguments;
+    try parseInstanceArgs(&options, args[1..]);
+    const backup = options.world orelse return error.InvalidArguments;
+
+    const context = (try openInstanceContext(service, stderr, options)) orelse return 1;
+    defer service.allocator.free(context.minecraft_path);
+    defer service.allocator.free(context.minecraft_version);
+
+    service.deleteWorldBackup(context.minecraft_path, backup) catch |err| return reportWorldsError(stderr, "delete backup", err);
+    try stdout.print("deleted {s}\n", .{backup});
+    return 0;
 }
 
 fn runInstanceList(
@@ -337,13 +539,155 @@ pub fn runServerWorlds(
 ) !u8 {
     if (args.len >= 1 and std.mem.eql(u8, args[0], "list")) return runServerList(service, args[1..], stdout, stderr);
     if (args.len >= 1 and std.mem.eql(u8, args[0], "show")) return runServerShow(service, args[1..], stdout, stderr);
-    try stderr.writeAll("usage: jmcl-core server worlds <list|show> ID [WORLD] [--servers-directory PATH] [--json]\n");
+    if (args.len >= 1 and std.mem.eql(u8, args[0], "rename")) return runServerRename(service, args[1..], stdout, stderr);
+    if (args.len >= 1 and std.mem.eql(u8, args[0], "delete")) return runServerDelete(service, args[1..], stdout, stderr);
+    if (args.len >= 1 and std.mem.eql(u8, args[0], "backup")) return runServerBackup(service, args[1..], stdout, stderr);
+    if (args.len >= 1 and std.mem.eql(u8, args[0], "backups")) return runServerBackups(service, args[1..], stdout, stderr);
+    if (args.len >= 1 and std.mem.eql(u8, args[0], "restore")) return runServerRestore(service, args[1..], stdout, stderr);
+    if (args.len >= 1 and std.mem.eql(u8, args[0], "backups-delete")) return runServerBackupDelete(service, args[1..], stdout, stderr);
+    try stderr.writeAll("usage: jmcl-core server worlds <list|show|rename|delete|backup|backups|restore|backups-delete> ID [ARGS] [--servers-directory PATH] [--json]\n");
     return 2;
+}
+
+fn runServerRename(
+    service: *jmcl.Service,
+    args: []const []const u8,
+    stdout: *std.Io.Writer,
+    stderr: *std.Io.Writer,
+) !u8 {
+    if (args.len < 3) {
+        try stderr.writeAll("usage: jmcl-core server worlds rename ID WORLD NEW_NAME [--servers-directory PATH]\n");
+        return 2;
+    }
+    var options: ServerWorldsOptions = .{ .id = args[0] };
+    try parseServerArgs(&options, args[1..]);
+    const world_name = options.world orelse return error.InvalidArguments;
+    const new_name = options.new_name orelse return error.InvalidArguments;
+    service.serverRenameWorld(options.servers_directory, options.id, world_name, new_name) catch |err| return reportWorldsError(stderr, "rename", err);
+    try stdout.print("renamed {s} -> {s}\n", .{ world_name, new_name });
+    return 0;
+}
+
+fn runServerDelete(
+    service: *jmcl.Service,
+    args: []const []const u8,
+    stdout: *std.Io.Writer,
+    stderr: *std.Io.Writer,
+) !u8 {
+    if (args.len < 2) {
+        try stderr.writeAll("usage: jmcl-core server worlds delete ID WORLD [--servers-directory PATH]\n");
+        return 2;
+    }
+    var options: ServerWorldsOptions = .{ .id = args[0] };
+    try parseServerArgs(&options, args[1..]);
+    const world_name = options.world orelse return error.InvalidArguments;
+    service.serverDeleteWorld(options.servers_directory, options.id, world_name) catch |err| return reportWorldsError(stderr, "delete", err);
+    try stdout.print("deleted {s}\n", .{world_name});
+    return 0;
+}
+
+fn runServerBackup(
+    service: *jmcl.Service,
+    args: []const []const u8,
+    stdout: *std.Io.Writer,
+    stderr: *std.Io.Writer,
+) !u8 {
+    if (args.len == 0) {
+        try stderr.writeAll("usage: jmcl-core server worlds backup ID [WORLD] [--label LABEL] [--servers-directory PATH]\n");
+        return 2;
+    }
+    var options: ServerWorldsOptions = .{ .id = args[0] };
+    try parseServerArgs(&options, args[1..]);
+    const file = service.serverBackupWorlds(options.servers_directory, options.id, options.world, options.label) catch |err| return reportWorldsError(stderr, "back up", err);
+    defer service.allocator.free(file);
+    try stdout.print("backup: {s}\n", .{file});
+    return 0;
+}
+
+fn runServerBackups(
+    service: *jmcl.Service,
+    args: []const []const u8,
+    stdout: *std.Io.Writer,
+    stderr: *std.Io.Writer,
+) !u8 {
+    if (args.len == 0) {
+        try stderr.writeAll("usage: jmcl-core server worlds backups ID [--servers-directory PATH] [--json]\n");
+        return 2;
+    }
+    var options: ServerWorldsOptions = .{ .id = args[0] };
+    try parseServerArgs(&options, args[1..]);
+    if (options.world != null) return error.InvalidArguments;
+    var backups = service.serverListWorldBackups(options.servers_directory, options.id) catch |err| return reportWorldsError(stderr, "list backups for", err);
+    defer backups.deinit();
+
+    if (options.json) {
+        var json: std.json.Stringify = .{ .writer = stdout };
+        try json.beginObject();
+        try json.objectField("backups");
+        try json.beginArray();
+        for (backups.backups) |backup| {
+            try json.beginObject();
+            try json.objectField("file");
+            try json.write(backup.file);
+            try json.objectField("world");
+            try json.write(backup.world);
+            try json.objectField("created_ms");
+            try json.write(backup.created_ms);
+            try json.objectField("size_bytes");
+            try json.write(backup.size_bytes);
+            try json.endObject();
+        }
+        try json.endArray();
+        try json.endObject();
+        try stdout.writeByte('\n');
+        return 0;
+    }
+    try printBackupRows(stdout, backups.backups);
+    return 0;
+}
+
+fn runServerRestore(
+    service: *jmcl.Service,
+    args: []const []const u8,
+    stdout: *std.Io.Writer,
+    stderr: *std.Io.Writer,
+) !u8 {
+    if (args.len < 2) {
+        try stderr.writeAll("usage: jmcl-core server worlds restore ID BACKUP [--replace] [--servers-directory PATH]\n");
+        return 2;
+    }
+    var options: ServerWorldsOptions = .{ .id = args[0] };
+    try parseServerArgs(&options, args[1..]);
+    const backup = options.world orelse return error.InvalidArguments;
+    service.serverRestoreWorlds(options.servers_directory, options.id, backup, options.replace) catch |err| return reportWorldsError(stderr, "restore", err);
+    try stdout.print("restored {s}\n", .{backup});
+    return 0;
+}
+
+fn runServerBackupDelete(
+    service: *jmcl.Service,
+    args: []const []const u8,
+    stdout: *std.Io.Writer,
+    stderr: *std.Io.Writer,
+) !u8 {
+    if (args.len < 2) {
+        try stderr.writeAll("usage: jmcl-core server worlds backups-delete ID BACKUP [--servers-directory PATH]\n");
+        return 2;
+    }
+    var options: ServerWorldsOptions = .{ .id = args[0] };
+    try parseServerArgs(&options, args[1..]);
+    const backup = options.world orelse return error.InvalidArguments;
+    service.serverDeleteWorldBackup(options.servers_directory, options.id, backup) catch |err| return reportWorldsError(stderr, "delete backup", err);
+    try stdout.print("deleted {s}\n", .{backup});
+    return 0;
 }
 
 const ServerWorldsOptions = struct {
     id: []const u8,
     world: ?[]const u8 = null,
+    new_name: ?[]const u8 = null,
+    label: ?[]const u8 = null,
+    replace: bool = false,
     servers_directory: []const u8 = jmcl.server_store.default_root,
     json: bool = false,
 };
@@ -383,8 +727,17 @@ fn parseServerArgs(
         } else if (std.mem.eql(u8, argument, "--servers-directory") and index + 1 < args.len) {
             options.servers_directory = args[index + 1];
             index += 2;
+        } else if (std.mem.eql(u8, argument, "--label") and index + 1 < args.len) {
+            options.label = args[index + 1];
+            index += 2;
+        } else if (std.mem.eql(u8, argument, "--replace")) {
+            options.replace = true;
+            index += 1;
         } else if (options.world == null) {
             options.world = argument;
+            index += 1;
+        } else if (options.new_name == null) {
+            options.new_name = argument;
             index += 1;
         } else return error.InvalidArguments;
     }

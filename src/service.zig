@@ -392,6 +392,215 @@ pub const Service = struct {
         try worlds.remove(self.io, saves_dir, name);
     }
 
+    pub fn exportWorld(self: Service, directory: []const u8, name: []const u8, dest_path: []const u8) !worlds.ExportResult {
+        if (dest_path.len == 0) return error.InvalidName;
+        var saves_dir = try self.openSavesDirChecked(directory);
+        defer saves_dir.close(self.io);
+        return worlds.exportWorld(self.allocator, self.io, saves_dir, name, std.Io.Dir.cwd(), dest_path);
+    }
+
+    pub fn importWorld(self: Service, directory: []const u8, source_path: []const u8, name: ?[]const u8, replace: bool) ![]u8 {
+        if (source_path.len == 0) return error.InvalidName;
+        var saves_dir = try self.openSavesDirChecked(directory);
+        defer saves_dir.close(self.io);
+        return worlds.importWorld(self.allocator, self.io, saves_dir, std.Io.Dir.cwd(), source_path, name, replace);
+    }
+
+    fn openBackupsDir(self: Service, directory: []const u8, create: bool) !std.Io.Dir {
+        const game_dir = try install_executor.openRoot(self.io, directory);
+        defer game_dir.close(self.io);
+        if (create) try game_dir.createDirPath(self.io, worlds.backups_directory_name);
+        return game_dir.openDir(self.io, worlds.backups_directory_name, .{ .iterate = true });
+    }
+
+    pub fn backupWorld(self: Service, directory: []const u8, name: []const u8, label: ?[]const u8) ![]u8 {
+        var saves_dir = try self.openSavesDirChecked(directory);
+        defer saves_dir.close(self.io);
+        var backups_dir = try self.openBackupsDir(directory, true);
+        defer backups_dir.close(self.io);
+        const now_ms = std.Io.Timestamp.now(self.io, .real).toMilliseconds();
+        return worlds.backupWorld(self.allocator, self.io, saves_dir, backups_dir, name, label, now_ms);
+    }
+
+    pub fn listWorldBackups(self: Service, directory: []const u8) !worlds.BackupList {
+        var backups_dir = self.openBackupsDir(directory, false) catch |err| switch (err) {
+            error.FileNotFound => return worlds.emptyBackupList(self.allocator),
+            else => |other| return other,
+        };
+        defer backups_dir.close(self.io);
+        return worlds.listBackups(self.allocator, self.io, backups_dir);
+    }
+
+    pub fn restoreWorldBackup(self: Service, directory: []const u8, file: []const u8, name: ?[]const u8, replace: bool) ![]u8 {
+        try worlds.validateBackupFileName(file);
+        var saves_dir = try self.openSavesDirChecked(directory);
+        defer saves_dir.close(self.io);
+        var backups_dir = try self.openBackupsDir(directory, false);
+        defer backups_dir.close(self.io);
+        return worlds.importWorld(self.allocator, self.io, saves_dir, backups_dir, file, name, replace);
+    }
+
+    pub fn deleteWorldBackup(self: Service, directory: []const u8, file: []const u8) !void {
+        var backups_dir = try self.openBackupsDir(directory, false);
+        defer backups_dir.close(self.io);
+        try worlds.deleteBackup(self.io, backups_dir, file);
+    }
+
+    fn openServerDirChecked(self: Service, directory: []const u8, id: []const u8) !std.Io.Dir {
+        const root = server_store.openRoot(self.io, directory) catch return error.ServerNotFound;
+        defer root.close(self.io);
+        var manifest = server_store.load(self.allocator, self.io, root, id) catch |err| switch (err) {
+            error.FileNotFound, error.InvalidServerId => return error.ServerNotFound,
+            else => |other| return other,
+        };
+        defer manifest.deinit();
+        return server_store.openServer(self.io, root, id) catch return error.ServerNotFound;
+    }
+
+    fn serverLevelNameAlloc(self: Service, arena: std.mem.Allocator, server_dir: std.Io.Dir) ![]const u8 {
+        var document = server_properties.load(arena, self.io, server_dir) catch return error.InvalidServerProperties;
+        defer document.deinit();
+        for (document.entries.items) |entry| {
+            if (std.mem.eql(u8, entry.key, "level-name")) return arena.dupe(u8, entry.value);
+        }
+        return error.InvalidServerProperties;
+    }
+
+    fn serverSetLevelName(self: Service, server_dir: std.Io.Dir, new_name: []const u8) !void {
+        var document = server_properties.load(self.allocator, self.io, server_dir) catch return error.InvalidServerProperties;
+        defer document.deinit();
+        try document.set("level-name", new_name);
+        try server_properties.writeAtomic(self.io, server_dir, document);
+    }
+
+    pub fn serverRenameWorld(self: Service, directory: []const u8, id: []const u8, world: []const u8, new_name: []const u8) !void {
+        var server_dir = try self.openServerDirChecked(directory, id);
+        defer server_dir.close(self.io);
+        var stopped_guard = try server_lifecycle.lockStopped(self.allocator, self.io, server_dir);
+        defer stopped_guard.deinit();
+
+        var arena = std.heap.ArenaAllocator.init(self.allocator);
+        defer arena.deinit();
+        const level_name = try self.serverLevelNameAlloc(arena.allocator(), server_dir);
+        const renaming_base = std.mem.eql(u8, world, level_name);
+
+        try worlds.rename(self.allocator, self.io, server_dir, world, new_name);
+        if (!renaming_base) return;
+        inline for (.{ "_nether", "_the_end" }) |suffix| {
+            var old_buffer: [worlds.max_world_name_bytes + 16]u8 = undefined;
+            var new_buffer: [worlds.max_world_name_bytes + 16]u8 = undefined;
+            const old_sibling = std.fmt.bufPrint(&old_buffer, "{s}{s}", .{ world, suffix }) catch return error.InvalidName;
+            const new_sibling = std.fmt.bufPrint(&new_buffer, "{s}{s}", .{ new_name, suffix }) catch return error.InvalidName;
+            if (server_dir.statFile(self.io, old_sibling, .{})) |_| {
+                try server_dir.rename(old_sibling, server_dir, new_sibling, self.io);
+            } else |_| {}
+        }
+        try self.serverSetLevelName(server_dir, new_name);
+    }
+
+    pub fn serverDeleteWorld(self: Service, directory: []const u8, id: []const u8, world: []const u8) !void {
+        var server_dir = try self.openServerDirChecked(directory, id);
+        defer server_dir.close(self.io);
+        var stopped_guard = try server_lifecycle.lockStopped(self.allocator, self.io, server_dir);
+        defer stopped_guard.deinit();
+
+        var arena = std.heap.ArenaAllocator.init(self.allocator);
+        defer arena.deinit();
+        const level_name = try self.serverLevelNameAlloc(arena.allocator(), server_dir);
+
+        try worlds.remove(self.io, server_dir, world);
+        if (!std.mem.eql(u8, world, level_name)) return;
+        inline for (.{ "_nether", "_the_end" }) |suffix| {
+            var buffer: [worlds.max_world_name_bytes + 16]u8 = undefined;
+            const sibling = std.fmt.bufPrint(&buffer, "{s}{s}", .{ world, suffix }) catch return error.InvalidName;
+            server_dir.deleteTree(self.io, sibling) catch {};
+        }
+    }
+
+    pub fn serverBackupWorlds(self: Service, directory: []const u8, id: []const u8, world: ?[]const u8, label: ?[]const u8) ![]u8 {
+        var server_dir = try self.openServerDirChecked(directory, id);
+        defer server_dir.close(self.io);
+        var stopped_guard = try server_lifecycle.lockStopped(self.allocator, self.io, server_dir);
+        defer stopped_guard.deinit();
+
+        var arena = std.heap.ArenaAllocator.init(self.allocator);
+        defer arena.deinit();
+        const allocator = arena.allocator();
+        const level_name = try self.serverLevelNameAlloc(allocator, server_dir);
+
+        var names: [3][]const u8 = undefined;
+        var count: usize = 0;
+        if (world) |name| {
+            try worlds.validateName(name);
+            if (server_dir.statFile(self.io, name, .{})) |_| {} else |_| return error.WorldNotFound;
+            names[0] = name;
+            count = 1;
+        } else {
+            names[0] = level_name;
+            count = 1;
+            inline for (.{ "_nether", "_the_end" }) |suffix| {
+                const sibling = try std.fmt.allocPrint(allocator, "{s}{s}", .{ level_name, suffix });
+                if (server_dir.statFile(self.io, sibling, .{})) |_| {
+                    names[count] = sibling;
+                    count += 1;
+                } else |_| {}
+            }
+        }
+
+        try server_dir.createDirPath(self.io, worlds.backups_directory_name);
+        var backups_dir = try server_dir.openDir(self.io, worlds.backups_directory_name, .{ .iterate = true });
+        defer backups_dir.close(self.io);
+
+        const clean_label = if (label) |text| try worlds.sanitizeLabel(allocator, text) else null;
+        const now_ms = std.Io.Timestamp.now(self.io, .real).toMilliseconds();
+        var name_buffer: [worlds.max_world_name_bytes + worlds.max_backup_label_bytes + 32]u8 = undefined;
+        const base = world orelse level_name;
+        const file = try worlds.backupFileName(&name_buffer, base, now_ms, clean_label);
+        if (server_dir.statFile(self.io, try std.fmt.allocPrint(allocator, "{s}/{s}", .{ worlds.backups_directory_name, file }), .{})) |_| {
+            return error.WorldExists;
+        } else |_| {}
+
+        _ = try worlds.exportWorldSet(allocator, self.io, server_dir, names[0..count], backups_dir, file);
+        return try self.allocator.dupe(u8, file);
+    }
+
+    pub fn serverListWorldBackups(self: Service, directory: []const u8, id: []const u8) !worlds.BackupList {
+        var server_dir = try self.openServerDirChecked(directory, id);
+        defer server_dir.close(self.io);
+        var backups_dir = server_dir.openDir(self.io, worlds.backups_directory_name, .{ .iterate = true }) catch |err| switch (err) {
+            error.FileNotFound => return worlds.emptyBackupList(self.allocator),
+            else => |other| return other,
+        };
+        defer backups_dir.close(self.io);
+        return worlds.listBackups(self.allocator, self.io, backups_dir);
+    }
+
+    pub fn serverRestoreWorlds(self: Service, directory: []const u8, id: []const u8, backup: []const u8, replace: bool) !void {
+        try worlds.validateBackupFileName(backup);
+        var server_dir = try self.openServerDirChecked(directory, id);
+        defer server_dir.close(self.io);
+        var stopped_guard = try server_lifecycle.lockStopped(self.allocator, self.io, server_dir);
+        defer stopped_guard.deinit();
+
+        var backups_dir = server_dir.openDir(self.io, worlds.backups_directory_name, .{ .iterate = true }) catch |err| switch (err) {
+            error.FileNotFound => return error.BackupNotFound,
+            else => |other| return other,
+        };
+        defer backups_dir.close(self.io);
+        try worlds.importWorldSet(self.allocator, self.io, server_dir, backups_dir, backup, replace);
+    }
+
+    pub fn serverDeleteWorldBackup(self: Service, directory: []const u8, id: []const u8, backup: []const u8) !void {
+        var server_dir = try self.openServerDirChecked(directory, id);
+        defer server_dir.close(self.io);
+        var backups_dir = server_dir.openDir(self.io, worlds.backups_directory_name, .{ .iterate = true }) catch |err| switch (err) {
+            error.FileNotFound => return error.BackupNotFound,
+            else => |other| return other,
+        };
+        defer backups_dir.close(self.io);
+        try worlds.deleteBackup(self.io, backups_dir, backup);
+    }
+
     pub fn fetchVersionMetadata(
         self: Service,
         version_id: []const u8,
