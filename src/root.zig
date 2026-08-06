@@ -25,6 +25,8 @@ pub const install_plan = @import("install/plan.zig");
 pub const installer = @import("install/installer.zig");
 pub const preparer = @import("install/preparer.zig");
 pub const java_managed = @import("java/managed.zig");
+pub const worlds = @import("worlds/worlds.zig");
+pub const nbt = @import("worlds/nbt.zig");
 pub const java_runtime = @import("java/java_runtime.zig");
 pub const java_runtime_store = @import("java/java_runtime_store.zig");
 pub const runtime_installer = @import("java/runtime_installer.zig");
@@ -66,6 +68,8 @@ test {
     _ = installer;
     _ = preparer;
     _ = java_managed;
+    _ = worlds;
+    _ = nbt;
     _ = java_runtime;
     _ = java_runtime_store;
     _ = runtime_installer;

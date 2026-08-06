@@ -205,6 +205,35 @@ marker was introduced—or loader instances recorded by affected older
 builds—can be reinstalled idempotently; verified artifact-store objects and
 hard-link materialization avoid duplicate downloads and storage.
 
+## World Management
+
+`worlds.list`, `worlds.get`, `worlds.rename`, `worlds.duplicate`, and
+`worlds.delete` manage save directories under an instance's
+`.minecraft/saves/`. All five take the instance game `directory` (the same
+shape as `mods.*`); `get`/`rename`/`duplicate`/`delete` add `world`, and
+`rename`/`duplicate` add `new_name`. An optional `minecraft_version` feeds
+the advisory `version_relation` field (`same`/`different`/`unknown`).
+Worlds never enter the artifact store and are never hard-linked; mutations
+are crash-safe staging moves and refuse worlds with a live `session.lock`
+(`WORLD_LOCKED`) or a taken target name (`WORLD_EXISTS`). `rename` also
+rewrites `LevelName` inside `level.dat` atomically. `worlds.get` includes
+`icon_png_base64` when the world has an `icon.png`. Entries carry parsed
+`level.dat` metadata (level name, game version, game mode, difficulty,
+hardcore, cheats, last played) that is `null` for unreadable worlds, plus
+`size_bytes`, `has_icon`, and `locked`.
+
+```json
+{"protocol":1,"id":"w-1","method":"worlds.list","params":{"directory":"/path/to/instances/my-instance/.minecraft","minecraft_version":"1.21.4"}}
+{"protocol":1,"id":"w-2","method":"worlds.duplicate","params":{"directory":"/path/to/instances/my-instance/.minecraft","world":"My World","new_name":"Backup"}}
+```
+
+`server.worlds.list` and `server.worlds.get` are the read-only server
+parity: they take the servers `directory` plus `id`, resolve `level-name`
+from `server.properties`, and inspect the base world and its
+`_nether`/`_the_end` siblings. Like every `server.*` method they return
+`UNSUPPORTED_PLATFORM` off Linux. Server-side world mutations ship with the
+backup phase. See `docs/worlds.md`.
+
 ## Server Instance Management
 
 `server.create`, `server.list`, `server.get`, and `server.delete` manage

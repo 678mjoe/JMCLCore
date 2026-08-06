@@ -19,6 +19,7 @@ const install_executor = @import("install/installer.zig");
 const instance_store = @import("instance_store.zig");
 const java_runtime = @import("java/java_runtime.zig");
 const java_managed = @import("java/managed.zig");
+const worlds = @import("worlds/worlds.zig");
 const java_runtime_store = @import("java/java_runtime_store.zig");
 const runtime_installer = @import("java/runtime_installer.zig");
 const modrinth = @import("content/modrinth.zig");
@@ -333,6 +334,62 @@ pub const Service = struct {
         reporter: ?runtime_installer.Reporter,
     ) java_managed.ResolveError!java_managed.Result {
         return java_managed.resolve(self.allocator, self.io, self.environ_map, self.runtimeFetcher(), request, reporter);
+    }
+
+    fn openSavesDir(self: Service, directory: []const u8) !std.Io.Dir {
+        const game_dir = try install_executor.openRoot(self.io, directory);
+        defer game_dir.close(self.io);
+        return game_dir.openDir(self.io, worlds.saves_directory_name, .{ .iterate = true }) catch |err| switch (err) {
+            error.FileNotFound => return error.SavesDirectoryMissing,
+            else => |other| return other,
+        };
+    }
+
+    pub fn listWorlds(self: Service, directory: []const u8) !worlds.List {
+        var saves_dir = self.openSavesDir(directory) catch |err| switch (err) {
+            error.SavesDirectoryMissing => return worlds.emptyList(self.allocator),
+            else => |other| return other,
+        };
+        defer saves_dir.close(self.io);
+        worlds.cleanupTemps(self.io, saves_dir);
+        return worlds.list(self.allocator, self.io, saves_dir);
+    }
+
+    pub fn getWorld(self: Service, directory: []const u8, name: []const u8) !worlds.List {
+        var saves_dir = try self.openSavesDirChecked(directory);
+        defer saves_dir.close(self.io);
+        return worlds.get(self.allocator, self.io, saves_dir, name);
+    }
+
+    fn openSavesDirChecked(self: Service, directory: []const u8) !std.Io.Dir {
+        return self.openSavesDir(directory) catch |err| switch (err) {
+            error.SavesDirectoryMissing => return error.WorldNotFound,
+            else => |other| return other,
+        };
+    }
+
+    pub fn readWorldIcon(self: Service, directory: []const u8, name: []const u8) !?[]u8 {
+        var saves_dir = try self.openSavesDirChecked(directory);
+        defer saves_dir.close(self.io);
+        return worlds.readIcon(self.allocator, self.io, saves_dir, name);
+    }
+
+    pub fn renameWorld(self: Service, directory: []const u8, old_name: []const u8, new_name: []const u8) !void {
+        var saves_dir = try self.openSavesDirChecked(directory);
+        defer saves_dir.close(self.io);
+        try worlds.rename(self.allocator, self.io, saves_dir, old_name, new_name);
+    }
+
+    pub fn duplicateWorld(self: Service, directory: []const u8, source_name: []const u8, dest_name: []const u8) !void {
+        var saves_dir = try self.openSavesDirChecked(directory);
+        defer saves_dir.close(self.io);
+        try worlds.duplicate(self.io, saves_dir, source_name, dest_name);
+    }
+
+    pub fn deleteWorld(self: Service, directory: []const u8, name: []const u8) !void {
+        var saves_dir = try self.openSavesDirChecked(directory);
+        defer saves_dir.close(self.io);
+        try worlds.remove(self.io, saves_dir, name);
     }
 
     pub fn fetchVersionMetadata(

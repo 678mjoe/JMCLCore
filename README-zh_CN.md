@@ -54,6 +54,12 @@ zig build run -- instance list
 zig build run -- instance install vanilla-26.1
 zig build run -- instance install vanilla-26.1 --source bmclapi
 zig build run -- instance launch vanilla-26.1 --offline-name Player
+zig build run -- instance worlds list vanilla-26.1
+zig build run -- instance worlds show vanilla-26.1 "New World"
+zig build run -- instance worlds rename vanilla-26.1 "New World" "Survival Run"
+zig build run -- instance worlds duplicate vanilla-26.1 "Survival Run" "Backup"
+zig build run -- instance worlds delete vanilla-26.1 "Backup"
+zig build run -- server worlds list fabric-1.21.1
 zig build run -- server create fabric-1.21.1 --version 1.21.1 --fabric-loader 0.16.10 --name "Fabric Server"
 zig build run -- server list
 zig build run -- server show fabric-1.21.1 --json
@@ -100,6 +106,8 @@ RPC 模式从标准输入逐行读取 JSON 请求，并将 JSON 事件逐行写�
 
 默认使用 Mojang 官方服务。中国大陆用户可以传递 `--source bmclapi`，或在 RPC 参数中使用 `"source":"bmclapi"` 来使用 BMCLAPI。BMCLAPI 返回的内容仍会根据 Mojang 提供的 SHA-1 值进行校验。
 
+存档/世界管理支持带 `level.dat` 解析元数据(名称、游戏版本、游戏模式、体积、图标、会话锁)的列表,以及崩溃安全的重命名、复制和删除操作。存档是可变的实例私有状态,绝不进入制品存储。服务端提供只读的世界查看。详见 `docs/worlds.md`。
+
 Linux 服务器管理现已支持独立服务器清单、经过校验的原版、Fabric、NeoForge
 和现代 Forge 服务端安装、原子化 `server.properties` 管理、CLI 命令，以及分离式
 启动、停止、重启、状态、日志和命令 RPC。旧版 Forge 服务端支持仍然推迟。运行中的服务器由 SSH/JSON Lines 会话之外的监督进程管理，并提供 PID
@@ -112,6 +120,7 @@ Linux 服务器管理现已支持独立服务器清单、经过校验的原版�
 Java 选择与托管运行时见 `docs/java.md`。
 启动参数生成见 `docs/launch.md`。
 实例管理见 `docs/instances.md`。
+存档/世界管理见 `docs/worlds.md`。
 Linux 优先的服务器管理功能见 `docs/server.md`。
 共享制品存储见 `docs/artifact-store.md`。
 基于内容寻址的硬链接存储架构见 `docs/content-addressed-storage.md`。

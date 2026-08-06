@@ -96,7 +96,7 @@ const LifecycleStartOperation = enum {
     restart,
 };
 
-fn requireLinux(writer: *std.Io.Writer, request_id: []const u8) std.Io.Writer.Error!bool {
+pub fn requireLinux(writer: *std.Io.Writer, request_id: []const u8) std.Io.Writer.Error!bool {
     if (builtin.os.tag == .linux) return true;
     try writeError(writer, request_id, "UNSUPPORTED_PLATFORM", "Server management is currently supported only on Linux");
     return false;

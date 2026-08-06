@@ -4,6 +4,7 @@ const core = @import("../root.zig");
 const auth = @import("auth.zig");
 const install = @import("install.zig");
 const java = @import("java.zig");
+const worlds = @import("worlds.zig");
 const launch = @import("launch.zig");
 const content = @import("content.zig");
 const instance = @import("instance.zig");
@@ -184,6 +185,20 @@ pub fn handleLine(
         try server.writePropertiesGetResult(service, writer, request.id, request.params);
     } else if (std.mem.eql(u8, request.method, "server.properties.set")) {
         try server.writePropertiesSetResult(service, writer, request.id, request.params);
+    } else if (std.mem.eql(u8, request.method, "worlds.list")) {
+        try worlds.writeWorldsListResult(service, writer, request.id, request.params);
+    } else if (std.mem.eql(u8, request.method, "worlds.get")) {
+        try worlds.writeWorldsGetResult(service, writer, request.id, request.params);
+    } else if (std.mem.eql(u8, request.method, "worlds.rename")) {
+        try worlds.writeWorldsRenameResult(service, writer, request.id, request.params);
+    } else if (std.mem.eql(u8, request.method, "worlds.duplicate")) {
+        try worlds.writeWorldsDuplicateResult(service, writer, request.id, request.params);
+    } else if (std.mem.eql(u8, request.method, "worlds.delete")) {
+        try worlds.writeWorldsDeleteResult(service, writer, request.id, request.params);
+    } else if (std.mem.eql(u8, request.method, "server.worlds.list")) {
+        try worlds.writeServerWorldsListResult(service, writer, request.id, request.params);
+    } else if (std.mem.eql(u8, request.method, "server.worlds.get")) {
+        try worlds.writeServerWorldsGetResult(service, writer, request.id, request.params);
     } else if (std.mem.eql(u8, request.method, "java.detect")) {
         try java.writeDetectResult(service, writer, request.id, request.params);
     } else if (std.mem.eql(u8, request.method, "java.select")) {

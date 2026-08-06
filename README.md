@@ -64,6 +64,12 @@ zig build run -- instance list
 zig build run -- instance install vanilla-26.1
 zig build run -- instance install vanilla-26.1 --source bmclapi
 zig build run -- instance launch vanilla-26.1 --offline-name Player
+zig build run -- instance worlds list vanilla-26.1
+zig build run -- instance worlds show vanilla-26.1 "New World"
+zig build run -- instance worlds rename vanilla-26.1 "New World" "Survival Run"
+zig build run -- instance worlds duplicate vanilla-26.1 "Survival Run" "Backup"
+zig build run -- instance worlds delete vanilla-26.1 "Backup"
+zig build run -- server worlds list fabric-1.21.1
 zig build run -- server create fabric-1.21.1 --version 1.21.1 --fabric-loader 0.16.10 --name "Fabric Server"
 zig build run -- server list
 zig build run -- server show fabric-1.21.1 --json
@@ -131,6 +137,12 @@ Mojang's official service is the default. Pass `--source bmclapi`, or use
 `"source":"bmclapi"` in RPC parameters, to use BMCLAPI for users in mainland
 China. BMCLAPI responses are still checked against Mojang-provided SHA-1 values.
 
+Save/world management covers listing with parsed `level.dat` metadata
+(name, game version, game mode, size, icon, session lock) plus crash-safe
+rename, duplicate, and delete operations. Worlds are mutable instance-private
+state and never enter the artifact store. Servers get read-only world
+inspection. See `docs/worlds.md`.
+
 Linux server management includes isolated server manifests, verified vanilla,
 Fabric, NeoForge, and modern Forge installation, atomic `server.properties`
 management, CLI commands, and detached start/stop/restart/status/logs/command
@@ -145,6 +157,7 @@ Runtime preparation is documented in `docs/preparer.md`.
 Java selection and managed runtimes are documented in `docs/java.md`.
 Launch argument generation is documented in `docs/launch.md`.
 Instance management is documented in `docs/instances.md`.
+World management is documented in `docs/worlds.md`.
 Linux-first server management is documented in `docs/server.md`.
 Shared artifact storage is documented in `docs/artifact-store.md`.
 The content-addressed hard-link storage architecture is documented in
