@@ -151,7 +151,7 @@ fn worldInfo(arena: std.mem.Allocator, io: std.Io, saves_dir: std.Io.Dir, name: 
         .meta = parseLevelMeta(arena, io, world_dir),
         .size_bytes = sizeRecursive(io, world_dir),
         .has_icon = statOptional(io, world_dir, icon_name),
-        .locked = statOptional(io, world_dir, session_lock_name),
+        .locked = isLocked(io, world_dir) catch true,
     };
 }
 
@@ -245,6 +245,17 @@ pub fn readIcon(allocator: std.mem.Allocator, io: std.Io, saves_dir: std.Io.Dir,
     return bytes;
 }
 
+pub fn isLocked(io: std.Io, world_dir: std.Io.Dir) !bool {
+    const lock_file = world_dir.openFile(io, session_lock_name, .{ .mode = .read_write }) catch |err| switch (err) {
+        error.FileNotFound => return false,
+        else => |other| return other,
+    };
+    defer lock_file.close(io);
+    const acquired = try lock_file.tryLock(io, .exclusive);
+    if (acquired) lock_file.unlock(io);
+    return !acquired;
+}
+
 fn ensureMutable(io: std.Io, saves_dir: std.Io.Dir, name: []const u8) !void {
     try validateName(name);
     var world_dir = saves_dir.openDir(io, name, .{}) catch |err| switch (err) {
@@ -252,7 +263,7 @@ fn ensureMutable(io: std.Io, saves_dir: std.Io.Dir, name: []const u8) !void {
         else => |other| return other,
     };
     defer world_dir.close(io);
-    if (statOptional(io, world_dir, session_lock_name)) return error.WorldLocked;
+    if (try isLocked(io, world_dir)) return error.WorldLocked;
 }
 
 fn ensureFree(io: std.Io, saves_dir: std.Io.Dir, name: []const u8) !void {
@@ -808,13 +819,15 @@ test "duplicate and remove round-trip a world directory" {
     try world_dir.writeFile(io, .{ .sub_path = "r.0.0.mca", .data = "chunk-data" });
     world_dir.close(io);
     var root_dir = try saves_dir.openDir(io, "Alpha", .{});
-    try root_dir.writeFile(io, .{ .sub_path = session_lock_name, .data = "lock" });
+    const lock_file = try root_dir.createFile(io, session_lock_name, .{});
+    try lock_file.lock(io, .exclusive);
     root_dir.close(io);
 
     try std.testing.expectError(error.WorldLocked, duplicate(io, saves_dir, "Alpha", "Beta"));
-    try saves_dir.deleteFile(io, "Alpha/" ++ session_lock_name);
+    lock_file.close(io);
 
     try duplicate(io, saves_dir, "Alpha", "Beta");
+    try std.testing.expectError(error.FileNotFound, saves_dir.statFile(io, "Beta/" ++ session_lock_name, .{}));
     const copied = try saves_dir.readFileAlloc(io, "Beta/region/r.0.0.mca", std.testing.allocator, .limited(1024));
     defer std.testing.allocator.free(copied);
     try std.testing.expectEqualStrings("chunk-data", copied);
@@ -880,18 +893,24 @@ test "list reports metadata and skips temp directories" {
     var temp_dir = try saves_dir.createDirPathOpen(io, ".jmcl-copy-stale", .{});
     temp_dir.close(io);
     var locked_dir = try saves_dir.createDirPathOpen(io, "Locked", .{});
-    try locked_dir.writeFile(io, .{ .sub_path = session_lock_name, .data = "x" });
-    locked_dir.close(io);
+    const lock_file = try locked_dir.createFile(io, session_lock_name, .{});
+    try lock_file.lock(io, .exclusive);
+    defer lock_file.close(io);
+    var stale_dir = try saves_dir.createDirPathOpen(io, "Stale", .{});
+    try stale_dir.writeFile(io, .{ .sub_path = session_lock_name, .data = "x" });
+    stale_dir.close(io);
 
     var worlds = try list(std.testing.allocator, io, saves_dir);
     defer worlds.deinit();
-    try std.testing.expectEqual(@as(usize, 2), worlds.worlds.len);
+    try std.testing.expectEqual(@as(usize, 3), worlds.worlds.len);
     try std.testing.expectEqualStrings("Gamma", worlds.worlds[0].name);
     try std.testing.expect(worlds.worlds[0].has_icon);
     try std.testing.expect(!worlds.worlds[0].locked);
     try std.testing.expect(worlds.worlds[0].meta == null);
     try std.testing.expectEqualStrings("Locked", worlds.worlds[1].name);
     try std.testing.expect(worlds.worlds[1].locked);
+    try std.testing.expectEqualStrings("Stale", worlds.worlds[2].name);
+    try std.testing.expect(!worlds.worlds[2].locked);
 }
 
 test "export and import round-trip a world" {
@@ -909,7 +928,6 @@ test "export and import round-trip a world" {
     try alpha.writeFile(io, .{ .sub_path = "level.dat", .data = "nbt" });
     try alpha.writeFile(io, .{ .sub_path = session_lock_name, .data = "lock" });
     alpha.close(io);
-    try saves_dir.deleteFile(io, "Alpha/" ++ session_lock_name);
 
     const result = try exportWorld(std.testing.allocator, io, saves_dir, "Alpha", tmp.dir, "alpha.zip");
     try std.testing.expect(result.files == 2);

@@ -193,7 +193,7 @@ no Windows reserved stems. At most one loader field (`fabric_loader`,
 World (save) management operates on the same game `directory` as content
 methods. Worlds are mutable instance-private state: never content-addressed,
 never hard-linked. Mutations are crash-safe staging operations and refuse
-worlds in use by a running game (`session.lock` present -> `WORLD_LOCKED`):
+worlds in use by a running game (`session.lock` flock-held -> `WORLD_LOCKED`; stale lock files are tolerated):
 
 | Method | Required params | Optional params | Notes |
 |---|---|---|---|

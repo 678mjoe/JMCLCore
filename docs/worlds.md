@@ -32,7 +32,12 @@ and extracts from the `Data` compound:
 
 A world whose `level.dat` is missing or malformed still lists; all metadata
 fields are `null`. `size_bytes` is a recursive regular-file sum, `has_icon`
-reports `icon.png` presence, and `locked` reports `session.lock` presence
+reports `icon.png` presence, and `locked` probes `session.lock` with a
+non-blocking exclusive file lock: it is `true` only while a live process
+(the running game) holds the lock. Stale `session.lock` files left behind
+after a clean exit or a crash do not mark the world as locked and do not
+block mutations; the file must be opened read-write because BSD/macOS
+refuse exclusive locks on read-only descriptors
 (the game creates it while a world is open and deletes it on clean exit;
 crashes can leave stale locks).
 
