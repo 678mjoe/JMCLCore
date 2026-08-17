@@ -1,6 +1,7 @@
 const std = @import("std");
 const DownloadSource = @import("../install/download_source.zig").DownloadSource;
 const install_plan = @import("../install/plan.zig");
+const modrinth = @import("../content/modrinth.zig");
 
 pub const schema_version: u32 = 1;
 pub const default_root = "servers";
@@ -332,6 +333,13 @@ fn validateInstallation(installation: Installation) !void {
     install_plan.validateRelativePath(installation.launch_file) catch return error.InvalidLaunchFile;
 }
 
+pub fn modLoader(manifest: Manifest) ?modrinth.Loader {
+    if (manifest.fabric_loader != null) return .fabric;
+    if (manifest.neoforge_version != null) return .neoforge;
+    if (manifest.forge_version != null) return .forge;
+    return null;
+}
+
 fn optionalEql(left: ?[]const u8, right: ?[]const u8) bool {
     if (left == null or right == null) return left == null and right == null;
     return std.mem.eql(u8, left.?, right.?);
@@ -359,6 +367,32 @@ test "validates portable server ids" {
     for ([_][]const u8{ "", ".", "..", "Upper", "has space", "../escape", "con", "com1", "name." }) |id| {
         try std.testing.expectError(error.InvalidServerId, validateId(id));
     }
+}
+
+test "derives the mod loader from the manifest" {
+    try std.testing.expectEqual(modrinth.Loader.fabric, modLoader(.{
+        .id = "fabric",
+        .name = "Fabric",
+        .version_id = "1.21.4",
+        .fabric_loader = "0.16.10",
+    }));
+    try std.testing.expectEqual(modrinth.Loader.neoforge, modLoader(.{
+        .id = "neoforge",
+        .name = "NeoForge",
+        .version_id = "1.21.1",
+        .neoforge_version = "21.1.133",
+    }));
+    try std.testing.expectEqual(modrinth.Loader.forge, modLoader(.{
+        .id = "forge",
+        .name = "Forge",
+        .version_id = "1.20.1",
+        .forge_version = "47.3.12",
+    }));
+    try std.testing.expectEqual(@as(?modrinth.Loader, null), modLoader(.{
+        .id = "vanilla",
+        .name = "Vanilla",
+        .version_id = "1.21.4",
+    }));
 }
 
 test "creates lists loads and deletes server manifests" {

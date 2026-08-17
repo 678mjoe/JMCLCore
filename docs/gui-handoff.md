@@ -245,6 +245,12 @@ on Linux:
 | `server.worlds.backups` | `directory`, `id` | — | `{backups[]}` newest first |
 | `server.worlds.restore` | `directory`, `id`, `backup` | `replace` | stopped server only; restores every top-level world directory in the zip; `WORLD_EXISTS` unless `replace:true` |
 | `server.worlds.backups.delete` | `directory`, `id`, `backup` | — | `BACKUP_NOT_FOUND` for missing files |
+| `server.mods.list` | `directory`, `id` | — | read-only; `{entries[], unmanaged[]}` from `servers/<id>/.jmcl/content.json` |
+| `server.mods.install` | `directory`, `id`, `project` | `provider`, `api_key`, `version_id`, `with_dependencies`, `store_directory`, `workers`, `retries` | stopped server only; version+loader come from `server.json` (no `minecraft_version`/`loader` params); vanilla fails `SERVER_LOADER_REQUIRED` |
+| `server.mods.set-version` | `directory`, `id`, `project`, `version_id` | `api_key`, `store_directory`, `workers`, `retries` | stopped server only; same result shape as `mods.set-version` |
+| `server.mods.enable` / `server.mods.disable` | `directory`, `id`, one of `project`/`file` | — | stopped server only; renames to/from `<file>.disabled` |
+| `server.mods.remove` | `directory`, `id`, one of `project`/`file` | — | stopped server only; deletes the server link, store object awaits GC |
+| `server.mods.adopt` | `directory`, `id` | `store_directory` | stopped server only; registers unmanaged `mods/*.jar` as `manual` |
 
 `server.create`, `server.list`, and `server.get` include `installed`. Treat it
 as authoritative. The v3 completion marker must match the manifest and the

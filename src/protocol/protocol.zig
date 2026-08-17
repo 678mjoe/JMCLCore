@@ -9,6 +9,7 @@ const launch = @import("launch.zig");
 const content = @import("content.zig");
 const instance = @import("instance.zig");
 const server = @import("server.zig");
+const server_content = @import("server_content.zig");
 const modpack = @import("modpack.zig");
 const store = @import("store.zig");
 const version = @import("version.zig");
@@ -185,6 +186,20 @@ pub fn handleLine(
         try server.writePropertiesGetResult(service, writer, request.id, request.params);
     } else if (std.mem.eql(u8, request.method, "server.properties.set")) {
         try server.writePropertiesSetResult(service, writer, request.id, request.params);
+    } else if (std.mem.eql(u8, request.method, "server.mods.list")) {
+        try server_content.writeServerModsListResult(service, writer, request.id, request.params);
+    } else if (std.mem.eql(u8, request.method, "server.mods.install")) {
+        try server_content.writeServerModsInstallResult(service, writer, request.id, request.params);
+    } else if (std.mem.eql(u8, request.method, "server.mods.set-version")) {
+        try server_content.writeServerModsSetVersionResult(service, writer, request.id, request.params);
+    } else if (std.mem.eql(u8, request.method, "server.mods.enable")) {
+        try server_content.writeServerModsSetEnabledResult(service, writer, request.id, request.params, true);
+    } else if (std.mem.eql(u8, request.method, "server.mods.disable")) {
+        try server_content.writeServerModsSetEnabledResult(service, writer, request.id, request.params, false);
+    } else if (std.mem.eql(u8, request.method, "server.mods.remove")) {
+        try server_content.writeServerModsRemoveResult(service, writer, request.id, request.params);
+    } else if (std.mem.eql(u8, request.method, "server.mods.adopt")) {
+        try server_content.writeServerModsAdoptResult(service, writer, request.id, request.params);
     } else if (std.mem.eql(u8, request.method, "worlds.list")) {
         try worlds.writeWorldsListResult(service, writer, request.id, request.params);
     } else if (std.mem.eql(u8, request.method, "worlds.get")) {
@@ -597,6 +612,13 @@ test "server methods reject non-Linux hosts" {
         "server.command",
         "server.properties.get",
         "server.properties.set",
+        "server.mods.list",
+        "server.mods.install",
+        "server.mods.set-version",
+        "server.mods.enable",
+        "server.mods.disable",
+        "server.mods.remove",
+        "server.mods.adopt",
     };
     for (methods) |method| {
         var output: std.Io.Writer.Allocating = .init(std.testing.allocator);
@@ -619,6 +641,7 @@ test {
     _ = install;
     _ = instance;
     _ = server;
+    _ = server_content;
     _ = java;
     _ = launch;
     _ = modpack;

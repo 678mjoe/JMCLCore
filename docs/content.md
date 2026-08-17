@@ -188,6 +188,27 @@ All install methods accept `with_dependencies` (default `true`) to control
 dependency recursion, plus `provider` (default `"modrinth"`) and `api_key`;
 the CurseForge provider requires `api_key` and rejects any other use of it.
 
+## Server Mods
+
+`server.mods.*` applies the same registry and pipeline to a server instance:
+params take the servers `directory` plus `id` instead of an instance game
+directory, and the kind is always `mod` (dedicated servers never load
+resource or shader packs). The Minecraft version and mod loader are derived
+from `servers/<id>/server.json` instead of request parameters, so resolution
+always matches the installed server; a vanilla server is rejected with
+`SERVER_LOADER_REQUIRED`. The registry is `servers/<id>/.jmcl/content.json`
+with the identical shape.
+
+`server.mods.list` is read-only. Every mutating method (`install`,
+`set-version`, `enable`, `disable`, `remove`, `adopt`) requires a stopped
+server and returns `SERVER_ALREADY_RUNNING` otherwise, mirroring
+`server.worlds.*` — mod changes take effect on the next start. Results,
+progress events, provider rules (`api_key` for CurseForge, never persisted),
+dependency recursion, and error codes match the client methods exactly.
+Linux only, like every `server.*` method. The CLI mirrors the surface as
+`jmcl-core server mods <list|install|set-version|enable|disable|remove|
+adopt> ID ...`.
+
 ## Network And Mirrors
 
 Modrinth API requests target `https://api.modrinth.com`; CurseForge API

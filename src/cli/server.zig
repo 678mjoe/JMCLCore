@@ -4,6 +4,7 @@ const jmcl = @import("jmcl_core");
 const common = @import("common.zig");
 const install_cli = @import("install.zig");
 const cli_worlds = @import("worlds.zig");
+const cli_server_content = @import("server_content.zig");
 
 const unsupported_platform_message = "Server management is currently supported only on Linux";
 
@@ -20,13 +21,14 @@ pub fn run(
     if (args.len >= 1 and std.mem.eql(u8, args[0], "install")) return runServerInstall(service, args[1..], stdout, stderr);
     if (args.len >= 1 and std.mem.eql(u8, args[0], "properties")) return runServerProperties(service, args[1..], stdout, stderr);
     if (args.len >= 1 and std.mem.eql(u8, args[0], "worlds")) return cli_worlds.runServerWorlds(service, args[1..], stdout, stderr);
+    if (args.len >= 1 and std.mem.eql(u8, args[0], "mods")) return cli_server_content.runServerMods(service, args[1..], stdout, stderr);
     if (args.len >= 1 and std.mem.eql(u8, args[0], "start")) return runServerStart(service, args[1..], stdout, stderr);
     if (args.len >= 1 and std.mem.eql(u8, args[0], "stop")) return runServerStop(service, args[1..], stdout, stderr);
     if (args.len >= 1 and std.mem.eql(u8, args[0], "restart")) return runServerRestart(service, args[1..], stdout, stderr);
     if (args.len >= 1 and std.mem.eql(u8, args[0], "status")) return runServerStatus(service, args[1..], stdout, stderr);
     if (args.len >= 1 and std.mem.eql(u8, args[0], "logs")) return runServerLogs(service, args[1..], stdout, stderr);
     if (args.len >= 1 and std.mem.eql(u8, args[0], "command")) return runServerCommand(service, args[1..], stdout, stderr);
-    try stderr.writeAll("usage: jmcl-core server <create|list|show|delete|install|properties|worlds|start|stop|restart|status|logs|command> [options]\n");
+    try stderr.writeAll("usage: jmcl-core server <create|list|show|delete|install|properties|worlds|mods|start|stop|restart|status|logs|command> [options]\n");
     return 2;
 }
 

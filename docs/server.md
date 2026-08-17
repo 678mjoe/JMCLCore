@@ -1,9 +1,11 @@
 # Server Management
 
-Status: Phases 1 through 4 are implemented for server instance storage,
-vanilla installation/properties, detached process lifecycle, and Fabric,
-NeoForge, and modern Forge server installs. Legacy Forge server support was
-cut from Phase 4 and remains deferred. Phases 5 and 6 remain the roadmap.
+Status: Phases 1 through 5 are implemented for server instance storage,
+vanilla installation/properties, detached process lifecycle, Fabric,
+NeoForge, and modern Forge server installs, and server mod management.
+Legacy Forge server support was cut from Phase 4 and remains deferred;
+datapacks are deferred as a joint client+server design. Phase 6 remains
+the roadmap.
 Multi-instance Minecraft server management is **Linux first**. Other platforms
 are explicitly deferred and every `server.*` method returns
 `UNSUPPORTED_PLATFORM`. The GUI talks to a server-side `jmcl-core` over SSH.
@@ -38,9 +40,9 @@ connection dies, its process group dies. Therefore:
   reclaims objects whose last link disappears.
 - `java.detect` / `java.select` pick the JVM.
 - `launch/process.zig` provides supervised-process primitives.
-- The content registry is directory-generic. Later server content work can
-  point content operations at a server instance directory, but Phase 4 does
-  not add server content RPCs.
+- The content registry is directory-generic: content operations point at a
+  directory, so `server.mods.*` reuses the client pipeline unchanged against
+  the server instance root.
 - NeoForge and modern Forge expose installer profiles that the local
   processor-chain executors can run with `SIDE=server`. JMCL Core executes
   those processor steps through its verified download pipeline instead of
@@ -65,7 +67,10 @@ servers/<id>/.jmcl/console.fifo bounded single-line console command channel
 servers/<id>/logs/console.log   merged stdout/stderr with bounded rotation
 servers/<id>/eula.txt           recorded EULA acceptance
 servers/<id>/server.properties atomically managed key/value configuration
-servers/<id>/world/ mods/ config/   later phases
+servers/<id>/mods/                registered server mods (registry below)
+servers/<id>/.jmcl/content.json   server content registry (same shape as
+                                  client instances)
+servers/<id>/world/ config/       mutable server-private state
 
 Mojang requires explicit EULA acceptance: install operations require
 `"accept_eula": true` and record it; without it they fail with
@@ -174,18 +179,33 @@ Mojang requires explicit EULA acceptance: install operations require
   `SERVER_LOADER_UNSUPPORTED`; no legacy server directory layout is documented
   as implemented.
 
-### Phase 5: Server content management
+### Phase 5: Server content management (implemented for mods)
 
-- Apply and document the content-ops-on-server-directory pattern
-  (`mods.list/install/set-version/enable/disable/remove/adopt` with
-  `directory` = server instance root).
-- Optional: `datapack` as a fourth content kind (`world/datapacks/*.zip`).
+- `server.mods.list | install | set-version | enable | disable | remove |
+  adopt` apply the content-ops-on-server-directory pattern with
+  `directory` = servers root plus `id`. The registry lives at
+  `servers/<id>/.jmcl/content.json` with the exact client shape, and files
+  download through the same verified content-addressed pipeline.
+- The game version and mod loader are derived from `server.json`, never
+  supplied by the caller, so resolutions always match the installed
+  server. Vanilla servers are rejected with `SERVER_LOADER_REQUIRED`.
+- Mod installs support both providers (`provider`, caller-supplied
+  `api_key` for CurseForge) and dependency recursion with the same bounds
+  and opt-out as client installs.
+- `list` is read-only; every mutating method refuses a running server with
+  `SERVER_ALREADY_RUNNING` through the same lifecycle lock as worlds, so
+  mod changes take effect on the next start.
+- CLI parity: `jmcl-core server mods <list|install|set-version|enable|
+  disable|remove|adopt> ID ...`.
+- Datapacks remain deferred until the joint client+server directory
+  resolution design (kind-directory invariance breaks for
+  `<level-name>/datapacks` and client `saves/<world>/datapacks`).
 
 ### Phase 6: Hardening and polish
 
-- World backups (`server.backup`: tar of `world*` through the artifact
-  pipeline or plain archives).
-- RCON/query support where enabled in `server.properties`.
+- World backups are already implemented (`server.worlds.backup` and
+  friends); remaining candidates here are RCON/query support where enabled
+  in `server.properties`.
 - Revisit the Linux-only gate (macOS second, Windows last).
 
 ## Explicit Non-Goals (for now)

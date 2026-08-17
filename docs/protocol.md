@@ -378,6 +378,34 @@ Lifecycle-specific stable errors include `SERVER_NOT_INSTALLED`,
 `JAVA_NOT_FOUND`, and `JAVA_INCOMPATIBLE`; malformed ranges or commands return
 `INVALID_PARAMS`. All six methods return `UNSUPPORTED_PLATFORM` off Linux.
 
+### Server Mods
+
+`server.mods.*` manages the `mods/` directory of a server instance through
+the shared content registry and verified pipeline. The kind is always `mod`;
+the Minecraft version and loader come from `server.json`, never from the
+request.
+
+| Method | Required params | Optional params |
+|---|---|---|
+| `server.mods.list` | `directory`, `id` | — |
+| `server.mods.install` | `directory`, `id`, `project` | `provider`, `api_key`, `version_id`, `with_dependencies`, `store_directory`, `workers`, `retries` |
+| `server.mods.set-version` | `directory`, `id`, `project`, `version_id` | `api_key`, `store_directory`, `workers`, `retries` |
+| `server.mods.enable` | `directory`, `id`, one of `project`/`file` | — |
+| `server.mods.disable` | `directory`, `id`, one of `project`/`file` | — |
+| `server.mods.remove` | `directory`, `id`, one of `project`/`file` | — |
+| `server.mods.adopt` | `directory`, `id` | `store_directory` |
+
+`server.mods.list` is read-only and returns `entries` plus `unmanaged`.
+Every other method requires a stopped server (`SERVER_ALREADY_RUNNING`).
+Result payloads, progress events, provider rules, and error codes match the
+client `mods.*` methods; a vanilla server fails installs with
+`SERVER_LOADER_REQUIRED`. All methods return `UNSUPPORTED_PLATFORM` off
+Linux.
+
+```json
+{"protocol":1,"id":"sm-1","method":"server.mods.install","params":{"directory":"/path/to/servers","id":"fabric-server","project":"lithium"}}
+```
+
 ## Modpack Installation
 
 `modpack.install` creates a new instance from a Modrinth `.mrpack` or

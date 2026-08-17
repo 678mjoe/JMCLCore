@@ -601,6 +601,209 @@ pub const Service = struct {
         try worlds.deleteBackup(self.io, backups_dir, backup);
     }
 
+    const ServerContentDirectory = struct {
+        dir: std.Io.Dir,
+        game_version: []const u8,
+        loader: ?modrinth.Loader,
+    };
+
+    fn openServerContentDirectory(
+        self: Service,
+        arena: std.mem.Allocator,
+        directory: []const u8,
+        id: []const u8,
+        require_mod_loader: bool,
+    ) !ServerContentDirectory {
+        const root = server_store.openRoot(self.io, directory) catch return error.ServerNotFound;
+        defer root.close(self.io);
+        var manifest = server_store.load(self.allocator, self.io, root, id) catch |err| switch (err) {
+            error.FileNotFound, error.InvalidServerId => return error.ServerNotFound,
+            else => |other| return other,
+        };
+        defer manifest.deinit();
+        const loader = server_store.modLoader(manifest.value);
+        if (require_mod_loader and loader == null) return error.ModLoaderRequired;
+        const server_dir = server_store.openServer(self.io, root, id) catch return error.ServerNotFound;
+        return .{
+            .dir = server_dir,
+            .game_version = try arena.dupe(u8, manifest.value.version_id),
+            .loader = loader,
+        };
+    }
+
+    /// Lists registered content of the given kind inside a server instance
+    /// plus unmanaged files in the kind directory. The registry lives at
+    /// `.jmcl/content.json` in the server root, exactly like client
+    /// instances. Reading never takes the lifecycle lock.
+    pub fn listServerContent(self: Service, directory: []const u8, id: []const u8, kind: content_registry.Kind) !ContentList {
+        var arena = std.heap.ArenaAllocator.init(self.allocator);
+        defer arena.deinit();
+        var target = try self.openServerContentDirectory(arena.allocator(), directory, id, false);
+        defer target.dir.close(self.io);
+        return self.listInstanceContent(target.dir, kind);
+    }
+
+    /// Installs Modrinth content into a modded server instance. The game
+    /// version and mod loader come from `server.json`, never from the
+    /// caller, so the registry always matches the installed server. Vanilla
+    /// servers are rejected because they cannot load mods. Mutations refuse
+    /// a running server through the same lifecycle lock as worlds.
+    pub fn installServerModrinthContent(
+        self: Service,
+        directory: []const u8,
+        id: []const u8,
+        store: std.Io.Dir,
+        kind: content_registry.Kind,
+        project: []const u8,
+        version_id: ?[]const u8,
+        options: ContentInstallOptions,
+        reporter: ?install_executor.Reporter,
+    ) !ContentInstallSummary {
+        var arena = std.heap.ArenaAllocator.init(self.allocator);
+        defer arena.deinit();
+        var target = try self.openServerContentDirectory(arena.allocator(), directory, id, true);
+        defer target.dir.close(self.io);
+        var stopped_guard = try server_lifecycle.lockStopped(self.allocator, self.io, target.dir);
+        defer stopped_guard.deinit();
+        return self.installModrinthContent(
+            target.dir,
+            store,
+            kind,
+            target.game_version,
+            target.loader,
+            project,
+            version_id,
+            options,
+            reporter,
+        );
+    }
+
+    /// Installs CurseForge content into a modded server instance with the
+    /// same manifest-derived version and loader rules as the Modrinth path.
+    /// The caller-supplied API key is validated and never persisted.
+    pub fn installServerCurseforgeContent(
+        self: Service,
+        directory: []const u8,
+        id: []const u8,
+        store: std.Io.Dir,
+        kind: content_registry.Kind,
+        api_key: []const u8,
+        project: []const u8,
+        file_id: ?[]const u8,
+        options: ContentInstallOptions,
+        reporter: ?install_executor.Reporter,
+    ) !ContentInstallSummary {
+        var arena = std.heap.ArenaAllocator.init(self.allocator);
+        defer arena.deinit();
+        var target = try self.openServerContentDirectory(arena.allocator(), directory, id, true);
+        defer target.dir.close(self.io);
+        var stopped_guard = try server_lifecycle.lockStopped(self.allocator, self.io, target.dir);
+        defer stopped_guard.deinit();
+        return self.installCurseforgeContent(
+            target.dir,
+            store,
+            kind,
+            target.game_version,
+            target.loader,
+            api_key,
+            project,
+            file_id,
+            options,
+            reporter,
+        );
+    }
+
+    /// Switches a registered server content entry to an exact version using
+    /// the server's own game version and loader for compatibility checks.
+    pub fn setServerContentVersion(
+        self: Service,
+        directory: []const u8,
+        id: []const u8,
+        store: std.Io.Dir,
+        kind: content_registry.Kind,
+        project: []const u8,
+        version_id: []const u8,
+        api_key: ?[]const u8,
+        options: ContentInstallOptions,
+        reporter: ?install_executor.Reporter,
+    ) !ContentVersionChange {
+        var arena = std.heap.ArenaAllocator.init(self.allocator);
+        defer arena.deinit();
+        var target = try self.openServerContentDirectory(arena.allocator(), directory, id, false);
+        defer target.dir.close(self.io);
+        var stopped_guard = try server_lifecycle.lockStopped(self.allocator, self.io, target.dir);
+        defer stopped_guard.deinit();
+        return self.setInstanceContentVersion(
+            target.dir,
+            store,
+            kind,
+            target.game_version,
+            target.loader,
+            project,
+            version_id,
+            api_key,
+            options,
+            reporter,
+        );
+    }
+
+    /// Enables or disables a registered server content entry by renaming the
+    /// file to or from `<file>.disabled`, refusing a running server.
+    pub fn setServerContentEnabled(
+        self: Service,
+        directory: []const u8,
+        id: []const u8,
+        kind: content_registry.Kind,
+        project: ?[]const u8,
+        file: ?[]const u8,
+        enabled: bool,
+    ) !ContentToggle {
+        var arena = std.heap.ArenaAllocator.init(self.allocator);
+        defer arena.deinit();
+        var target = try self.openServerContentDirectory(arena.allocator(), directory, id, false);
+        defer target.dir.close(self.io);
+        var stopped_guard = try server_lifecycle.lockStopped(self.allocator, self.io, target.dir);
+        defer stopped_guard.deinit();
+        return self.setInstanceContentEnabled(target.dir, kind, project, file, enabled);
+    }
+
+    /// Removes a registered server content entry, deleting the server's hard
+    /// link while the shared store object awaits garbage collection.
+    pub fn removeServerContent(
+        self: Service,
+        directory: []const u8,
+        id: []const u8,
+        kind: content_registry.Kind,
+        project: ?[]const u8,
+        file: ?[]const u8,
+    ) !ContentRemoval {
+        var arena = std.heap.ArenaAllocator.init(self.allocator);
+        defer arena.deinit();
+        var target = try self.openServerContentDirectory(arena.allocator(), directory, id, false);
+        defer target.dir.close(self.io);
+        var stopped_guard = try server_lifecycle.lockStopped(self.allocator, self.io, target.dir);
+        defer stopped_guard.deinit();
+        return self.removeInstanceContent(target.dir, kind, project, file);
+    }
+
+    /// Adopts unmanaged files of the given kind in a stopped server instance
+    /// into the content-addressed store and registers them as manual.
+    pub fn adoptServerContent(
+        self: Service,
+        directory: []const u8,
+        id: []const u8,
+        store: std.Io.Dir,
+        kind: content_registry.Kind,
+    ) !ContentAdoption {
+        var arena = std.heap.ArenaAllocator.init(self.allocator);
+        defer arena.deinit();
+        var target = try self.openServerContentDirectory(arena.allocator(), directory, id, false);
+        defer target.dir.close(self.io);
+        var stopped_guard = try server_lifecycle.lockStopped(self.allocator, self.io, target.dir);
+        defer stopped_guard.deinit();
+        return self.adoptInstanceContent(target.dir, store, kind);
+    }
+
     pub fn fetchVersionMetadata(
         self: Service,
         version_id: []const u8,
@@ -4598,4 +4801,81 @@ fn hasInstallFile(files: []const install_plan.File, path: []const u8) bool {
         if (std.mem.eql(u8, file.path, path)) return true;
     }
     return false;
+}
+
+fn writeServerContentFixture(io: std.Io, root: std.Io.Dir, manifest: server_store.Manifest) !void {
+    try server_store.create(io, root, manifest);
+}
+
+test "listServerContent reads the server registry and unmanaged mods" {
+    const io = std.testing.io;
+    var temporary = std.testing.tmpDir(.{});
+    defer temporary.cleanup();
+    var path_buffer: [std.fs.max_path_bytes]u8 = undefined;
+    const tmp_len = try temporary.dir.realPath(io, &path_buffer);
+    const servers_path = try std.fmt.allocPrint(std.testing.allocator, "{s}/servers", .{path_buffer[0..tmp_len]});
+    defer std.testing.allocator.free(servers_path);
+    try temporary.dir.createDirPath(io, "servers");
+    const root = try temporary.dir.openDir(io, "servers", .{ .iterate = true });
+    defer root.close(io);
+    try writeServerContentFixture(io, root, .{
+        .id = "fabric-server",
+        .name = "Fabric Server",
+        .version_id = "1.21.4",
+        .fabric_loader = "0.16.10",
+    });
+
+    const server_dir = try root.openDir(io, "fabric-server", .{ .follow_symlinks = false });
+    defer server_dir.close(io);
+    try server_dir.createDirPath(io, "mods");
+    try server_dir.createDirPath(io, ".jmcl");
+    try server_dir.writeFile(io, .{ .sub_path = ".jmcl/content.json", .data = "{\"schema_version\":1,\"entries\":[{\"kind\":\"mod\",\"file\":\"mods/registered.jar\",\"sha1\":\"a94a8fe5ccb19ba61c4c0873d391e987982fbbd3\",\"size\":5,\"source\":{\"provider\":\"modrinth\",\"project_id\":\"sodium\",\"version_id\":\"abc\"},\"enabled\":true,\"as_dependency\":false}]}\n" });
+    var mod_file = try server_dir.createFile(io, "mods/unmanaged.jar", .{});
+    defer mod_file.close(io);
+    try mod_file.writeStreamingAll(io, "bytes");
+
+    const service = Service.init(std.testing.allocator, io, null);
+    var list = try service.listServerContent(servers_path, "fabric-server", .mod);
+    defer list.deinit();
+    try std.testing.expectEqual(@as(usize, 1), list.entries.len);
+    try std.testing.expectEqualStrings("mods/registered.jar", list.entries[0].file);
+    try std.testing.expectEqual(@as(usize, 1), list.unmanaged.len);
+    try std.testing.expectEqualStrings("mods/unmanaged.jar", list.unmanaged[0]);
+}
+
+test "listServerContent rejects unknown servers" {
+    const io = std.testing.io;
+    var temporary = std.testing.tmpDir(.{});
+    defer temporary.cleanup();
+    try temporary.dir.createDirPath(io, "servers");
+    var path_buffer: [std.fs.max_path_bytes]u8 = undefined;
+    const tmp_len = try temporary.dir.realPath(io, &path_buffer);
+    const servers_path = try std.fmt.allocPrint(std.testing.allocator, "{s}/servers", .{path_buffer[0..tmp_len]});
+    defer std.testing.allocator.free(servers_path);
+    const service = Service.init(std.testing.allocator, io, null);
+    try std.testing.expectError(error.ServerNotFound, service.listServerContent(servers_path, "missing", .mod));
+}
+
+test "installServerModrinthContent rejects vanilla servers before any lifecycle state" {
+    const io = std.testing.io;
+    var temporary = std.testing.tmpDir(.{});
+    defer temporary.cleanup();
+    var path_buffer: [std.fs.max_path_bytes]u8 = undefined;
+    const tmp_len = try temporary.dir.realPath(io, &path_buffer);
+    const servers_path = try std.fmt.allocPrint(std.testing.allocator, "{s}/servers", .{path_buffer[0..tmp_len]});
+    defer std.testing.allocator.free(servers_path);
+    try temporary.dir.createDirPath(io, "servers");
+    const root = try temporary.dir.openDir(io, "servers", .{ .iterate = true });
+    defer root.close(io);
+    try writeServerContentFixture(io, root, .{
+        .id = "vanilla-server",
+        .name = "Vanilla Server",
+        .version_id = "1.21.4",
+    });
+
+    const service = Service.init(std.testing.allocator, io, null);
+    try std.testing.expectError(
+        error.ModLoaderRequired,
+        service.installServerModrinthContent(servers_path, "vanilla-server", temporary.dir, .mod, "sodium", null, .{}, null),
+    );
 }
