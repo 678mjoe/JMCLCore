@@ -16,6 +16,7 @@ pub const icon_name = "icon.png";
 pub const session_lock_name = "session.lock";
 pub const copy_marker = ".jmcl-copy-";
 pub const trash_marker = ".jmcl-trash-";
+pub const metadata_directory_name = ".jmcl";
 
 pub const GameMode = enum {
     survival,
@@ -256,14 +257,30 @@ pub fn isLocked(io: std.Io, world_dir: std.Io.Dir) !bool {
     return !acquired;
 }
 
-fn ensureMutable(io: std.Io, saves_dir: std.Io.Dir, name: []const u8) !void {
+pub fn openWorld(io: std.Io, saves_dir: std.Io.Dir, name: []const u8) !std.Io.Dir {
     try validateName(name);
-    var world_dir = saves_dir.openDir(io, name, .{}) catch |err| switch (err) {
+    return saves_dir.openDir(io, name, .{}) catch |err| switch (err) {
         error.FileNotFound => return error.WorldNotFound,
         else => |other| return other,
     };
-    defer world_dir.close(io);
-    if (try isLocked(io, world_dir)) return error.WorldLocked;
+}
+
+pub fn openMutable(io: std.Io, saves_dir: std.Io.Dir, name: []const u8) !std.Io.Dir {
+    var world_dir = try openWorld(io, saves_dir, name);
+    const locked = isLocked(io, world_dir) catch |err| {
+        world_dir.close(io);
+        return err;
+    };
+    if (locked) {
+        world_dir.close(io);
+        return error.WorldLocked;
+    }
+    return world_dir;
+}
+
+fn ensureMutable(io: std.Io, saves_dir: std.Io.Dir, name: []const u8) !void {
+    var world_dir = try openMutable(io, saves_dir, name);
+    world_dir.close(io);
 }
 
 fn ensureFree(io: std.Io, saves_dir: std.Io.Dir, name: []const u8) !void {
@@ -399,6 +416,7 @@ fn addDirToZip(zip: *zip_writer.Writer, io: std.Io, dir: std.Io.Dir, prefix: []c
     var iterator = dir.iterate();
     while (try iterator.next(io)) |entry| {
         if (entry.kind == .file and std.mem.eql(u8, entry.name, session_lock_name)) continue;
+        if (std.mem.eql(u8, entry.name, metadata_directory_name)) continue;
         if (isTempName(entry.name)) continue;
         var path_buffer: [4096]u8 = undefined;
         const rel = std.fmt.bufPrint(&path_buffer, "{s}/{s}", .{ prefix, entry.name }) catch
@@ -945,6 +963,34 @@ test "export and import round-trip a world" {
     try std.testing.expectError(error.FileNotFound, saves_dir.statFile(io, "Beta/" ++ session_lock_name, .{}));
 
     try std.testing.expectError(error.WorldExists, importWorld(std.testing.allocator, io, saves_dir, tmp.dir, "alpha.zip", "Beta", false));
+}
+
+test "export keeps the world registry out of vanilla archives" {
+    const io = std.testing.io;
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    try tmp.dir.createDirPath(io, "saves");
+    var saves_dir = try tmp.dir.openDir(io, "saves", .{ .iterate = true });
+    defer saves_dir.close(io);
+    try saves_dir.createDirPath(io, "Alpha/datapacks");
+    try saves_dir.createDirPath(io, "Alpha/" ++ metadata_directory_name);
+    var alpha = try saves_dir.openDir(io, "Alpha", .{});
+    try alpha.writeFile(io, .{ .sub_path = "level.dat", .data = "nbt" });
+    try alpha.writeFile(io, .{ .sub_path = "datapacks/pack.zip", .data = "zip-bytes" });
+    try alpha.writeFile(io, .{ .sub_path = metadata_directory_name ++ "/content.json", .data = "{}" });
+    alpha.close(io);
+
+    const result = try exportWorld(std.testing.allocator, io, saves_dir, "Alpha", tmp.dir, "alpha.zip");
+    try std.testing.expect(result.files == 2);
+    const archive = try tmp.dir.readFileAlloc(io, "alpha.zip", std.testing.allocator, .limited(max_import_bytes));
+    defer std.testing.allocator.free(archive);
+    var iterator = try zip_reader.entries(archive);
+    var saw_datapack = false;
+    while (try iterator.next()) |entry| {
+        try std.testing.expect(std.mem.indexOf(u8, entry.name, metadata_directory_name) == null);
+        if (std.mem.eql(u8, entry.name, "Alpha/datapacks/pack.zip")) saw_datapack = true;
+    }
+    try std.testing.expect(saw_datapack);
 }
 
 test "import replace swaps the existing world" {

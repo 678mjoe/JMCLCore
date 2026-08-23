@@ -73,6 +73,7 @@ pub const Usage = struct {
     mod: bool = false,
     resourcepack: bool = false,
     shaderpack: bool = false,
+    datapack: bool = false,
     server: bool = false,
 
     fn merge(usage: *Usage, other: Usage) void {
@@ -85,6 +86,7 @@ pub const Usage = struct {
         usage.mod = usage.mod or other.mod;
         usage.resourcepack = usage.resourcepack or other.resourcepack;
         usage.shaderpack = usage.shaderpack or other.shaderpack;
+        usage.datapack = usage.datapack or other.datapack;
         usage.server = usage.server or other.server;
     }
 };

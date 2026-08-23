@@ -14,6 +14,7 @@ pub const Loader = enum {
     forge,
     neoforge,
     minecraft,
+    datapack,
 
     pub fn name(loader: Loader) []const u8 {
         return @tagName(loader);
@@ -31,6 +32,7 @@ pub const ProjectType = enum {
     mod,
     resourcepack,
     shader,
+    datapack,
 
     pub fn parse(value: []const u8) ?ProjectType {
         inline for (std.meta.fields(ProjectType)) |field| {
@@ -45,7 +47,15 @@ pub const Project = struct {
     slug: []const u8,
     title: ?[]const u8 = null,
     project_type: []const u8,
+    loaders: []const []const u8 = &.{},
 };
+
+pub fn hasLoader(loaders: []const []const u8, name: []const u8) bool {
+    for (loaders) |loader| {
+        if (std.mem.eql(u8, loader, name)) return true;
+    }
+    return false;
+}
 
 pub const DependencyType = enum {
     required,
@@ -200,6 +210,13 @@ pub fn parseProject(allocator: std.mem.Allocator, source: []const u8) !std.json.
     try validateProjectRef(document.value.id);
     try validateProjectRef(document.value.slug);
     if (ProjectType.parse(document.value.project_type) == null) return error.UnsupportedProjectType;
+    if (document.value.loaders.len > 32) return error.InvalidModrinthLoaders;
+    for (document.value.loaders) |loader| {
+        if (loader.len == 0 or loader.len > 32) return error.InvalidModrinthLoaders;
+        for (loader) |byte| {
+            if (!std.ascii.isAlphanumeric(byte) and byte != '-') return error.InvalidModrinthLoaders;
+        }
+    }
     return document;
 }
 
@@ -380,14 +397,23 @@ test "rejects unsafe version documents" {
     defer shader_project.deinit();
     try std.testing.expectEqual(ProjectType.shader, ProjectType.parse(shader_project.value.project_type).?);
 
+    var datapack_project = try parseProject(std.testing.allocator,
+        \\{"id":"TvZ2n3Bx","slug":"terralith","title":"Terralith","project_type":"mod","loaders":["datapack","fabric"]}
+    );
+    defer datapack_project.deinit();
+    try std.testing.expectEqual(ProjectType.mod, ProjectType.parse(datapack_project.value.project_type).?);
+    try std.testing.expect(hasLoader(datapack_project.value.loaders, "datapack"));
+    try std.testing.expect(!hasLoader(datapack_project.value.loaders, "forge"));
+
     try std.testing.expectError(error.UnsupportedProjectType, parseProject(std.testing.allocator,
         \\{"id":"AANobbMI","slug":"pack","title":"Pack","project_type":"modpack"}
     ));
 }
 
-test "loader parsing covers the minecraft pseudo-loader" {
+test "loader parsing covers the minecraft pseudo-loader and datapack tag" {
     try std.testing.expectEqual(Loader.minecraft, Loader.parse("minecraft").?);
     try std.testing.expectEqualStrings("minecraft", Loader.minecraft.name());
+    try std.testing.expectEqual(Loader.datapack, Loader.parse("datapack").?);
     try std.testing.expect(Loader.parse("quilt") == null);
 }
 

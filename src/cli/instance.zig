@@ -5,6 +5,7 @@ const cli_launch = @import("launch.zig");
 const cli_content = @import("content.zig");
 const cli_worlds = @import("worlds.zig");
 const cli_modpack = @import("modpack.zig");
+const cli_datapacks = @import("datapacks.zig");
 
 pub fn run(
     service: *jmcl.Service,
@@ -22,8 +23,9 @@ pub fn run(
     if (args.len >= 1 and std.mem.eql(u8, args[0], "worlds")) return cli_worlds.runInstanceWorlds(service, args[1..], stdout, stderr);
     if (args.len >= 1 and std.mem.eql(u8, args[0], "resourcepacks")) return cli_content.runWithKind(.resourcepack, service, args[1..], stdout, stderr);
     if (args.len >= 1 and std.mem.eql(u8, args[0], "shaderpacks")) return cli_content.runWithKind(.shaderpack, service, args[1..], stdout, stderr);
+    if (args.len >= 1 and std.mem.eql(u8, args[0], "datapacks")) return cli_datapacks.runInstanceDatapacks(service, args[1..], stdout, stderr);
     if (args.len >= 1 and std.mem.eql(u8, args[0], "modpack")) return cli_modpack.run(service, args[1..], stdout, stderr);
-    try stderr.writeAll("usage: jmcl-core instance <create|list|show|delete|install|launch|mods|resourcepacks|shaderpacks|modpack|worlds> [options]\n");
+    try stderr.writeAll("usage: jmcl-core instance <create|list|show|delete|install|launch|mods|resourcepacks|shaderpacks|datapacks|modpack|worlds> [options]\n");
     return 2;
 }
 

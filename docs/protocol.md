@@ -156,6 +156,24 @@ application's job.
 {"protocol":1,"id":"sp-install","method":"shaderpacks.install","params":{"directory":"/path/to/.minecraft","minecraft_version":"1.21.4","project":"bsl-shaders"}}
 ```
 
+`datapacks.list`, `datapacks.install`, `datapacks.set-version`,
+`datapacks.enable`, `datapacks.disable`, `datapacks.remove`, and
+`datapacks.adopt` manage `datapacks/*.zip` files inside a single world of
+the instance: every method takes a required `world` name alongside
+`directory`, targets `saves/<world>/datapacks/`, and keeps its registry at
+`saves/<world>/.jmcl/content.json` (results echo the `world`). Compatibility
+filters by `minecraft_version` plus Modrinth's `datapack` loader tag (the
+project `project_type` field no longer distinguishes data packs); explicit
+`loader` parameters are rejected.
+Mutations refuse a live-game world with `WORLD_LOCKED` (probed via
+`session.lock`) and a missing world with `WORLD_NOT_FOUND`; `list` never
+locks. The managed form is the zip; directory-shaped data packs stay
+unmanaged.
+
+```json
+{"protocol":1,"id":"dp-install","method":"datapacks.install","params":{"directory":"/path/to/.minecraft","world":"My World","minecraft_version":"1.21.4","project":"terralith"}}
+```
+
 All install methods accept an optional `provider` (`"modrinth"` by default,
 or `"curseforge"`). The CurseForge provider resolves projects by numeric mod
 id and requires an `api_key` parameter, supplied by the caller per request
@@ -404,6 +422,37 @@ Linux.
 
 ```json
 {"protocol":1,"id":"sm-1","method":"server.mods.install","params":{"directory":"/path/to/servers","id":"fabric-server","project":"lithium"}}
+```
+
+### Server Data Packs
+
+`server.datapacks.*` manages `datapacks/` inside the server's base world
+(`<level-name>/datapacks/`) with the registry at
+`<level-name>/.jmcl/content.json`. There is no `world` parameter — the base
+world is resolved from the `level-name` property, which requires an
+installed server (`SERVER_PROPERTIES_INVALID` otherwise); the world
+directory is created on demand, so datapacks install before the first
+start, and `server.datapacks.list` lists empty until then. Vanilla servers
+are fully supported.
+
+| Method | Required params | Optional params |
+|---|---|---|
+| `server.datapacks.list` | `directory`, `id` | — |
+| `server.datapacks.install` | `directory`, `id`, `project` | `provider`, `api_key`, `version_id`, `with_dependencies`, `store_directory`, `workers`, `retries` |
+| `server.datapacks.set-version` | `directory`, `id`, `project`, `version_id` | `api_key`, `store_directory`, `workers`, `retries` |
+| `server.datapacks.enable` | `directory`, `id`, one of `project`/`file` | — |
+| `server.datapacks.disable` | `directory`, `id`, one of `project`/`file` | — |
+| `server.datapacks.remove` | `directory`, `id`, one of `project`/`file` | — |
+| `server.datapacks.adopt` | `directory`, `id` | `store_directory` |
+
+`server.datapacks.list` is read-only. Every other method requires a stopped
+server (`SERVER_ALREADY_RUNNING`); the game version comes from
+`server.json` and compatibility filters by game version only. Result
+payloads, progress events, provider rules, and error codes match the client
+`datapacks.*` methods. Linux only.
+
+```json
+{"protocol":1,"id":"sd-1","method":"server.datapacks.install","params":{"directory":"/path/to/servers","id":"vanilla-server","project":"terralith"}}
 ```
 
 ## Modpack Installation

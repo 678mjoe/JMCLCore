@@ -2,10 +2,10 @@
 
 Status: Phases 1 through 5 are implemented for server instance storage,
 vanilla installation/properties, detached process lifecycle, Fabric,
-NeoForge, and modern Forge server installs, and server mod management.
-Legacy Forge server support was cut from Phase 4 and remains deferred;
-datapacks are deferred as a joint client+server design. Phase 6 remains
-the roadmap.
+NeoForge, and modern Forge server installs, server mod management, and
+server data pack management.
+Legacy Forge server support was cut from Phase 4 and remains deferred.
+Phase 6 remains the roadmap.
 Multi-instance Minecraft server management is **Linux first**. Other platforms
 are explicitly deferred and every `server.*` method returns
 `UNSUPPORTED_PLATFORM`. The GUI talks to a server-side `jmcl-core` over SSH.
@@ -197,9 +197,28 @@ Mojang requires explicit EULA acceptance: install operations require
   mod changes take effect on the next start.
 - CLI parity: `jmcl-core server mods <list|install|set-version|enable|
   disable|remove|adopt> ID ...`.
-- Datapacks remain deferred until the joint client+server directory
-  resolution design (kind-directory invariance breaks for
-  `<level-name>/datapacks` and client `saves/<world>/datapacks`).
+
+### Phase 5b: Server data packs (implemented)
+
+- `server.datapacks.list | install | set-version | enable | disable |
+  remove | adopt` manage `<level-name>/datapacks/` with the registry at
+  `<level-name>/.jmcl/content.json` — the same world-scoped design as client
+  `datapacks.*` (the deferral note about kind-directory invariance was
+  resolved by scoping the registry to the world directory itself).
+- There is no world parameter: the base world comes from the `level-name`
+  property, which must exist and be a safe single directory name
+  (`SERVER_PROPERTIES_INVALID` otherwise — install the server first). The
+  world directory is created on demand, so datapacks install before the
+  first start; `list` lists empty until then.
+- Vanilla servers are fully supported (no `SERVER_LOADER_REQUIRED` — data
+  packs need no loader); the game version is derived from `server.json`.
+- `list` is read-only; every mutation requires a stopped server
+  (`SERVER_ALREADY_RUNNING`) through the same lifecycle lock as mods and
+  worlds. Provider rules (`api_key` for CurseForge), dependency recursion,
+  managed zip-only form, and `.disabled` toggling match the client datapack
+  semantics in `docs/content.md`.
+- CLI parity: `jmcl-core server datapacks <list|install|set-version|
+  enable|disable|remove|adopt> ID ...`.
 
 ### Phase 6: Hardening and polish
 

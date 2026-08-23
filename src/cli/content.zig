@@ -206,7 +206,7 @@ fn runContentInstall(
             try stderr.writeAll("instance has no mod loader; mods require Fabric, NeoForge, or Forge\n");
             return 1;
         },
-        .resourcepack, .shaderpack => null,
+        .resourcepack, .shaderpack, .datapack => null,
     };
     const path = try jmcl.instance_store.minecraftPathAlloc(service.allocator, options.instances_directory, options.id);
     defer service.allocator.free(path);
@@ -255,7 +255,7 @@ fn runContentInstall(
         switch (err) {
             error.NoCompatibleContentVersion => switch (kind) {
                 .mod => try stderr.print("no {s} release of {s} supports Minecraft {s}\n", .{ @tagName(loader.?), project, document.value.version_id }),
-                .resourcepack, .shaderpack => try stderr.print("no release of {s} supports Minecraft {s}\n", .{ project, document.value.version_id }),
+                .resourcepack, .shaderpack, .datapack => try stderr.print("no release of {s} supports Minecraft {s}\n", .{ project, document.value.version_id }),
             },
             error.IncompatibleContentVersion => try stderr.print("the requested version does not support Minecraft {s}\n", .{document.value.version_id}),
             error.ContentFileConflict => try stderr.writeAll("a different registered content entry already occupies the target file\n"),
@@ -351,7 +351,7 @@ fn runContentSetVersion(
             try stderr.writeAll("instance has no mod loader; mods require Fabric, NeoForge, or Forge\n");
             return 1;
         },
-        .resourcepack, .shaderpack => null,
+        .resourcepack, .shaderpack, .datapack => null,
     };
     const path = try jmcl.instance_store.minecraftPathAlloc(service.allocator, options.instances_directory, options.id);
     defer service.allocator.free(path);

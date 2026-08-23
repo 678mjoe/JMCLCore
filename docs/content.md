@@ -1,4 +1,4 @@
-# Modrinth And CurseForge Content: Mods, Resource Packs, And Shader Packs
+# Modrinth And CurseForge Content: Mods, Resource Packs, Shader Packs, And Data Packs
 
 JMCL Core installs and manages Modrinth and CurseForge content for
 instances. Mods target
@@ -8,7 +8,9 @@ content-addressed like every other artifact: downloads are verified against
 the Modrinth-published SHA-1, stored in the shared artifact store, and
 hard-linked into the instance directory (`mods/` for mods, `resourcepacks/`
 for resource packs, `shaderpacks/` for shader packs). Manually dropped files
-can be adopted into the same scheme.
+can be adopted into the same scheme. Data packs follow the same pipeline but
+attach to a single world (`saves/<world>/datapacks/`) with a world-scoped
+registry; see below and `docs/worlds.md`.
 
 This document covers installation and lifecycle management only. Searching and
 browsing the Modrinth catalog is left to the embedding application.
@@ -28,10 +30,10 @@ Each instance records its managed content in `.minecraft/.jmcl/content.json`:
 ]}
 ```
 
-- `kind` is `"mod"`, `"resourcepack"`, or `"shaderpack"`. The kind fixes the
-  target directory (`mods/`, `resourcepacks/`, `shaderpacks/`) and the
-  managed file extension (`.jar`, `.zip`); entries whose file does not live
-  under their kind's directory are rejected.
+- `kind` is `"mod"`, `"resourcepack"`, `"shaderpack"`, or `"datapack"`. The
+  kind fixes the target directory (`mods/`, `resourcepacks/`, `shaderpacks/`,
+  `datapacks/`) and the managed file extension (`.jar`, `.zip`); entries
+  whose file does not live under their kind's directory are rejected.
 - `enabled` marks active content. Disabling renames the instance file to
   `<file>.disabled` so the game no longer loads it; the registry keeps the
   canonical path, so project lookups, removal, and version switching work
@@ -46,6 +48,15 @@ Each instance records its managed content in `.minecraft/.jmcl/content.json`:
 
 `instance.json` remains the instance identity and is never modified by content
 operations.
+
+For data packs the registry root is the world directory, not the instance
+game directory: `saves/<world>/.jmcl/content.json` (client) and
+`servers/<id>/<level-name>/.jmcl/content.json` (server), with entries like
+`datapacks/<file>`. Relative to that root the kind-directory rule holds
+unchanged, so the whole pipeline is shared. The registry rides with the world
+directory through rename, duplicate, and delete; world export/backup archives
+exclude `.jmcl` to stay vanilla, so restored datapacks return as unmanaged
+files that `adopt` re-registers.
 
 ## Mod Commands
 
@@ -142,6 +153,44 @@ jmcl-core instance shaderpacks remove vanilla-demo --project bsl-shaders
 - Installing a shader runtime (Iris, Oculus, OptiFine) and activating packs
   is the embedding application's job; JMCL manages files only.
 
+## Data Pack Commands
+
+```sh
+jmcl-core instance datapacks install vanilla-demo --world "My World" --project terralith
+jmcl-core instance datapacks list vanilla-demo --world "My World"
+jmcl-core instance datapacks adopt vanilla-demo --world "My World"
+jmcl-core instance datapacks disable vanilla-demo --world "My World" --project terralith
+jmcl-core instance datapacks remove vanilla-demo --world "My World" --project terralith
+```
+
+- Data packs attach to one world: every command takes `--world NAME` and
+  operates on `saves/<world>/datapacks/` with the registry at
+  `saves/<world>/.jmcl/content.json`. The instance's Minecraft version (from
+  `instance.json`) drives compatibility.
+- The managed form is the zip file, exactly like resource packs. Minecraft
+  also accepts directory-shaped data packs in `datapacks/`; those are left
+  alone and stay unmanaged (invisible to `list` and `adopt`).
+- Modrinth types data packs as `mod` projects whose `loaders` list contains
+  the `datapack` tag (the `project_type` field alone no longer distinguishes
+  them). Datapack eligibility therefore accepts mod-typed projects tagged
+  `datapack` — a multi-format pack like Terralith installs as a data pack
+  through its zip versions and as a mod through its jar versions — and
+  version selection filters by the `datapack` loader tag plus the
+  Minecraft version, so only zip data pack files are ever picked. Installing
+  a project without the datapack tag fails with a kind mismatch; explicit
+  loader parameters are rejected.
+- Mutations (`install`, `set-version`, `enable`, `disable`, `remove`,
+  `adopt`) refuse a world held by a running game (`WORLD_LOCKED`, probed via
+  `session.lock` exactly like world mutations) and require the world to
+  exist (`WORLD_NOT_FOUND`). `list` never locks.
+- `disable` renames to `<file>.disabled`; vanilla ignores a zip that no
+  longer ends in `.zip`, so the pack stays dormant until re-enabled. Note
+  that a pack whose author marked it required in `pack.mcmeta` may prevent
+  the world from loading when disabled or removed — JMCL does not parse
+  `pack.mcmeta`.
+- Required dependencies recurse by default (same-type only), like the other
+  kinds; `--no-dependencies` installs only the requested project.
+
 ## CurseForge
 
 The same install path works against CurseForge by passing a provider and an
@@ -159,11 +208,13 @@ jmcl-core instance mods install jei-demo --project 238222 --provider curseforge 
   client id. RPC methods take it as `api_key`; requests without one are
   rejected with `INVALID_PARAMS`.
 - Kind mapping uses the CurseForge class: `mc-mods` (6), resource packs
-  (12), shader packs (6552). A class that does not match the requested kind
-  fails with a kind mismatch; anything else is unsupported.
+  (12), shader packs (6552), data packs (5290). A class that does not match
+  the requested kind fails with a kind mismatch; anything else is
+  unsupported.
 - Mod compatibility filters by game version and `modLoaderType` (Forge,
-  Fabric, NeoForge); resource packs and shader packs filter by game version
-  only. The newest available stable file wins over beta and alpha.
+  Fabric, NeoForge); resource packs, shader packs, and data packs filter by
+  game version only. The newest available stable file wins over beta and
+  alpha.
 - Files carry SHA-1 hashes and download through the same verified
   content-addressed pipeline. When an author disables third-party
   distribution (`downloadUrl` is null), the core asks the `download-url`
@@ -179,14 +230,18 @@ jmcl-core instance mods install jei-demo --project 238222 --provider curseforge 
 
 The same operations are available over RPC as `mods.list`, `mods.install`,
 `mods.set-version`, `mods.enable`, `mods.disable`, `mods.remove`,
-`mods.adopt`, the matching `resourcepacks.*` methods, and the matching
-`shaderpacks.*` methods. The RPC forms take an explicit `directory`
-and `minecraft_version` instead of reading an instance manifest.
-`mods.install` additionally requires `loader` (`fabric` | `neoforge` |
-`forge`); `resourcepacks.install` and `shaderpacks.install` take no loader.
+`mods.adopt`, the matching `resourcepacks.*` and `shaderpacks.*` methods,
+and the matching `datapacks.*` methods. The RPC forms take an explicit
+`directory` and `minecraft_version` instead of reading an instance manifest;
+`datapacks.*` additionally takes a required `world` and includes it in every
+result. `mods.install` additionally requires `loader` (`fabric` | `neoforge`
+| `forge`); `resourcepacks.install`, `shaderpacks.install`, and
+`datapacks.install` take no loader.
 All install methods accept `with_dependencies` (default `true`) to control
 dependency recursion, plus `provider` (default `"modrinth"`) and `api_key`;
 the CurseForge provider requires `api_key` and rejects any other use of it.
+World datapack failures surface as `WORLD_NOT_FOUND` / `WORLD_LOCKED`
+alongside the shared content error codes.
 
 ## Server Mods
 
@@ -208,6 +263,25 @@ dependency recursion, and error codes match the client methods exactly.
 Linux only, like every `server.*` method. The CLI mirrors the surface as
 `jmcl-core server mods <list|install|set-version|enable|disable|remove|
 adopt> ID ...`.
+
+## Server Data Packs
+
+`server.datapacks.*` manages `datapacks/` inside the server's base world
+(`<level-name>/datapacks/`), with the registry at
+`<level-name>/.jmcl/content.json`. There is no world parameter — datapacks
+always target the world named by the `level-name` property, which must exist
+and be usable (install the server first; otherwise
+`SERVER_PROPERTIES_INVALID`). The `<level-name>` directory is created on
+demand, so datapacks install before the first server start, and vanilla
+servers are fully supported (no `SERVER_LOADER_REQUIRED` — data packs need
+no loader). The Minecraft version comes from `server.json` like
+`server.mods.*`; `server.datapacks.list` never locks and lists empty until
+the world exists, while every mutation requires a stopped server
+(`SERVER_ALREADY_RUNNING`) and refuses a `level-name` that is not a safe
+single directory name. Provider rules, dependency recursion, progress
+events, and error codes match the client `datapacks.*` methods; the CLI
+mirrors the surface as `jmcl-core server datapacks <list|install|
+set-version|enable|disable|remove|adopt> ID ...`. Linux only.
 
 ## Network And Mirrors
 
@@ -253,3 +327,6 @@ still passes the exact size and SHA-1 checks of the install pipeline.
 - Optional dependencies.
 - Shader runtime selection and shader pack activation; `pack.mcmeta` and
   shader config format checks.
+- Directory-shaped data packs as managed content (managed form is the zip);
+  level.dat `DataPacks` enabled/disabled lists are never read or written;
+  datapacks inside modpack overrides are not registered.

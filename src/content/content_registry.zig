@@ -26,12 +26,14 @@ pub const Kind = enum {
     mod,
     resourcepack,
     shaderpack,
+    datapack,
 
     pub fn directory(kind: Kind) []const u8 {
         return switch (kind) {
             .mod => "mods",
             .resourcepack => "resourcepacks",
             .shaderpack => "shaderpacks",
+            .datapack => "datapacks",
         };
     }
 
@@ -40,6 +42,7 @@ pub const Kind = enum {
             .mod => ".jar",
             .resourcepack => ".zip",
             .shaderpack => ".zip",
+            .datapack => ".zip",
         };
     }
 };
@@ -241,9 +244,11 @@ test "kind directory and extension mappings" {
     try std.testing.expectEqualStrings("mods", Kind.mod.directory());
     try std.testing.expectEqualStrings("resourcepacks", Kind.resourcepack.directory());
     try std.testing.expectEqualStrings("shaderpacks", Kind.shaderpack.directory());
+    try std.testing.expectEqualStrings("datapacks", Kind.datapack.directory());
     try std.testing.expectEqualStrings(".jar", Kind.mod.extension());
     try std.testing.expectEqualStrings(".zip", Kind.resourcepack.extension());
     try std.testing.expectEqualStrings(".zip", Kind.shaderpack.extension());
+    try std.testing.expectEqualStrings(".zip", Kind.datapack.extension());
 }
 
 test "rejects invalid registry documents" {

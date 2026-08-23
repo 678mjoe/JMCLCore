@@ -122,7 +122,7 @@ pub fn writeInstallResultWithKind(
                 return;
             };
             const parsed = core.modrinth.Loader.parse(raw);
-            if (parsed == null or parsed.? == .minecraft) {
+            if (parsed == null or parsed.? == .minecraft or parsed.? == .datapack) {
                 try writeError(writer, request_id, "INVALID_PARAMS", "mods.install requires a fabric, forge, or neoforge loader");
                 return;
             }
@@ -141,6 +141,13 @@ pub fn writeInstallResultWithKind(
         .shaderpack => blk: {
             if (input.loader != null) {
                 try writeError(writer, request_id, "INVALID_PARAMS", "shaderpacks.install does not accept a loader");
+                return;
+            }
+            break :blk null;
+        },
+        .datapack => blk: {
+            if (input.loader != null) {
+                try writeError(writer, request_id, "INVALID_PARAMS", "datapacks.install does not accept a loader");
                 return;
             }
             break :blk null;
@@ -296,7 +303,7 @@ pub fn writeSetVersionResultWithKind(
                 return;
             };
             const parsed = core.modrinth.Loader.parse(raw);
-            if (parsed == null or parsed.? == .minecraft) {
+            if (parsed == null or parsed.? == .minecraft or parsed.? == .datapack) {
                 try writeError(writer, request_id, "INVALID_PARAMS", "mods.set-version requires a fabric, forge, or neoforge loader");
                 return;
             }
@@ -315,6 +322,13 @@ pub fn writeSetVersionResultWithKind(
         .shaderpack => blk: {
             if (input.loader != null) {
                 try writeError(writer, request_id, "INVALID_PARAMS", "shaderpacks.set-version does not accept a loader");
+                return;
+            }
+            break :blk null;
+        },
+        .datapack => blk: {
+            if (input.loader != null) {
+                try writeError(writer, request_id, "INVALID_PARAMS", "datapacks.set-version does not accept a loader");
                 return;
             }
             break :blk null;

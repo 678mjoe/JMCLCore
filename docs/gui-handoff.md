@@ -251,6 +251,12 @@ on Linux:
 | `server.mods.enable` / `server.mods.disable` | `directory`, `id`, one of `project`/`file` | — | stopped server only; renames to/from `<file>.disabled` |
 | `server.mods.remove` | `directory`, `id`, one of `project`/`file` | — | stopped server only; deletes the server link, store object awaits GC |
 | `server.mods.adopt` | `directory`, `id` | `store_directory` | stopped server only; registers unmanaged `mods/*.jar` as `manual` |
+| `server.datapacks.list` | `directory`, `id` | — | read-only; `{entries[], unmanaged[]}` from `<level-name>/.jmcl/content.json`; empty until the world exists |
+| `server.datapacks.install` | `directory`, `id`, `project` | `provider`, `api_key`, `version_id`, `with_dependencies`, `store_directory`, `workers`, `retries` | stopped server only; targets `<level-name>/datapacks/`; version from `server.json`; vanilla OK; world dir created on demand; requires an installed server (`SERVER_PROPERTIES_INVALID` without a usable `level-name`) |
+| `server.datapacks.set-version` | `directory`, `id`, `project`, `version_id` | `api_key`, `store_directory`, `workers`, `retries` | stopped server only; same result shape as `datapacks.set-version` |
+| `server.datapacks.enable` / `server.datapacks.disable` | `directory`, `id`, one of `project`/`file` | — | stopped server only; renames to/from `<file>.disabled` |
+| `server.datapacks.remove` | `directory`, `id`, one of `project`/`file` | — | stopped server only; deletes the world link, store object awaits GC |
+| `server.datapacks.adopt` | `directory`, `id` | `store_directory` | stopped server only; registers unmanaged `<level-name>/datapacks/*.zip` as `manual` |
 
 `server.create`, `server.list`, and `server.get` include `installed`. Treat it
 as authoritative. The v3 completion marker must match the manifest and the
@@ -282,7 +288,8 @@ distinctly include `SERVER_NOT_INSTALLED`, `SERVER_ALREADY_RUNNING`,
 `SERVER_NOT_RUNNING`.
 
 Content methods exist for three kinds with identical shapes:
-`mods.*`, `resourcepacks.*`, `shaderpacks.*`.
+`mods.*`, `resourcepacks.*`, `shaderpacks.*`. Data packs are the fourth kind
+but world-scoped and covered separately below the table.
 
 | Method | Required params | Optional params | Notes |
 |---|---|---|---|
@@ -311,6 +318,19 @@ Semantics the GUI must respect:
   the canonical path. Do not "repair" or delete `.disabled` files from the
   GUI — use `<kind>.enable`/`.remove`.
 - `as_dependency:true` marks entries pulled in as required dependencies.
+
+Data packs (`datapacks.list|install|set-version|enable|disable|remove|adopt`)
+attach to one world instead of the instance: every method takes the game
+`directory` plus a required `world` name and `minecraft_version` (no
+`loader`), manages `saves/<world>/datapacks/*.zip`, and keeps its registry at
+`saves/<world>/.jmcl/content.json` — the entry shape is identical but
+relative to the world. Results echo `world`. Mutations refuse a live-game
+world (`WORLD_LOCKED`, same `session.lock` probe as world mutations) and a
+missing world (`WORLD_NOT_FOUND`); `list` never locks. The registry rides
+with the world directory (rename/duplicate carry it; export/backup archives
+exclude `.jmcl`, so restored datapacks come back unmanaged — offer
+`datapacks.adopt` after a restore). Directory-shaped data packs are not
+managed content; surface them read-only at most.
 
 `modpack.install` creates a whole instance from an archive:
 

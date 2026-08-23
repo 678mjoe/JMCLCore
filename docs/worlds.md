@@ -72,8 +72,10 @@ on the next `worlds.list`.
 
 `worlds.export` streams a world into a standard zip archive (deflate,
 data-descriptor free, written atomically via temp-name + rename). Entries are
-prefixed with the world directory name; `session.lock` and staging/trash
-directories are excluded. The zip writer is hand-rolled
+prefixed with the world directory name; `session.lock`, staging/trash
+directories, and the `.jmcl` metadata directory (the world-scoped datapack
+content registry, see `docs/content.md`) are excluded. The zip writer is
+hand-rolled
 (`src/worlds/zip_writer.zig`) with the same limits as the reader: at most
 65535 entries, 4096-byte entry names, 4 GiB per file and per archive.
 Exporting a locked world fails with `WORLD_LOCKED`.

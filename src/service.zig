@@ -446,6 +446,132 @@ pub const Service = struct {
         try worlds.deleteBackup(self.io, backups_dir, file);
     }
 
+    fn openWorldDatapackDir(self: Service, game_directory: []const u8, world: []const u8) !std.Io.Dir {
+        var saves_dir = try self.openSavesDirChecked(game_directory);
+        defer saves_dir.close(self.io);
+        return worlds.openWorld(self.io, saves_dir, world);
+    }
+
+    fn openWorldDatapackDirMutable(self: Service, game_directory: []const u8, world: []const u8) !std.Io.Dir {
+        var saves_dir = try self.openSavesDirChecked(game_directory);
+        defer saves_dir.close(self.io);
+        return worlds.openMutable(self.io, saves_dir, world);
+    }
+
+    /// Lists registered datapacks plus unmanaged zips inside
+    /// `saves/<world>/datapacks`. The registry lives at
+    /// `saves/<world>/.jmcl/content.json`, scoped to the world so rename,
+    /// duplicate, delete, and restore carry it with the world directory.
+    /// Reading never locks the world.
+    pub fn listWorldDatapacks(self: Service, game_directory: []const u8, world: []const u8) !ContentList {
+        var world_dir = try self.openWorldDatapackDir(game_directory, world);
+        defer world_dir.close(self.io);
+        return self.listInstanceContent(world_dir, .datapack);
+    }
+
+    /// Installs a Modrinth datapack into a stopped world. Datapacks filter
+    /// by game version only; mutations refuse a live-game world through the
+    /// same session.lock probe as world mutations.
+    pub fn installWorldModrinthDatapack(
+        self: Service,
+        game_directory: []const u8,
+        world: []const u8,
+        store: std.Io.Dir,
+        game_version: []const u8,
+        project: []const u8,
+        version_id: ?[]const u8,
+        options: ContentInstallOptions,
+        reporter: ?install_executor.Reporter,
+    ) !ContentInstallSummary {
+        var world_dir = try self.openWorldDatapackDirMutable(game_directory, world);
+        defer world_dir.close(self.io);
+        return self.installModrinthContent(world_dir, store, .datapack, game_version, null, project, version_id, options, reporter);
+    }
+
+    /// Installs a CurseForge datapack (numeric project id) into a stopped
+    /// world with the same world-scoped registry and locking rules as the
+    /// Modrinth path. The caller-supplied API key is validated and never
+    /// persisted.
+    pub fn installWorldCurseforgeDatapack(
+        self: Service,
+        game_directory: []const u8,
+        world: []const u8,
+        store: std.Io.Dir,
+        game_version: []const u8,
+        api_key: []const u8,
+        project: []const u8,
+        file_id: ?[]const u8,
+        options: ContentInstallOptions,
+        reporter: ?install_executor.Reporter,
+    ) !ContentInstallSummary {
+        var world_dir = try self.openWorldDatapackDirMutable(game_directory, world);
+        defer world_dir.close(self.io);
+        return self.installCurseforgeContent(world_dir, store, .datapack, game_version, null, api_key, project, file_id, options, reporter);
+    }
+
+    /// Switches a registered world datapack to an exact caller-selected
+    /// version using the instance's Minecraft version for compatibility.
+    pub fn setWorldDatapackVersion(
+        self: Service,
+        game_directory: []const u8,
+        world: []const u8,
+        store: std.Io.Dir,
+        game_version: []const u8,
+        project: []const u8,
+        version_id: []const u8,
+        api_key: ?[]const u8,
+        options: ContentInstallOptions,
+        reporter: ?install_executor.Reporter,
+    ) !ContentVersionChange {
+        var world_dir = try self.openWorldDatapackDirMutable(game_directory, world);
+        defer world_dir.close(self.io);
+        return self.setInstanceContentVersion(world_dir, store, .datapack, game_version, null, project, version_id, api_key, options, reporter);
+    }
+
+    /// Enables or disables a registered world datapack by renaming
+    /// `datapacks/<file>` to or from `<file>.disabled`; the registry keeps
+    /// the canonical path.
+    pub fn setWorldDatapackEnabled(
+        self: Service,
+        game_directory: []const u8,
+        world: []const u8,
+        project: ?[]const u8,
+        file: ?[]const u8,
+        enabled: bool,
+    ) !ContentToggle {
+        var world_dir = try self.openWorldDatapackDirMutable(game_directory, world);
+        defer world_dir.close(self.io);
+        return self.setInstanceContentEnabled(world_dir, .datapack, project, file, enabled);
+    }
+
+    /// Removes a registered world datapack, deleting the world's hard link
+    /// while the shared store object awaits garbage collection.
+    pub fn removeWorldDatapack(
+        self: Service,
+        game_directory: []const u8,
+        world: []const u8,
+        project: ?[]const u8,
+        file: ?[]const u8,
+    ) !ContentRemoval {
+        var world_dir = try self.openWorldDatapackDirMutable(game_directory, world);
+        defer world_dir.close(self.io);
+        return self.removeInstanceContent(world_dir, .datapack, project, file);
+    }
+
+    /// Adopts unmanaged `datapacks/*.zip` files of a stopped world into the
+    /// content-addressed store and registers them with the manual provider.
+    /// Directory-shaped datapacks stay unmanaged.
+    pub fn adoptWorldDatapacks(
+        self: Service,
+        game_directory: []const u8,
+        world: []const u8,
+        store: std.Io.Dir,
+    ) !ContentAdoption {
+        var world_dir = try self.openWorldDatapackDirMutable(game_directory, world);
+        defer world_dir.close(self.io);
+        return self.adoptInstanceContent(world_dir, store, .datapack);
+    }
+
     fn openServerDirChecked(self: Service, directory: []const u8, id: []const u8) !std.Io.Dir {
         const root = server_store.openRoot(self.io, directory) catch return error.ServerNotFound;
         defer root.close(self.io);
@@ -802,6 +928,187 @@ pub const Service = struct {
         var stopped_guard = try server_lifecycle.lockStopped(self.allocator, self.io, target.dir);
         defer stopped_guard.deinit();
         return self.adoptInstanceContent(target.dir, store, kind);
+    }
+
+    fn openServerDatapackWorld(
+        self: Service,
+        arena: std.mem.Allocator,
+        server_dir: std.Io.Dir,
+        create: bool,
+    ) !std.Io.Dir {
+        const level_name = try self.serverLevelNameAlloc(arena, server_dir);
+        worlds.validateName(level_name) catch return error.InvalidServerProperties;
+        if (create) {
+            server_dir.createDirPath(self.io, level_name) catch |err| switch (err) {
+                error.PathAlreadyExists => {},
+                else => |other| return other,
+            };
+        }
+        return server_dir.openDir(self.io, level_name, .{}) catch |err| switch (err) {
+            error.FileNotFound => return error.WorldNotFound,
+            else => |other| return other,
+        };
+    }
+
+    fn emptyContentList(self: Service) !ContentList {
+        const arena = try self.allocator.create(std.heap.ArenaAllocator);
+        errdefer self.allocator.destroy(arena);
+        arena.* = std.heap.ArenaAllocator.init(self.allocator);
+        errdefer arena.deinit();
+        const document = try content_registry.parse(self.allocator, "{\"schema_version\":1,\"entries\":[]}");
+        return .{ .arena = arena, .document = document, .entries = &.{}, .unmanaged = &.{} };
+    }
+
+    /// Lists registered datapacks plus unmanaged zips inside
+    /// `<level-name>/datapacks` of a server instance. The registry lives at
+    /// `<level-name>/.jmcl/content.json` and rides with the world directory.
+    /// Reading never takes the lifecycle lock, and a server that has not
+    /// created its world yet lists as empty.
+    pub fn listServerDatapacks(self: Service, directory: []const u8, id: []const u8) !ContentList {
+        var arena = std.heap.ArenaAllocator.init(self.allocator);
+        defer arena.deinit();
+        var target = try self.openServerContentDirectory(arena.allocator(), directory, id, false);
+        defer target.dir.close(self.io);
+        var world_dir = self.openServerDatapackWorld(arena.allocator(), target.dir, false) catch |err| switch (err) {
+            error.WorldNotFound => return self.emptyContentList(),
+            else => |other| return other,
+        };
+        defer world_dir.close(self.io);
+        return self.listInstanceContent(world_dir, .datapack);
+    }
+
+    /// Installs a Modrinth datapack into the base world of a stopped server
+    /// instance. The game version comes from `server.json`; vanilla servers
+    /// are allowed because datapacks need no mod loader. The world directory
+    /// is created on demand so datapacks install before the first start.
+    pub fn installServerModrinthDatapack(
+        self: Service,
+        directory: []const u8,
+        id: []const u8,
+        store: std.Io.Dir,
+        project: []const u8,
+        version_id: ?[]const u8,
+        options: ContentInstallOptions,
+        reporter: ?install_executor.Reporter,
+    ) !ContentInstallSummary {
+        var arena = std.heap.ArenaAllocator.init(self.allocator);
+        defer arena.deinit();
+        var target = try self.openServerContentDirectory(arena.allocator(), directory, id, false);
+        defer target.dir.close(self.io);
+        var stopped_guard = try server_lifecycle.lockStopped(self.allocator, self.io, target.dir);
+        defer stopped_guard.deinit();
+        var world_dir = try self.openServerDatapackWorld(arena.allocator(), target.dir, true);
+        defer world_dir.close(self.io);
+        return self.installModrinthContent(world_dir, store, .datapack, target.game_version, null, project, version_id, options, reporter);
+    }
+
+    /// Installs a CurseForge datapack (numeric project id) into the base
+    /// world of a stopped server instance. The caller-supplied API key is
+    /// validated and never persisted.
+    pub fn installServerCurseforgeDatapack(
+        self: Service,
+        directory: []const u8,
+        id: []const u8,
+        store: std.Io.Dir,
+        api_key: []const u8,
+        project: []const u8,
+        file_id: ?[]const u8,
+        options: ContentInstallOptions,
+        reporter: ?install_executor.Reporter,
+    ) !ContentInstallSummary {
+        var arena = std.heap.ArenaAllocator.init(self.allocator);
+        defer arena.deinit();
+        var target = try self.openServerContentDirectory(arena.allocator(), directory, id, false);
+        defer target.dir.close(self.io);
+        var stopped_guard = try server_lifecycle.lockStopped(self.allocator, self.io, target.dir);
+        defer stopped_guard.deinit();
+        var world_dir = try self.openServerDatapackWorld(arena.allocator(), target.dir, true);
+        defer world_dir.close(self.io);
+        return self.installCurseforgeContent(world_dir, store, .datapack, target.game_version, null, api_key, project, file_id, options, reporter);
+    }
+
+    /// Switches a registered server datapack to an exact version using the
+    /// server's own game version for compatibility checks.
+    pub fn setServerDatapackVersion(
+        self: Service,
+        directory: []const u8,
+        id: []const u8,
+        store: std.Io.Dir,
+        project: []const u8,
+        version_id: []const u8,
+        api_key: ?[]const u8,
+        options: ContentInstallOptions,
+        reporter: ?install_executor.Reporter,
+    ) !ContentVersionChange {
+        var arena = std.heap.ArenaAllocator.init(self.allocator);
+        defer arena.deinit();
+        var target = try self.openServerContentDirectory(arena.allocator(), directory, id, false);
+        defer target.dir.close(self.io);
+        var stopped_guard = try server_lifecycle.lockStopped(self.allocator, self.io, target.dir);
+        defer stopped_guard.deinit();
+        var world_dir = try self.openServerDatapackWorld(arena.allocator(), target.dir, true);
+        defer world_dir.close(self.io);
+        return self.setInstanceContentVersion(world_dir, store, .datapack, target.game_version, null, project, version_id, api_key, options, reporter);
+    }
+
+    /// Enables or disables a registered server datapack by renaming the
+    /// file to or from `<file>.disabled`, refusing a running server.
+    pub fn setServerDatapackEnabled(
+        self: Service,
+        directory: []const u8,
+        id: []const u8,
+        project: ?[]const u8,
+        file: ?[]const u8,
+        enabled: bool,
+    ) !ContentToggle {
+        var arena = std.heap.ArenaAllocator.init(self.allocator);
+        defer arena.deinit();
+        var target = try self.openServerContentDirectory(arena.allocator(), directory, id, false);
+        defer target.dir.close(self.io);
+        var stopped_guard = try server_lifecycle.lockStopped(self.allocator, self.io, target.dir);
+        defer stopped_guard.deinit();
+        var world_dir = try self.openServerDatapackWorld(arena.allocator(), target.dir, true);
+        defer world_dir.close(self.io);
+        return self.setInstanceContentEnabled(world_dir, .datapack, project, file, enabled);
+    }
+
+    /// Removes a registered server datapack, deleting the world's hard link
+    /// while the shared store object awaits garbage collection.
+    pub fn removeServerDatapack(
+        self: Service,
+        directory: []const u8,
+        id: []const u8,
+        project: ?[]const u8,
+        file: ?[]const u8,
+    ) !ContentRemoval {
+        var arena = std.heap.ArenaAllocator.init(self.allocator);
+        defer arena.deinit();
+        var target = try self.openServerContentDirectory(arena.allocator(), directory, id, false);
+        defer target.dir.close(self.io);
+        var stopped_guard = try server_lifecycle.lockStopped(self.allocator, self.io, target.dir);
+        defer stopped_guard.deinit();
+        var world_dir = try self.openServerDatapackWorld(arena.allocator(), target.dir, true);
+        defer world_dir.close(self.io);
+        return self.removeInstanceContent(world_dir, .datapack, project, file);
+    }
+
+    /// Adopts unmanaged `<level-name>/datapacks/*.zip` files of a stopped
+    /// server instance into the content-addressed store.
+    pub fn adoptServerDatapacks(
+        self: Service,
+        directory: []const u8,
+        id: []const u8,
+        store: std.Io.Dir,
+    ) !ContentAdoption {
+        var arena = std.heap.ArenaAllocator.init(self.allocator);
+        defer arena.deinit();
+        var target = try self.openServerContentDirectory(arena.allocator(), directory, id, false);
+        defer target.dir.close(self.io);
+        var stopped_guard = try server_lifecycle.lockStopped(self.allocator, self.io, target.dir);
+        defer stopped_guard.deinit();
+        var world_dir = try self.openServerDatapackWorld(arena.allocator(), target.dir, true);
+        defer world_dir.close(self.io);
+        return self.adoptInstanceContent(world_dir, store, .datapack);
     }
 
     pub fn fetchVersionMetadata(
@@ -2062,7 +2369,8 @@ pub const Service = struct {
     /// the verified content-addressed pipeline, and registers the results in
     /// the instance content registry. Mods require the instance loader;
     /// resourcepacks resolve through the `minecraft` pseudo-loader;
-    /// shaderpacks filter by game version only.
+    /// shaderpacks filter by game version only; datapacks resolve through
+    /// the `datapack` loader tag.
     pub fn installModrinthContent(
         self: Service,
         minecraft_dir: std.Io.Dir,
@@ -2081,7 +2389,7 @@ pub const Service = struct {
         const effective_loader: ?modrinth.Loader = switch (kind) {
             .mod => blk: {
                 const value = loader orelse return error.ModLoaderRequired;
-                if (value == .minecraft) return error.ModLoaderRequired;
+                if (value != .fabric and value != .forge and value != .neoforge) return error.InvalidContentLoader;
                 break :blk value;
             },
             .resourcepack => blk: {
@@ -2091,6 +2399,10 @@ pub const Service = struct {
             .shaderpack => blk: {
                 if (loader != null) return error.InvalidContentLoader;
                 break :blk null;
+            },
+            .datapack => blk: {
+                if (loader != null) return error.InvalidContentLoader;
+                break :blk .datapack;
             },
         };
 
@@ -2161,10 +2473,10 @@ pub const Service = struct {
         const effective_loader: ?modrinth.Loader = switch (kind) {
             .mod => blk: {
                 const value = loader orelse return error.ModLoaderRequired;
-                if (value == .minecraft) return error.ModLoaderRequired;
+                if (value != .fabric and value != .forge and value != .neoforge) return error.InvalidContentLoader;
                 break :blk value;
             },
-            .resourcepack, .shaderpack => blk: {
+            .resourcepack, .shaderpack, .datapack => blk: {
                 if (loader != null) return error.InvalidContentLoader;
                 break :blk null;
             },
@@ -2252,7 +2564,7 @@ pub const Service = struct {
                 .fallback_url = null,
                 .sha1 = content.sha1,
                 .size = content.size,
-                .usage = .{ .mod = kind == .mod, .resourcepack = kind == .resourcepack, .shaderpack = kind == .shaderpack },
+                .usage = .{ .mod = kind == .mod, .resourcepack = kind == .resourcepack, .shaderpack = kind == .shaderpack, .datapack = kind == .datapack },
             };
             total_size = std.math.add(u64, total_size, content.size) catch return error.DownloadSizeOverflow;
         }
@@ -2342,8 +2654,11 @@ pub const Service = struct {
             .mod => .mod,
             .resourcepack => .resourcepack,
             .shader => .shaderpack,
+            .datapack => .datapack,
         };
-        if (project_kind != kind) return error.ContentKindMismatch;
+        const datapack_capable = project_type == .datapack or
+            (project_type == .mod and modrinth.hasLoader(project_value.loaders, "datapack"));
+        if (project_kind != kind and !(kind == .datapack and datapack_capable)) return error.ContentKindMismatch;
 
         if (visited.contains(project_value.id)) return;
         try visited.put(try scratch.dupe(u8, project_value.id), {});
@@ -2475,6 +2790,7 @@ pub const Service = struct {
             curseforge.class_id_mods => .mod,
             curseforge.class_id_resourcepacks => .resourcepack,
             curseforge.class_id_shaderpacks => .shaderpack,
+            curseforge.class_id_datapacks => .datapack,
             else => return error.UnsupportedProjectType,
         };
         if (project_kind != kind) return error.ContentKindMismatch;
@@ -3002,7 +3318,7 @@ pub const Service = struct {
         const effective_loader: ?modrinth.Loader = switch (kind) {
             .mod => blk: {
                 const value = loader orelse return error.ModLoaderRequired;
-                if (value == .minecraft) return error.ModLoaderRequired;
+                if (value != .fabric and value != .forge and value != .neoforge) return error.InvalidContentLoader;
                 break :blk value;
             },
             .resourcepack => blk: {
@@ -3012,6 +3328,10 @@ pub const Service = struct {
             .shaderpack => blk: {
                 if (loader != null) return error.InvalidContentLoader;
                 break :blk null;
+            },
+            .datapack => blk: {
+                if (loader != null) return error.InvalidContentLoader;
+                break :blk .datapack;
             },
         };
 
@@ -3561,6 +3881,7 @@ pub const Service = struct {
             .mod = value == .mod,
             .resourcepack = value == .resourcepack,
             .shaderpack = value == .shaderpack,
+            .datapack = value == .datapack,
         };
     }
 
@@ -4878,4 +5199,144 @@ test "installServerModrinthContent rejects vanilla servers before any lifecycle 
         error.ModLoaderRequired,
         service.installServerModrinthContent(servers_path, "vanilla-server", temporary.dir, .mod, "sodium", null, .{}, null),
     );
+}
+
+test "listServerDatapacks reads the level world registry and unmanaged zips" {
+    const io = std.testing.io;
+    var temporary = std.testing.tmpDir(.{});
+    defer temporary.cleanup();
+    var path_buffer: [std.fs.max_path_bytes]u8 = undefined;
+    const tmp_len = try temporary.dir.realPath(io, &path_buffer);
+    const servers_path = try std.fmt.allocPrint(std.testing.allocator, "{s}/servers", .{path_buffer[0..tmp_len]});
+    defer std.testing.allocator.free(servers_path);
+    try temporary.dir.createDirPath(io, "servers");
+    const root = try temporary.dir.openDir(io, "servers", .{ .iterate = true });
+    defer root.close(io);
+    try writeServerContentFixture(io, root, .{
+        .id = "vanilla-server",
+        .name = "Vanilla Server",
+        .version_id = "1.21.4",
+    });
+    const server_dir = try root.openDir(io, "vanilla-server", .{});
+    defer server_dir.close(io);
+    try server_dir.writeFile(io, .{ .sub_path = "server.properties", .data = "level-name=myworld\n" });
+    try server_dir.createDirPath(io, "myworld/datapacks");
+    try server_dir.createDirPath(io, "myworld/.jmcl");
+    try server_dir.writeFile(io, .{ .sub_path = "myworld/.jmcl/content.json", .data = "{\"schema_version\":1,\"entries\":[{\"kind\":\"datapack\",\"file\":\"datapacks/registered.zip\",\"sha1\":\"a94a8fe5ccb19ba61c4c0873d391e987982fbbd3\",\"size\":5,\"source\":{\"provider\":\"modrinth\",\"project_id\":\"terralith\",\"version_id\":\"abc\"},\"enabled\":true,\"as_dependency\":false}]}\n" });
+    var unmanaged = try server_dir.createFile(io, "myworld/datapacks/manual.zip", .{});
+    defer unmanaged.close(io);
+    try unmanaged.writeStreamingAll(io, "bytes");
+
+    const service = Service.init(std.testing.allocator, io, null);
+    var list = try service.listServerDatapacks(servers_path, "vanilla-server");
+    defer list.deinit();
+    try std.testing.expectEqual(@as(usize, 1), list.entries.len);
+    try std.testing.expectEqualStrings("datapacks/registered.zip", list.entries[0].file);
+    try std.testing.expectEqual(@as(usize, 1), list.unmanaged.len);
+    try std.testing.expectEqualStrings("datapacks/manual.zip", list.unmanaged[0]);
+}
+
+test "listServerDatapacks lists empty before the world exists and rejects bad level names" {
+    const io = std.testing.io;
+    var temporary = std.testing.tmpDir(.{});
+    defer temporary.cleanup();
+    var path_buffer: [std.fs.max_path_bytes]u8 = undefined;
+    const tmp_len = try temporary.dir.realPath(io, &path_buffer);
+    const servers_path = try std.fmt.allocPrint(std.testing.allocator, "{s}/servers", .{path_buffer[0..tmp_len]});
+    defer std.testing.allocator.free(servers_path);
+    try temporary.dir.createDirPath(io, "servers");
+    const root = try temporary.dir.openDir(io, "servers", .{ .iterate = true });
+    defer root.close(io);
+    try writeServerContentFixture(io, root, .{
+        .id = "vanilla-server",
+        .name = "Vanilla Server",
+        .version_id = "1.21.4",
+    });
+    const server_dir = try root.openDir(io, "vanilla-server", .{});
+    defer server_dir.close(io);
+    try server_dir.writeFile(io, .{ .sub_path = "server.properties", .data = "level-name=world\n" });
+
+    const service = Service.init(std.testing.allocator, io, null);
+    var list = try service.listServerDatapacks(servers_path, "vanilla-server");
+    defer list.deinit();
+    try std.testing.expectEqual(@as(usize, 0), list.entries.len);
+    try std.testing.expectEqual(@as(usize, 0), list.unmanaged.len);
+
+    try server_dir.writeFile(io, .{ .sub_path = "server.properties", .data = "level-name=../escape\n" });
+    try std.testing.expectError(error.InvalidServerProperties, service.listServerDatapacks(servers_path, "vanilla-server"));
+}
+
+test "listWorldDatapacks reads the world registry and unmanaged zips" {
+    const io = std.testing.io;
+    var temporary = std.testing.tmpDir(.{});
+    defer temporary.cleanup();
+    var path_buffer: [std.fs.max_path_bytes]u8 = undefined;
+    const tmp_len = try temporary.dir.realPath(io, &path_buffer);
+    const game_path = try std.fmt.allocPrint(std.testing.allocator, "{s}/game", .{path_buffer[0..tmp_len]});
+    defer std.testing.allocator.free(game_path);
+    var game_dir = try temporary.dir.createDirPathOpen(io, "game", .{});
+    defer game_dir.close(io);
+    try game_dir.createDirPath(io, "saves/My World/datapacks");
+    try game_dir.createDirPath(io, "saves/My World/.jmcl");
+    try game_dir.createDirPath(io, "saves/My World/datapacks/dirpack");
+    try game_dir.writeFile(io, .{ .sub_path = "saves/My World/.jmcl/content.json", .data = "{\"schema_version\":1,\"entries\":[{\"kind\":\"datapack\",\"file\":\"datapacks/registered.zip\",\"sha1\":\"a94a8fe5ccb19ba61c4c0873d391e987982fbbd3\",\"size\":5,\"source\":{\"provider\":\"manual\"},\"enabled\":true,\"as_dependency\":false}]}\n" });
+    try game_dir.writeFile(io, .{ .sub_path = "saves/My World/datapacks/manual.zip", .data = "bytes" });
+    try game_dir.writeFile(io, .{ .sub_path = "saves/My World/datapacks/manual.zip.disabled", .data = "bytes" });
+
+    const service = Service.init(std.testing.allocator, io, null);
+    var list = try service.listWorldDatapacks(game_path, "My World");
+    defer list.deinit();
+    try std.testing.expectEqual(@as(usize, 1), list.entries.len);
+    try std.testing.expectEqualStrings("datapacks/registered.zip", list.entries[0].file);
+    try std.testing.expectEqual(@as(usize, 1), list.unmanaged.len);
+    try std.testing.expectEqualStrings("datapacks/manual.zip", list.unmanaged[0]);
+}
+
+test "world datapack mutations gate on world existence and the session lock" {
+    const io = std.testing.io;
+    var temporary = std.testing.tmpDir(.{});
+    defer temporary.cleanup();
+    var path_buffer: [std.fs.max_path_bytes]u8 = undefined;
+    const tmp_len = try temporary.dir.realPath(io, &path_buffer);
+    const game_path = try std.fmt.allocPrint(std.testing.allocator, "{s}/game", .{path_buffer[0..tmp_len]});
+    defer std.testing.allocator.free(game_path);
+    var game_dir = try temporary.dir.createDirPathOpen(io, "game", .{});
+    defer game_dir.close(io);
+    try game_dir.createDirPath(io, "saves/Alpha");
+
+    const service = Service.init(std.testing.allocator, io, null);
+    try std.testing.expectError(
+        error.WorldNotFound,
+        service.installWorldModrinthDatapack(game_path, "Missing", temporary.dir, "1.21.4", "terralith", null, .{}, null),
+    );
+    try std.testing.expectError(
+        error.WorldNotFound,
+        service.listWorldDatapacks(game_path, "Missing"),
+    );
+
+    var alpha_dir = try game_dir.openDir(io, "saves/Alpha", .{});
+    defer alpha_dir.close(io);
+    const lock_file = try alpha_dir.createFile(io, worlds.session_lock_name, .{});
+    defer lock_file.close(io);
+    try lock_file.lock(io, .exclusive);
+
+    try std.testing.expectError(
+        error.WorldLocked,
+        service.installWorldModrinthDatapack(game_path, "Alpha", temporary.dir, "1.21.4", "terralith", null, .{}, null),
+    );
+    try std.testing.expectError(
+        error.WorldLocked,
+        service.removeWorldDatapack(game_path, "Alpha", "terralith", null),
+    );
+    try std.testing.expectError(
+        error.WorldLocked,
+        service.setWorldDatapackEnabled(game_path, "Alpha", "terralith", null, false),
+    );
+    try std.testing.expectError(
+        error.WorldLocked,
+        service.adoptWorldDatapacks(game_path, "Alpha", temporary.dir),
+    );
+    var list = try service.listWorldDatapacks(game_path, "Alpha");
+    defer list.deinit();
+    try std.testing.expectEqual(@as(usize, 0), list.entries.len);
 }

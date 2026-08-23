@@ -7,9 +7,11 @@ const java = @import("java.zig");
 const worlds = @import("worlds.zig");
 const launch = @import("launch.zig");
 const content = @import("content.zig");
+const datapacks = @import("datapacks.zig");
 const instance = @import("instance.zig");
 const server = @import("server.zig");
 const server_content = @import("server_content.zig");
+const server_datapacks = @import("server_datapacks.zig");
 const modpack = @import("modpack.zig");
 const store = @import("store.zig");
 const version = @import("version.zig");
@@ -150,6 +152,20 @@ pub fn handleLine(
         try content.writeRemoveResultWithKind(.shaderpack, service, writer, request.id, request.params);
     } else if (std.mem.eql(u8, request.method, "shaderpacks.adopt")) {
         try content.writeAdoptResultWithKind(.shaderpack, service, writer, request.id, request.params);
+    } else if (std.mem.eql(u8, request.method, "datapacks.list")) {
+        try datapacks.writeDatapacksListResult(service, writer, request.id, request.params);
+    } else if (std.mem.eql(u8, request.method, "datapacks.install")) {
+        try datapacks.writeDatapacksInstallResult(service, writer, request.id, request.params);
+    } else if (std.mem.eql(u8, request.method, "datapacks.set-version")) {
+        try datapacks.writeDatapacksSetVersionResult(service, writer, request.id, request.params);
+    } else if (std.mem.eql(u8, request.method, "datapacks.enable")) {
+        try datapacks.writeDatapacksSetEnabledResult(service, writer, request.id, request.params, true);
+    } else if (std.mem.eql(u8, request.method, "datapacks.disable")) {
+        try datapacks.writeDatapacksSetEnabledResult(service, writer, request.id, request.params, false);
+    } else if (std.mem.eql(u8, request.method, "datapacks.remove")) {
+        try datapacks.writeDatapacksRemoveResult(service, writer, request.id, request.params);
+    } else if (std.mem.eql(u8, request.method, "datapacks.adopt")) {
+        try datapacks.writeDatapacksAdoptResult(service, writer, request.id, request.params);
     } else if (std.mem.eql(u8, request.method, "modpack.install")) {
         try modpack.writeInstallResult(service, writer, request.id, request.params);
     } else if (std.mem.eql(u8, request.method, "instance.create")) {
@@ -200,6 +216,20 @@ pub fn handleLine(
         try server_content.writeServerModsRemoveResult(service, writer, request.id, request.params);
     } else if (std.mem.eql(u8, request.method, "server.mods.adopt")) {
         try server_content.writeServerModsAdoptResult(service, writer, request.id, request.params);
+    } else if (std.mem.eql(u8, request.method, "server.datapacks.list")) {
+        try server_datapacks.writeServerDatapacksListResult(service, writer, request.id, request.params);
+    } else if (std.mem.eql(u8, request.method, "server.datapacks.install")) {
+        try server_datapacks.writeServerDatapacksInstallResult(service, writer, request.id, request.params);
+    } else if (std.mem.eql(u8, request.method, "server.datapacks.set-version")) {
+        try server_datapacks.writeServerDatapacksSetVersionResult(service, writer, request.id, request.params);
+    } else if (std.mem.eql(u8, request.method, "server.datapacks.enable")) {
+        try server_datapacks.writeServerDatapacksSetEnabledResult(service, writer, request.id, request.params, true);
+    } else if (std.mem.eql(u8, request.method, "server.datapacks.disable")) {
+        try server_datapacks.writeServerDatapacksSetEnabledResult(service, writer, request.id, request.params, false);
+    } else if (std.mem.eql(u8, request.method, "server.datapacks.remove")) {
+        try server_datapacks.writeServerDatapacksRemoveResult(service, writer, request.id, request.params);
+    } else if (std.mem.eql(u8, request.method, "server.datapacks.adopt")) {
+        try server_datapacks.writeServerDatapacksAdoptResult(service, writer, request.id, request.params);
     } else if (std.mem.eql(u8, request.method, "worlds.list")) {
         try worlds.writeWorldsListResult(service, writer, request.id, request.params);
     } else if (std.mem.eql(u8, request.method, "worlds.get")) {
@@ -583,6 +613,34 @@ test "content install validation never echoes the supplied api key" {
     }
 }
 
+test "datapack RPC validates the world scope before any fetch" {
+    var temporary = std.testing.tmpDir(.{});
+    defer temporary.cleanup();
+    const allocator = std.testing.allocator;
+    const list_line = try std.fmt.allocPrint(allocator, "{{\"protocol\":1,\"id\":\"dp-1\",\"method\":\"datapacks.list\",\"params\":{{\"directory\":\".zig-cache/tmp/{s}/mc\",\"world\":\"My World\"}}}}", .{temporary.sub_path});
+    defer allocator.free(list_line);
+    const install_line = try std.fmt.allocPrint(allocator, "{{\"protocol\":1,\"id\":\"dp-5\",\"method\":\"datapacks.install\",\"params\":{{\"directory\":\".zig-cache/tmp/{s}/mc\",\"world\":\"W\",\"minecraft_version\":\"1.21.4\",\"provider\":\"curseforge\",\"api_key\":\"dp-secret-key\",\"project\":\"5290\",\"store_directory\":\".zig-cache/tmp/{s}/store\"}}}}", .{ temporary.sub_path, temporary.sub_path });
+    defer allocator.free(install_line);
+    const cases = [_][]const u8{
+        "{\"protocol\":1,\"id\":\"dp-2\",\"method\":\"datapacks.list\",\"params\":{\"directory\":\"/nonexistent/x\"}}",
+        "{\"protocol\":1,\"id\":\"dp-3\",\"method\":\"datapacks.list\",\"params\":{\"directory\":\"/nonexistent/x\",\"world\":\"\"}}",
+        "{\"protocol\":1,\"id\":\"dp-4\",\"method\":\"datapacks.install\",\"params\":{\"directory\":\"/nonexistent/x\",\"world\":\"W\",\"minecraft_version\":\"1.21.4\",\"loader\":\"fabric\",\"project\":\"terralith\"}}",
+        install_line,
+        list_line,
+    };
+    for (cases) |line| {
+        var output: std.Io.Writer.Allocating = .init(allocator);
+        defer output.deinit();
+        var service = core.Service.init(std.testing.allocator, std.testing.io, null);
+        try handleLine(&service, line, &output.writer);
+        const written = output.written();
+        const saw_error = std.mem.indexOf(u8, written, "INVALID_PARAMS") != null or
+            std.mem.indexOf(u8, written, "WORLD_NOT_FOUND") != null;
+        try std.testing.expect(saw_error);
+        try std.testing.expect(std.mem.indexOf(u8, written, "dp-secret-key") == null);
+    }
+}
+
 test "account registry validation never stores or echoes credentials" {
     var output: std.Io.Writer.Allocating = .init(std.testing.allocator);
     defer output.deinit();
@@ -619,6 +677,13 @@ test "server methods reject non-Linux hosts" {
         "server.mods.disable",
         "server.mods.remove",
         "server.mods.adopt",
+        "server.datapacks.list",
+        "server.datapacks.install",
+        "server.datapacks.set-version",
+        "server.datapacks.enable",
+        "server.datapacks.disable",
+        "server.datapacks.remove",
+        "server.datapacks.adopt",
     };
     for (methods) |method| {
         var output: std.Io.Writer.Allocating = .init(std.testing.allocator);
@@ -638,10 +703,12 @@ test "server methods reject non-Linux hosts" {
 test {
     _ = auth;
     _ = content;
+    _ = datapacks;
     _ = install;
     _ = instance;
     _ = server;
     _ = server_content;
+    _ = server_datapacks;
     _ = java;
     _ = launch;
     _ = modpack;

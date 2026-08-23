@@ -72,7 +72,7 @@ fn parseParams(
     return params;
 }
 
-fn writeServerContentError(
+pub fn writeServerContentError(
     writer: *std.Io.Writer,
     request_id: []const u8,
     err: anyerror,

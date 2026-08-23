@@ -13,6 +13,7 @@ pub const files_page_size: u32 = 50;
 pub const class_id_mods: u32 = 6;
 pub const class_id_resourcepacks: u32 = 12;
 pub const class_id_shaderpacks: u32 = 6552;
+pub const class_id_datapacks: u32 = 5290;
 
 pub const release_type_release: u8 = 1;
 pub const release_type_beta: u8 = 2;
@@ -27,7 +28,7 @@ pub fn loaderTypeId(loader: modrinth.Loader) ?u8 {
         .forge => 1,
         .fabric => 4,
         .neoforge => 6,
-        .minecraft => null,
+        .minecraft, .datapack => null,
     };
 }
 
@@ -36,7 +37,7 @@ pub fn loaderGameVersionTag(loader: modrinth.Loader) ?[]const u8 {
         .forge => "Forge",
         .fabric => "Fabric",
         .neoforge => "NeoForge",
-        .minecraft => null,
+        .minecraft, .datapack => null,
     };
 }
 
