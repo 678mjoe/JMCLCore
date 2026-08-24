@@ -97,7 +97,9 @@ Mojang requires explicit EULA acceptance: install operations require
   properties are never overwritten by installation.
 - `server.properties.get` returns the complete decoded key/value map.
   `server.properties.set` merges string-valued keys and atomically rewrites
-  the file. Java properties escapes, continuations, Unicode escapes, and
+  the file only while the server is stopped. The full read-modify-write uses
+  the lifecycle lock, serializing `level-name` changes with world and datapack
+  mutations. Java properties escapes, continuations, Unicode escapes, and
   duplicate-key last-write semantics are supported.
 - Successful installation writes `.jmcl/install.json`, including the required
   Java major used by lifecycle start and a launch descriptor with

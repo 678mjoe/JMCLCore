@@ -771,6 +771,17 @@ fn runServerPropertiesSet(
         return 1;
     };
     defer server_dir.close(service.io);
+    var stopped_guard = jmcl.server_lifecycle.lockStopped(service.allocator, service.io, server_dir) catch |err| switch (err) {
+        error.ServerAlreadyRunning => {
+            try stderr.writeAll("stop the server before changing its properties\n");
+            return 1;
+        },
+        else => {
+            try stderr.writeAll("failed to validate server lifecycle state\n");
+            return 1;
+        },
+    };
+    defer stopped_guard.deinit();
     var properties = jmcl.server_properties.load(service.allocator, service.io, server_dir) catch |err| switch (err) {
         error.FileNotFound => {
             try stderr.writeAll("server.properties has not been created\n");

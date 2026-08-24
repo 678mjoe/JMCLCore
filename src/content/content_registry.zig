@@ -149,6 +149,9 @@ fn validateKindPath(kind: Kind, file: []const u8) !void {
     if (file.len <= directory.len + 1) return error.ContentKindPathMismatch;
     if (!std.mem.startsWith(u8, file, directory)) return error.ContentKindPathMismatch;
     if (file[directory.len] != '/') return error.ContentKindPathMismatch;
+    if (kind == .datapack and !std.mem.endsWith(u8, file, kind.extension())) {
+        return error.ContentKindPathMismatch;
+    }
 }
 
 fn validateSource(source: Source) !void {
@@ -301,4 +304,16 @@ test "rejects invalid registry documents" {
         \\]}
     ;
     try std.testing.expectError(error.ContentKindPathMismatch, parse(allocator, kind_path_mismatch));
+}
+
+test "rejects non-zip datapack registry entries" {
+    const non_zip_datapack =
+        \\{"schema_version":1,"entries":[
+        \\{"kind":"datapack","file":"datapacks/pack.jar","sha1":"1111111111111111111111111111111111111111","size":1,"source":{"provider":"manual"}}
+        \\]}
+    ;
+    try std.testing.expectError(
+        error.ContentKindPathMismatch,
+        parse(std.testing.allocator, non_zip_datapack),
+    );
 }

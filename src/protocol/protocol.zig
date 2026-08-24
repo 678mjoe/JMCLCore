@@ -654,6 +654,99 @@ test "account registry validation never stores or echoes credentials" {
     try std.testing.expect(std.mem.indexOf(u8, output.written(), "must-not-persist") == null);
 }
 
+test "server properties set refuses a running server before changing level-name" {
+    if (@import("builtin").os.tag != .linux) return error.SkipZigTest;
+    const allocator = std.testing.allocator;
+    const io = std.testing.io;
+    var temporary = std.testing.tmpDir(.{});
+    defer temporary.cleanup();
+    try temporary.dir.createDirPath(io, "servers");
+    var root = try temporary.dir.openDir(io, "servers", .{ .iterate = true });
+    defer root.close(io);
+    try core.server_store.create(io, root, .{
+        .id = "locked-server",
+        .name = "Locked Server",
+        .version_id = "1.21.4",
+    });
+    var server_dir = try root.openDir(io, "locked-server", .{});
+    defer server_dir.close(io);
+    try server_dir.writeFile(io, .{ .sub_path = "server.properties", .data = "level-name=world\n" });
+
+    const identity = "0123456789abcdef0123456789abcdef";
+    const identity_argument = "-Djmcl.server.identity=" ++ identity;
+    var child = try std.process.spawn(io, .{
+        .argv = &.{ "/bin/sh", "-c", "while :; do sleep 1; done", identity_argument },
+        .stdin = .ignore,
+        .stdout = .ignore,
+        .stderr = .ignore,
+    });
+    defer child.kill(io);
+    const state = try std.fmt.allocPrint(
+        allocator,
+        "{{\"schema_version\":1,\"pid\":{d},\"supervisor_pid\":{d},\"identity\":\"{s}\",\"java_path\":\"/bin/sh\",\"started_at_ms\":1}}\n",
+        .{ child.id.?, child.id.?, identity },
+    );
+    defer allocator.free(state);
+    try server_dir.createDirPath(io, ".jmcl");
+    try server_dir.writeFile(io, .{ .sub_path = core.server_lifecycle.state_relative_path, .data = state });
+
+    var path_buffer: [std.fs.max_path_bytes]u8 = undefined;
+    const path_len = try root.realPath(io, &path_buffer);
+    const request = try std.fmt.allocPrint(
+        allocator,
+        "{{\"protocol\":1,\"id\":\"properties-lock\",\"method\":\"server.properties.set\",\"params\":{{\"directory\":\"{s}\",\"id\":\"locked-server\",\"properties\":{{\"level-name\":\"other-world\"}}}}}}",
+        .{path_buffer[0..path_len]},
+    );
+    defer allocator.free(request);
+    var output: std.Io.Writer.Allocating = .init(allocator);
+    defer output.deinit();
+    var service = core.Service.init(allocator, io, null);
+    try handleLine(&service, request, &output.writer);
+
+    try std.testing.expect(std.mem.indexOf(u8, output.written(), "SERVER_ALREADY_RUNNING") != null);
+    const properties = try server_dir.readFileAlloc(io, "server.properties", allocator, .limited(1024));
+    defer allocator.free(properties);
+    try std.testing.expectEqualStrings("level-name=world\n", properties);
+}
+
+test "Linux server mods list maps a local registry to a result" {
+    if (@import("builtin").os.tag != .linux) return error.SkipZigTest;
+    const allocator = std.testing.allocator;
+    const io = std.testing.io;
+    var temporary = std.testing.tmpDir(.{});
+    defer temporary.cleanup();
+    try temporary.dir.createDirPath(io, "servers");
+    var root = try temporary.dir.openDir(io, "servers", .{ .iterate = true });
+    defer root.close(io);
+    try core.server_store.create(io, root, .{
+        .id = "fabric-server",
+        .name = "Fabric Server",
+        .version_id = "1.21.4",
+        .fabric_loader = "0.16.10",
+    });
+    var server_dir = try root.openDir(io, "fabric-server", .{});
+    defer server_dir.close(io);
+    try server_dir.createDirPath(io, ".jmcl");
+    try server_dir.writeFile(io, .{ .sub_path = ".jmcl/content.json", .data = "{\"schema_version\":1,\"entries\":[{\"kind\":\"mod\",\"file\":\"mods/local.jar\",\"sha1\":\"a94a8fe5ccb19ba61c4c0873d391e987982fbbd3\",\"size\":5,\"source\":{\"provider\":\"manual\"}}]}\n" });
+
+    var path_buffer: [std.fs.max_path_bytes]u8 = undefined;
+    const path_len = try root.realPath(io, &path_buffer);
+    const request = try std.fmt.allocPrint(
+        allocator,
+        "{{\"protocol\":1,\"id\":\"mods-list\",\"method\":\"server.mods.list\",\"params\":{{\"directory\":\"{s}\",\"id\":\"fabric-server\"}}}}",
+        .{path_buffer[0..path_len]},
+    );
+    defer allocator.free(request);
+    var output: std.Io.Writer.Allocating = .init(allocator);
+    defer output.deinit();
+    var service = core.Service.init(allocator, io, null);
+    try handleLine(&service, request, &output.writer);
+
+    try std.testing.expect(std.mem.indexOf(u8, output.written(), "\"event\":\"result\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, output.written(), "server.mods.list") != null);
+    try std.testing.expect(std.mem.indexOf(u8, output.written(), "mods/local.jar") != null);
+}
+
 test "server methods reject non-Linux hosts" {
     if (@import("builtin").os.tag == .linux) return error.SkipZigTest;
     const methods = [_][]const u8{

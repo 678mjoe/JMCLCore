@@ -2552,6 +2552,9 @@ pub const Service = struct {
         const files = try scratch.alloc(install_plan.File, resolved.len);
         var total_size: u64 = 0;
         for (resolved, 0..) |content, index| {
+            if (kind == .datapack and !std.mem.endsWith(u8, content.file_name, kind.extension())) {
+                return error.ContentFileSelectionFailed;
+            }
             const path = try std.fmt.allocPrint(scratch, "{s}/{s}", .{ directory, content.file_name });
             if (content_registry.findByFile(registry, path)) |existing| {
                 if (!std.ascii.eqlIgnoreCase(existing.sha1, content.sha1)) {
@@ -2682,7 +2685,10 @@ pub const Service = struct {
                 return error.NoCompatibleContentVersion;
         };
 
-        const file = modrinth.selectFile(version) orelse return error.ContentFileSelectionFailed;
+        const file = (if (kind == .datapack)
+            modrinth.selectFileWithExtension(version, kind.extension())
+        else
+            modrinth.selectFile(version)) orelse return error.ContentFileSelectionFailed;
         try resolved.append(scratch, .{
             .project_id = try scratch.dupe(u8, project_value.id),
             .slug = try scratch.dupe(u8, project_value.slug),
@@ -2811,10 +2817,16 @@ pub const Service = struct {
                 return error.IncompatibleContentVersion;
             }
             if (!value.isAvailable) return error.CurseforgeDownloadUnavailable;
+            if (kind == .datapack and !std.mem.endsWith(u8, value.fileName, kind.extension())) {
+                return error.ContentFileSelectionFailed;
+            }
             break :blk value;
         } else blk: {
             const files = try self.fetchCurseforgeFiles(scratch, api_header, project_id, game_version, loader);
-            break :blk curseforge.selectFile(files) orelse return error.NoCompatibleContentVersion;
+            break :blk (if (kind == .datapack)
+                curseforge.selectFileWithExtension(files, kind.extension())
+            else
+                curseforge.selectFile(files)) orelse return error.NoCompatibleContentVersion;
         };
 
         var download_url = file.downloadUrl;
@@ -3393,7 +3405,10 @@ pub const Service = struct {
                 if (!modrinth.versionSupports(version, game_version, effective_loader)) {
                     return error.IncompatibleContentVersion;
                 }
-                const file = modrinth.selectFile(version) orelse return error.ContentFileSelectionFailed;
+                const file = (if (kind == .datapack)
+                    modrinth.selectFileWithExtension(version, kind.extension())
+                else
+                    modrinth.selectFile(version)) orelse return error.ContentFileSelectionFailed;
                 new_file_name = file.filename;
                 new_url = file.url;
                 new_sha1 = file.hashes.sha1;
@@ -3412,6 +3427,9 @@ pub const Service = struct {
                     return error.IncompatibleContentVersion;
                 }
                 if (!file.isAvailable) return error.CurseforgeDownloadUnavailable;
+                if (kind == .datapack and !std.mem.endsWith(u8, file.fileName, kind.extension())) {
+                    return error.ContentFileSelectionFailed;
+                }
                 var download_url = file.downloadUrl;
                 if (download_url == null) {
                     const url_document = try self.fetchCurseforgeDownloadUrl(scratch, api_header, project_id, file.id);
@@ -5128,6 +5146,116 @@ fn writeServerContentFixture(io: std.Io, root: std.Io.Dir, manifest: server_stor
     try server_store.create(io, root, manifest);
 }
 
+fn writeRunningServerStateFixture(io: std.Io, server_dir: std.Io.Dir, pid: u32, identity: []const u8) !void {
+    const state = try std.fmt.allocPrint(
+        std.testing.allocator,
+        "{{\"schema_version\":1,\"pid\":{d},\"supervisor_pid\":{d},\"identity\":\"{s}\",\"java_path\":\"/bin/sh\",\"started_at_ms\":1}}\n",
+        .{ pid, pid, identity },
+    );
+    defer std.testing.allocator.free(state);
+    try server_dir.createDirPath(io, ".jmcl");
+    try server_dir.writeFile(io, .{ .sub_path = server_lifecycle.state_relative_path, .data = state });
+}
+
+test "server mod mutations are stopped-gated before filesystem changes" {
+    if (builtin.os.tag != .linux) return error.SkipZigTest;
+    const io = std.testing.io;
+    var temporary = std.testing.tmpDir(.{});
+    defer temporary.cleanup();
+    try temporary.dir.createDirPath(io, "servers");
+    var path_buffer: [std.fs.max_path_bytes]u8 = undefined;
+    const tmp_len = try temporary.dir.realPath(io, &path_buffer);
+    const servers_path = try std.fmt.allocPrint(std.testing.allocator, "{s}/servers", .{path_buffer[0..tmp_len]});
+    defer std.testing.allocator.free(servers_path);
+    var root = try temporary.dir.openDir(io, "servers", .{ .iterate = true });
+    defer root.close(io);
+    try writeServerContentFixture(io, root, .{
+        .id = "fabric-server",
+        .name = "Fabric Server",
+        .version_id = "1.21.4",
+        .fabric_loader = "0.16.10",
+    });
+    var server_dir = try root.openDir(io, "fabric-server", .{});
+    defer server_dir.close(io);
+    try server_dir.createDirPath(io, "mods");
+    try server_dir.createDirPath(io, ".jmcl");
+    try server_dir.writeFile(io, .{ .sub_path = "mods/registered.jar", .data = "bytes" });
+    try server_dir.writeFile(io, .{ .sub_path = ".jmcl/content.json", .data = "{\"schema_version\":1,\"entries\":[{\"kind\":\"mod\",\"file\":\"mods/registered.jar\",\"sha1\":\"a94a8fe5ccb19ba61c4c0873d391e987982fbbd3\",\"size\":5,\"source\":{\"provider\":\"manual\"}}]}\n" });
+
+    const identity = "0123456789abcdef0123456789abcdef";
+    const identity_argument = "-Djmcl.server.identity=" ++ identity;
+    var child = try std.process.spawn(io, .{
+        .argv = &.{ "/bin/sh", "-c", "while :; do sleep 1; done", identity_argument },
+        .stdin = .ignore,
+        .stdout = .ignore,
+        .stderr = .ignore,
+    });
+    defer child.kill(io);
+    try writeRunningServerStateFixture(io, server_dir, @intCast(child.id.?), identity);
+
+    const service = Service.init(std.testing.allocator, io, null);
+    try std.testing.expectError(
+        error.ServerAlreadyRunning,
+        service.setServerContentEnabled(servers_path, "fabric-server", .mod, null, "mods/registered.jar", false),
+    );
+    try server_dir.access(io, "mods/registered.jar", .{});
+    try std.testing.expectError(error.FileNotFound, server_dir.access(io, "mods/registered.jar.disabled", .{}));
+}
+
+test "server mod mutations update files and registry without provider access" {
+    if (builtin.os.tag != .linux) return error.SkipZigTest;
+    const io = std.testing.io;
+    var temporary = std.testing.tmpDir(.{});
+    defer temporary.cleanup();
+    try temporary.dir.createDirPath(io, "servers");
+    try temporary.dir.createDirPath(io, "store");
+    var path_buffer: [std.fs.max_path_bytes]u8 = undefined;
+    const tmp_len = try temporary.dir.realPath(io, &path_buffer);
+    const servers_path = try std.fmt.allocPrint(std.testing.allocator, "{s}/servers", .{path_buffer[0..tmp_len]});
+    defer std.testing.allocator.free(servers_path);
+    var root = try temporary.dir.openDir(io, "servers", .{ .iterate = true });
+    defer root.close(io);
+    var store = try temporary.dir.openDir(io, "store", .{});
+    defer store.close(io);
+    try writeServerContentFixture(io, root, .{
+        .id = "fabric-server",
+        .name = "Fabric Server",
+        .version_id = "1.21.4",
+        .fabric_loader = "0.16.10",
+    });
+    var server_dir = try root.openDir(io, "fabric-server", .{});
+    defer server_dir.close(io);
+    try server_dir.createDirPath(io, "mods");
+    try server_dir.createDirPath(io, ".jmcl");
+    try server_dir.writeFile(io, .{ .sub_path = "mods/registered.jar", .data = "bytes" });
+    try server_dir.writeFile(io, .{ .sub_path = ".jmcl/content.json", .data = "{\"schema_version\":1,\"entries\":[{\"kind\":\"mod\",\"file\":\"mods/registered.jar\",\"sha1\":\"a94a8fe5ccb19ba61c4c0873d391e987982fbbd3\",\"size\":5,\"source\":{\"provider\":\"manual\"}}]}\n" });
+
+    const service = Service.init(std.testing.allocator, io, null);
+    var disabled = try service.setServerContentEnabled(servers_path, "fabric-server", .mod, null, "mods/registered.jar", false);
+    defer disabled.deinit();
+    try std.testing.expect(disabled.changed);
+    try server_dir.access(io, "mods/registered.jar.disabled", .{});
+
+    var enabled = try service.setServerContentEnabled(servers_path, "fabric-server", .mod, null, "mods/registered.jar", true);
+    defer enabled.deinit();
+    try std.testing.expect(enabled.changed);
+    try server_dir.access(io, "mods/registered.jar", .{});
+
+    var removed = try service.removeServerContent(servers_path, "fabric-server", .mod, null, "mods/registered.jar");
+    defer removed.deinit();
+    try std.testing.expectError(error.FileNotFound, server_dir.access(io, "mods/registered.jar", .{}));
+
+    try server_dir.writeFile(io, .{ .sub_path = "mods/unmanaged.jar", .data = "local mod" });
+    var adoption = try service.adoptServerContent(servers_path, "fabric-server", store, .mod);
+    defer adoption.deinit();
+    try std.testing.expectEqual(@as(usize, 1), adoption.adopted.len);
+    try std.testing.expectEqualStrings("mods/unmanaged.jar", adoption.adopted[0].file);
+    var list = try service.listServerContent(servers_path, "fabric-server", .mod);
+    defer list.deinit();
+    try std.testing.expectEqual(@as(usize, 1), list.entries.len);
+    try std.testing.expectEqual(content_registry.Provider.manual, list.entries[0].source.provider);
+}
+
 test "listServerContent reads the server registry and unmanaged mods" {
     const io = std.testing.io;
     var temporary = std.testing.tmpDir(.{});
@@ -5234,6 +5362,141 @@ test "listServerDatapacks reads the level world registry and unmanaged zips" {
     try std.testing.expectEqualStrings("datapacks/registered.zip", list.entries[0].file);
     try std.testing.expectEqual(@as(usize, 1), list.unmanaged.len);
     try std.testing.expectEqualStrings("datapacks/manual.zip", list.unmanaged[0]);
+}
+
+test "vanilla server datapack mutations create the level world and update state" {
+    if (builtin.os.tag != .linux) return error.SkipZigTest;
+    const io = std.testing.io;
+    var temporary = std.testing.tmpDir(.{});
+    defer temporary.cleanup();
+    try temporary.dir.createDirPath(io, "servers");
+    try temporary.dir.createDirPath(io, "store");
+    var path_buffer: [std.fs.max_path_bytes]u8 = undefined;
+    const tmp_len = try temporary.dir.realPath(io, &path_buffer);
+    const servers_path = try std.fmt.allocPrint(std.testing.allocator, "{s}/servers", .{path_buffer[0..tmp_len]});
+    defer std.testing.allocator.free(servers_path);
+    var root = try temporary.dir.openDir(io, "servers", .{ .iterate = true });
+    defer root.close(io);
+    var store = try temporary.dir.openDir(io, "store", .{});
+    defer store.close(io);
+    try writeServerContentFixture(io, root, .{
+        .id = "vanilla-server",
+        .name = "Vanilla Server",
+        .version_id = "1.21.4",
+    });
+    var server_dir = try root.openDir(io, "vanilla-server", .{});
+    defer server_dir.close(io);
+    try server_dir.writeFile(io, .{ .sub_path = "server.properties", .data = "level-name=world\n" });
+
+    const service = Service.init(std.testing.allocator, io, null);
+    var empty_adoption = try service.adoptServerDatapacks(servers_path, "vanilla-server", store);
+    defer empty_adoption.deinit();
+    try std.testing.expectEqual(@as(usize, 0), empty_adoption.adopted.len);
+    try server_dir.access(io, "world", .{});
+
+    try server_dir.createDirPath(io, "world/datapacks");
+    try server_dir.writeFile(io, .{ .sub_path = "world/datapacks/local.zip", .data = "local datapack" });
+    var adoption = try service.adoptServerDatapacks(servers_path, "vanilla-server", store);
+    defer adoption.deinit();
+    try std.testing.expectEqual(@as(usize, 1), adoption.adopted.len);
+
+    var disabled = try service.setServerDatapackEnabled(servers_path, "vanilla-server", null, "datapacks/local.zip", false);
+    defer disabled.deinit();
+    try std.testing.expect(disabled.changed);
+    try server_dir.access(io, "world/datapacks/local.zip.disabled", .{});
+
+    var enabled = try service.setServerDatapackEnabled(servers_path, "vanilla-server", null, "datapacks/local.zip", true);
+    defer enabled.deinit();
+    try std.testing.expect(enabled.changed);
+    var removed = try service.removeServerDatapack(servers_path, "vanilla-server", null, "datapacks/local.zip");
+    defer removed.deinit();
+    try std.testing.expectError(error.FileNotFound, server_dir.access(io, "world/datapacks/local.zip", .{}));
+    var list = try service.listServerDatapacks(servers_path, "vanilla-server");
+    defer list.deinit();
+    try std.testing.expectEqual(@as(usize, 0), list.entries.len);
+}
+
+test "server datapack mutations are stopped-gated before world creation" {
+    if (builtin.os.tag != .linux) return error.SkipZigTest;
+    const io = std.testing.io;
+    var temporary = std.testing.tmpDir(.{});
+    defer temporary.cleanup();
+    try temporary.dir.createDirPath(io, "servers");
+    var path_buffer: [std.fs.max_path_bytes]u8 = undefined;
+    const tmp_len = try temporary.dir.realPath(io, &path_buffer);
+    const servers_path = try std.fmt.allocPrint(std.testing.allocator, "{s}/servers", .{path_buffer[0..tmp_len]});
+    defer std.testing.allocator.free(servers_path);
+    var root = try temporary.dir.openDir(io, "servers", .{ .iterate = true });
+    defer root.close(io);
+    try writeServerContentFixture(io, root, .{
+        .id = "vanilla-server",
+        .name = "Vanilla Server",
+        .version_id = "1.21.4",
+    });
+    var server_dir = try root.openDir(io, "vanilla-server", .{});
+    defer server_dir.close(io);
+    try server_dir.writeFile(io, .{ .sub_path = "server.properties", .data = "level-name=world\n" });
+
+    const identity = "fedcba9876543210fedcba9876543210";
+    const identity_argument = "-Djmcl.server.identity=" ++ identity;
+    var child = try std.process.spawn(io, .{
+        .argv = &.{ "/bin/sh", "-c", "while :; do sleep 1; done", identity_argument },
+        .stdin = .ignore,
+        .stdout = .ignore,
+        .stderr = .ignore,
+    });
+    defer child.kill(io);
+    try writeRunningServerStateFixture(io, server_dir, @intCast(child.id.?), identity);
+
+    const service = Service.init(std.testing.allocator, io, null);
+    try std.testing.expectError(
+        error.ServerAlreadyRunning,
+        service.setServerDatapackEnabled(servers_path, "vanilla-server", null, "datapacks/local.zip", false),
+    );
+    try std.testing.expectError(error.FileNotFound, server_dir.access(io, "world", .{}));
+}
+
+test "server datapack set-version short-circuits the registered version hermetically" {
+    if (builtin.os.tag != .linux) return error.SkipZigTest;
+    const io = std.testing.io;
+    var temporary = std.testing.tmpDir(.{});
+    defer temporary.cleanup();
+    try temporary.dir.createDirPath(io, "servers");
+    try temporary.dir.createDirPath(io, "store");
+    var path_buffer: [std.fs.max_path_bytes]u8 = undefined;
+    const tmp_len = try temporary.dir.realPath(io, &path_buffer);
+    const servers_path = try std.fmt.allocPrint(std.testing.allocator, "{s}/servers", .{path_buffer[0..tmp_len]});
+    defer std.testing.allocator.free(servers_path);
+    var root = try temporary.dir.openDir(io, "servers", .{ .iterate = true });
+    defer root.close(io);
+    var store = try temporary.dir.openDir(io, "store", .{});
+    defer store.close(io);
+    try writeServerContentFixture(io, root, .{
+        .id = "vanilla-server",
+        .name = "Vanilla Server",
+        .version_id = "1.21.4",
+    });
+    var server_dir = try root.openDir(io, "vanilla-server", .{});
+    defer server_dir.close(io);
+    try server_dir.writeFile(io, .{ .sub_path = "server.properties", .data = "level-name=world\n" });
+    try server_dir.createDirPath(io, "world/.jmcl");
+    try server_dir.writeFile(io, .{ .sub_path = "world/.jmcl/content.json", .data = "{\"schema_version\":1,\"entries\":[{\"kind\":\"datapack\",\"file\":\"datapacks/terralith.zip\",\"sha1\":\"a94a8fe5ccb19ba61c4c0873d391e987982fbbd3\",\"size\":5,\"source\":{\"provider\":\"modrinth\",\"project_id\":\"terralith\",\"version_id\":\"abc\",\"slug\":\"terralith\"}}]}\n" });
+
+    const service = Service.init(std.testing.allocator, io, null);
+    var change = try service.setServerDatapackVersion(
+        servers_path,
+        "vanilla-server",
+        store,
+        "terralith",
+        "abc",
+        null,
+        .{},
+        null,
+    );
+    defer change.deinit();
+    try std.testing.expect(!change.changed);
+    try std.testing.expectEqualStrings("datapacks/terralith.zip", change.file);
+    try std.testing.expectEqualStrings("abc", change.new_version_id);
 }
 
 test "listServerDatapacks lists empty before the world exists and rejects bad level names" {

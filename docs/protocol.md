@@ -329,7 +329,9 @@ reusing verified artifact-store objects where possible.
 
 `server.properties.get` returns all decoded values as strings.
 `server.properties.set` requires a non-empty `properties` object whose values
-are strings, merges those keys, and atomically rewrites the file:
+are strings, requires a stopped server, and holds the lifecycle lock across the
+complete merge and atomic rewrite. This serializes `level-name` changes with
+world and datapack mutations:
 
 ```json
 {"protocol":1,"id":"sp-1","method":"server.properties.set","params":{"directory":"/path/to/servers","id":"vanilla-1-21-4","properties":{"motd":"JMCL Core Server","difficulty":"hard","server-port":"25566"}}}

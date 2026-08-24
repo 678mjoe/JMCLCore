@@ -462,3 +462,53 @@ fn writeDatapackError(stderr: *std.Io.Writer, err: anyerror, operation: []const 
         else => try stderr.print("server datapacks {s} failed: {s}\n", .{ operation, @errorName(err) }),
     }
 }
+
+test "server datapacks CLI reports local list success and selector errors" {
+    if (builtin.os.tag != .linux) return error.SkipZigTest;
+    const allocator = std.testing.allocator;
+    const io = std.testing.io;
+    var temporary = std.testing.tmpDir(.{});
+    defer temporary.cleanup();
+    try temporary.dir.createDirPath(io, "servers");
+    var root = try temporary.dir.openDir(io, "servers", .{ .iterate = true });
+    defer root.close(io);
+    try jmcl.server_store.create(io, root, .{
+        .id = "vanilla-server",
+        .name = "Vanilla Server",
+        .version_id = "1.21.4",
+    });
+    var server_dir = try root.openDir(io, "vanilla-server", .{});
+    defer server_dir.close(io);
+    try server_dir.writeFile(io, .{ .sub_path = "server.properties", .data = "level-name=world\n" });
+    try server_dir.createDirPath(io, "world/.jmcl");
+    try server_dir.writeFile(io, .{ .sub_path = "world/.jmcl/content.json", .data = "{\"schema_version\":1,\"entries\":[{\"kind\":\"datapack\",\"file\":\"datapacks/local.zip\",\"sha1\":\"a94a8fe5ccb19ba61c4c0873d391e987982fbbd3\",\"size\":5,\"source\":{\"provider\":\"manual\"}}]}\n" });
+    var path_buffer: [std.fs.max_path_bytes]u8 = undefined;
+    const path_len = try root.realPath(io, &path_buffer);
+    const servers_path = path_buffer[0..path_len];
+
+    var stdout: std.Io.Writer.Allocating = .init(allocator);
+    defer stdout.deinit();
+    var stderr: std.Io.Writer.Allocating = .init(allocator);
+    defer stderr.deinit();
+    var service = jmcl.Service.init(allocator, io, null);
+    const list_code = try runServerDatapacks(
+        &service,
+        &.{ "list", "vanilla-server", "--servers-directory", servers_path, "--json" },
+        &stdout.writer,
+        &stderr.writer,
+    );
+    try std.testing.expectEqual(@as(u8, 0), list_code);
+    try std.testing.expect(std.mem.indexOf(u8, stdout.written(), "datapacks/local.zip") != null);
+    try std.testing.expectEqual(@as(usize, 0), stderr.written().len);
+
+    stdout.clearRetainingCapacity();
+    stderr.clearRetainingCapacity();
+    const invalid_code = try runServerDatapacks(
+        &service,
+        &.{ "remove", "vanilla-server", "--project", "terralith", "--file", "datapacks/local.zip" },
+        &stdout.writer,
+        &stderr.writer,
+    );
+    try std.testing.expectEqual(@as(u8, 2), invalid_code);
+    try std.testing.expect(std.mem.indexOf(u8, stderr.written(), "exactly one of --project or --file") != null);
+}

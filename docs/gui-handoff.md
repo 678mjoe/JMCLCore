@@ -236,7 +236,7 @@ on Linux:
 | `server.logs` | `directory`, `id` | `cursor`, `file_id`, `max_bytes` (default 65536, max 1048576) | merged console tail; resume with the preceding `next_cursor` + `file_id`; honor `reset` |
 | `server.command` | `directory`, `id`, one UTF-8 `command` line | — | writes to the console FIFO; returns `accepted:true` and the validated PID |
 | `server.properties.get` | `directory`, `id` | — | returns the full string-valued `properties` object |
-| `server.properties.set` | `directory`, `id`, non-empty `properties` object | — | merges string-valued keys and atomically rewrites the file; returns the full resulting object |
+| `server.properties.set` | `directory`, `id`, non-empty `properties` object | — | stopped server only; lifecycle-locked merge and atomic rewrite; returns the full resulting object |
 | `server.worlds.list` | `directory`, `id` | `minecraft_version` | read-only; base world from `level-name` plus existing `_nether`/`_the_end` siblings |
 | `server.worlds.get` | `directory`, `id`, `world` | `minecraft_version` | read-only; one entry plus `icon_png_base64` |
 | `server.worlds.rename` | `directory`, `id`, `world`, `new_name` | — | stopped server only; renaming the `level-name` world also renames existing dimension siblings and rewrites `level-name` in `server.properties` |

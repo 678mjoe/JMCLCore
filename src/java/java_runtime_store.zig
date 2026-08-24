@@ -201,7 +201,9 @@ pub fn writeReceipt(io: std.Io, runtime_dir: std.Io.Dir, receipt: Receipt) !void
 }
 
 pub fn openRuntimesDir(io: std.Io, store: std.Io.Dir) !std.Io.Dir {
-    return store.createDirPathOpen(io, directory_name, .{});
+    return store.createDirPathOpen(io, directory_name, .{
+        .open_options = .{ .iterate = true },
+    });
 }
 
 pub fn list(allocator: std.mem.Allocator, io: std.Io, runtimes_dir: std.Io.Dir) !List {
@@ -402,7 +404,9 @@ test "list returns sorted receipts and skips staging directories" {
     const io = std.testing.io;
     var temporary = std.testing.tmpDir(.{});
     defer temporary.cleanup();
-    var runtimes = try temporary.dir.createDirPathOpen(io, "runtimes", .{});
+    var runtimes = try temporary.dir.createDirPathOpen(io, "runtimes", .{
+        .open_options = .{ .iterate = true },
+    });
     defer runtimes.close(io);
 
     for ([_][]const u8{ "zulu-8-mac-os-arm64", "mojang-java-runtime-delta-mac-os-arm64" }) |name| {
@@ -434,9 +438,28 @@ test "list returns sorted receipts and skips staging directories" {
     try std.testing.expectError(error.InvalidRuntimeName, remove(io, runtimes, ".."));
 }
 
+test "opened runtimes directory supports listing and staging cleanup" {
+    const io = std.testing.io;
+    var temporary = std.testing.tmpDir(.{ .iterate = true });
+    defer temporary.cleanup();
+    var runtimes = try openRuntimesDir(io, temporary.dir);
+    defer runtimes.close(io);
+
+    try runtimes.createDirPath(io, "zulu-8-linux-x64.staging-0123");
+    cleanupStaging(io, runtimes);
+    try std.testing.expectError(
+        error.FileNotFound,
+        runtimes.access(io, "zulu-8-linux-x64.staging-0123", .{}),
+    );
+
+    var documents = try list(std.testing.allocator, io, runtimes);
+    defer documents.deinit();
+    try std.testing.expectEqual(@as(usize, 0), documents.items.len);
+}
+
 test "java home discovery prefers the shallowest bin/java" {
     const io = std.testing.io;
-    var temporary = std.testing.tmpDir(.{});
+    var temporary = std.testing.tmpDir(.{ .iterate = true });
     defer temporary.cleanup();
     const dir = temporary.dir;
 
@@ -450,7 +473,7 @@ test "java home discovery prefers the shallowest bin/java" {
 
 test "java home discovery finds a root-level bin/java" {
     const io = std.testing.io;
-    var temporary = std.testing.tmpDir(.{});
+    var temporary = std.testing.tmpDir(.{ .iterate = true });
     defer temporary.cleanup();
     const dir = temporary.dir;
 

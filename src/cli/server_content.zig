@@ -472,3 +472,53 @@ fn writeInstallError(stderr: *std.Io.Writer, err: anyerror) !void {
         else => try stderr.print("server content operation failed: {s}\n", .{@errorName(err)}),
     }
 }
+
+test "server mods CLI reports local list success and selector errors" {
+    if (builtin.os.tag != .linux) return error.SkipZigTest;
+    const allocator = std.testing.allocator;
+    const io = std.testing.io;
+    var temporary = std.testing.tmpDir(.{});
+    defer temporary.cleanup();
+    try temporary.dir.createDirPath(io, "servers");
+    var root = try temporary.dir.openDir(io, "servers", .{ .iterate = true });
+    defer root.close(io);
+    try jmcl.server_store.create(io, root, .{
+        .id = "fabric-server",
+        .name = "Fabric Server",
+        .version_id = "1.21.4",
+        .fabric_loader = "0.16.10",
+    });
+    var server_dir = try root.openDir(io, "fabric-server", .{});
+    defer server_dir.close(io);
+    try server_dir.createDirPath(io, ".jmcl");
+    try server_dir.writeFile(io, .{ .sub_path = ".jmcl/content.json", .data = "{\"schema_version\":1,\"entries\":[{\"kind\":\"mod\",\"file\":\"mods/local.jar\",\"sha1\":\"a94a8fe5ccb19ba61c4c0873d391e987982fbbd3\",\"size\":5,\"source\":{\"provider\":\"manual\"}}]}\n" });
+    var path_buffer: [std.fs.max_path_bytes]u8 = undefined;
+    const path_len = try root.realPath(io, &path_buffer);
+    const servers_path = path_buffer[0..path_len];
+
+    var stdout: std.Io.Writer.Allocating = .init(allocator);
+    defer stdout.deinit();
+    var stderr: std.Io.Writer.Allocating = .init(allocator);
+    defer stderr.deinit();
+    var service = jmcl.Service.init(allocator, io, null);
+    const list_code = try runServerMods(
+        &service,
+        &.{ "list", "fabric-server", "--servers-directory", servers_path, "--json" },
+        &stdout.writer,
+        &stderr.writer,
+    );
+    try std.testing.expectEqual(@as(u8, 0), list_code);
+    try std.testing.expect(std.mem.indexOf(u8, stdout.written(), "mods/local.jar") != null);
+    try std.testing.expectEqual(@as(usize, 0), stderr.written().len);
+
+    stdout.clearRetainingCapacity();
+    stderr.clearRetainingCapacity();
+    const invalid_code = try runServerMods(
+        &service,
+        &.{ "disable", "fabric-server" },
+        &stdout.writer,
+        &stderr.writer,
+    );
+    try std.testing.expectEqual(@as(u8, 2), invalid_code);
+    try std.testing.expect(std.mem.indexOf(u8, stderr.written(), "exactly one of --project or --file") != null);
+}

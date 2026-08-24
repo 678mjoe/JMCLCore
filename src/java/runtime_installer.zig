@@ -799,7 +799,9 @@ pub fn installMojang(
         try store.stagingName(&staging_name_buffer, runtime_name, std.mem.readInt(u64, &random_bytes, .little)),
     );
     runtimes_dir.deleteTree(io, staging_name) catch {};
-    var staging_dir = try runtimes_dir.createDirPathOpen(io, staging_name, .{});
+    var staging_dir = try runtimes_dir.createDirPathOpen(io, staging_name, .{
+        .open_options = .{ .iterate = true },
+    });
     defer staging_dir.close(io);
     errdefer runtimes_dir.deleteTree(io, staging_name) catch {};
 
@@ -964,7 +966,9 @@ pub fn installZulu(
         try store.stagingName(&staging_name_buffer, runtime_name, std.mem.readInt(u64, &random_bytes, .little)),
     );
     runtimes_dir.deleteTree(io, staging_name) catch {};
-    var staging_dir = try runtimes_dir.createDirPathOpen(io, staging_name, .{});
+    var staging_dir = try runtimes_dir.createDirPathOpen(io, staging_name, .{
+        .open_options = .{ .iterate = true },
+    });
     defer staging_dir.close(io);
     errdefer runtimes_dir.deleteTree(io, staging_name) catch {};
 

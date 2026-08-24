@@ -737,6 +737,18 @@ pub fn writePropertiesSetResult(
         return;
     };
     defer server_dir.close(service.io);
+    var stopped_guard = core.server_lifecycle.lockStopped(
+        service.allocator,
+        service.io,
+        server_dir,
+    ) catch |err| {
+        switch (err) {
+            error.ServerAlreadyRunning => try writeError(writer, request_id, "SERVER_ALREADY_RUNNING", "Stop the server before changing its properties"),
+            else => try writeError(writer, request_id, "SERVER_STATUS_FAILED", "Failed to validate the server lifecycle state"),
+        }
+        return;
+    };
+    defer stopped_guard.deinit();
     var properties = core.server_properties.load(service.allocator, service.io, server_dir) catch |err| switch (err) {
         error.FileNotFound => {
             try writeError(writer, request_id, "SERVER_PROPERTIES_NOT_FOUND", "server.properties has not been created");

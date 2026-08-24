@@ -316,6 +316,21 @@ pub fn selectFile(version: Version) ?VersionFile {
     return null;
 }
 
+pub fn selectFileWithExtension(version: Version, extension: []const u8) ?VersionFile {
+    var fallback: ?VersionFile = null;
+    var fallback_ambiguous = false;
+    for (version.files) |file| {
+        if (!std.mem.endsWith(u8, file.filename, extension)) continue;
+        if (file.primary) return file;
+        if (fallback == null) {
+            fallback = file;
+        } else {
+            fallback_ambiguous = true;
+        }
+    }
+    return if (fallback_ambiguous) null else fallback;
+}
+
 test "builds validated API URLs" {
     const allocator = std.testing.allocator;
     const project = try projectUrlAlloc(allocator, "sodium");
@@ -372,6 +387,49 @@ test "parses and validates a version document" {
     const file = selectFile(version.value).?;
     try std.testing.expectEqualStrings("sodium.jar", file.filename);
     try std.testing.expectEqualStrings("2222222222222222222222222222222222222222", file.hashes.sha1);
+}
+
+test "selects a zip artifact for datapack versions" {
+    const files = [_]VersionFile{
+        .{
+            .url = "https://cdn.modrinth.com/pack.jar",
+            .filename = "pack.jar",
+            .primary = true,
+            .hashes = .{ .sha1 = "1111111111111111111111111111111111111111" },
+            .size = 1,
+        },
+        .{
+            .url = "https://cdn.modrinth.com/pack-client.zip",
+            .filename = "pack-client.zip",
+            .hashes = .{ .sha1 = "2222222222222222222222222222222222222222" },
+            .size = 2,
+        },
+        .{
+            .url = "https://cdn.modrinth.com/pack-server.zip",
+            .filename = "pack-server.zip",
+            .hashes = .{ .sha1 = "3333333333333333333333333333333333333333" },
+            .size = 3,
+        },
+        .{
+            .url = "https://cdn.modrinth.com/pack.zip",
+            .filename = "pack.zip",
+            .primary = true,
+            .hashes = .{ .sha1 = "4444444444444444444444444444444444444444" },
+            .size = 4,
+        },
+    };
+    const version: Version = .{
+        .id = "XyZaBcDe",
+        .project_id = "AANobbMI",
+        .version_number = "1",
+        .version_type = "release",
+        .game_versions = &.{"1.21.1"},
+        .loaders = &.{"datapack"},
+        .files = &files,
+    };
+
+    const selected = selectFileWithExtension(version, ".zip").?;
+    try std.testing.expectEqualStrings("pack.zip", selected.filename);
 }
 
 test "rejects unsafe version documents" {

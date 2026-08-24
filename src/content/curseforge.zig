@@ -310,10 +310,21 @@ fn releaseRank(release_type: u8) u8 {
 /// only, stable releases win over beta and alpha, newest file date breaks
 /// ties. File dates are ISO 8601 timestamps and compare lexicographically.
 pub fn selectFile(files: []const File) ?File {
+    return selectFileMatchingExtension(files, null);
+}
+
+pub fn selectFileWithExtension(files: []const File, extension: []const u8) ?File {
+    return selectFileMatchingExtension(files, extension);
+}
+
+fn selectFileMatchingExtension(files: []const File, extension: ?[]const u8) ?File {
     var best: ?File = null;
     var best_rank: u8 = 255;
     for (files) |file| {
         if (!file.isAvailable) continue;
+        if (extension) |required| {
+            if (!std.mem.endsWith(u8, file.fileName, required)) continue;
+        }
         const rank = releaseRank(file.releaseType);
         if (rank > best_rank) continue;
         if (best) |current| {
@@ -451,6 +462,38 @@ test "selects the newest stable available file" {
     defer document.deinit();
     const selected = selectFile(document.value.data).?;
     try std.testing.expectEqual(@as(u32, 5123456), selected.id);
+}
+
+test "selects a zip artifact for datapack file listings" {
+    const common_hashes = [_]FileHash{.{
+        .value = "1111111111111111111111111111111111111111",
+        .algo = hash_algo_sha1,
+    }};
+    const files = [_]File{
+        .{
+            .id = 2,
+            .modId = 1,
+            .fileName = "pack.jar",
+            .releaseType = release_type_release,
+            .hashes = &common_hashes,
+            .fileDate = "2025-01-02T00:00:00Z",
+            .fileLength = 1,
+            .gameVersions = &.{"1.21.1"},
+        },
+        .{
+            .id = 1,
+            .modId = 1,
+            .fileName = "pack.zip",
+            .releaseType = release_type_release,
+            .hashes = &common_hashes,
+            .fileDate = "2025-01-01T00:00:00Z",
+            .fileLength = 1,
+            .gameVersions = &.{"1.21.1"},
+        },
+    };
+
+    const selected = selectFileWithExtension(&files, ".zip").?;
+    try std.testing.expectEqualStrings("pack.zip", selected.fileName);
 }
 
 const beta_fixture =
