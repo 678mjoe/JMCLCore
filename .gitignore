@@ -6,3 +6,5 @@ tests/
 AGENTS.md
 .omo/
 .jmclcore/
+.agsh/
+.zcode/
