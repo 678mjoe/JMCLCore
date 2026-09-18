@@ -222,12 +222,43 @@ Mojang requires explicit EULA acceptance: install operations require
 - CLI parity: `jmcl-core server datapacks <list|install|set-version|
   enable|disable|remove|adopt> ID ...`.
 
-### Phase 6: Hardening and polish
+### Phase 6: Local RCON and Query (implemented)
 
-- World backups are already implemented (`server.worlds.backup` and
-  friends); remaining candidates here are RCON/query support where enabled
-  in `server.properties`.
-- Revisit the Linux-only gate (macOS second, Windows last).
+JMCL can execute one RCON command or retrieve a GameSpy4 Query status for a
+managed server that is already running. Both operations are Linux-only and
+always connect to IPv4 `127.0.0.1`; neither RPC nor CLI accepts a host or port
+override. JMCL never enables either feature, changes `server.properties`,
+generates a password, or stores a password.
+
+To use RCON, an operator must set `enable-rcon=true`, choose `rcon.password`,
+and restart the server. `rcon.port` defaults to `25575`; invalid explicit
+ports are rejected. RCON is plaintext, so keep it firewalled/local. The CLI
+requires a protected password file (recommend `0600`, outside the repository):
+
+```sh
+jmcl-core server rcon command demo --command list --password-file /secure/rcon-password
+```
+
+The password file contains exactly one line. There is deliberately no
+`--password` flag; the value is zeroed after use and is never echoed in output.
+
+For Query, set `enable-query=true` and restart. `query.port` defaults to
+`server-port`, then `25565`. Query is UDP and can disclose server and player
+metadata to anyone able to reach that port, even though JMCL itself queries
+loopback only:
+
+```sh
+jmcl-core server query demo --mode full --json
+```
+
+Both operations require a live managed server. Stable remote errors are
+`SERVER_NOT_RUNNING`, `SERVER_PROPERTIES_INVALID`,
+`SERVER_RCON_DISABLED`, `SERVER_RCON_AUTH_FAILED`,
+`SERVER_RCON_UNAVAILABLE`, `SERVER_RCON_PROTOCOL_ERROR`,
+`SERVER_QUERY_DISABLED`, `SERVER_QUERY_UNAVAILABLE`, and
+`SERVER_QUERY_PROTOCOL_ERROR`. They are command/status facilities only:
+they do not flush saves and do not change the stopped-server/quiescent backup
+safety rules.
 
 ## Explicit Non-Goals (for now)
 

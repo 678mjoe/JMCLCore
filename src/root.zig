@@ -37,6 +37,8 @@ pub const launch_executor = @import("launch/executor.zig");
 pub const instance_store = @import("instance_store.zig");
 pub const server_store = @import("server/server_store.zig");
 pub const server_properties = @import("server/properties.zig");
+pub const server_rcon = @import("server/rcon.zig");
+pub const server_query = @import("server/query.zig");
 pub const server_lifecycle = @import("server/lifecycle.zig");
 pub const artifact_store = @import("install/artifact_store.zig");
 pub const metadata_cache = @import("install/metadata_cache.zig");
@@ -81,6 +83,8 @@ test {
     _ = instance_store;
     _ = server_store;
     _ = server_properties;
+    _ = server_rcon;
+    _ = server_query;
     _ = server_lifecycle;
     _ = artifact_store;
     _ = metadata_cache;

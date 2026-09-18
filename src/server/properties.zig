@@ -11,6 +11,7 @@ pub const default_content =
     \\#Minecraft server properties
     \\difficulty=easy
     \\enable-rcon=false
+    \\enable-query=false
     \\gamemode=survival
     \\level-name=world
     \\max-players=20
@@ -18,6 +19,9 @@ pub const default_content =
     \\online-mode=true
     \\server-ip=
     \\server-port=25565
+    \\query.port=25565
+    \\rcon.port=25575
+    \\rcon.password=
     \\view-distance=10
     \\
 ;
@@ -61,7 +65,49 @@ pub const Document = struct {
             .value = owned_value,
         });
     }
+
+    pub fn get(document: Document, key: []const u8) ?[]const u8 {
+        for (document.entries.items) |entry| {
+            if (std.mem.eql(u8, entry.key, key)) return entry.value;
+        }
+        return null;
+    }
 };
+
+pub const RconConfig = struct { port: u16 };
+pub const QueryConfig = struct { port: u16 };
+
+/// Resolves only the properties needed for a loopback RCON connection. A
+/// disabled feature is deliberately distinct from malformed configuration.
+pub fn resolveRcon(document: Document) !?RconConfig {
+    const enabled = try featureEnabled(document, "enable-rcon");
+    if (!enabled) return null;
+    return .{ .port = try propertyPort(document.get("rcon.port"), 25575) };
+}
+
+/// Resolves only the properties needed for a loopback GameSpy4 query.
+pub fn resolveQuery(document: Document) !?QueryConfig {
+    const enabled = try featureEnabled(document, "enable-query");
+    if (!enabled) return null;
+    if (document.get("query.port")) |value| return .{ .port = try propertyPort(value, 25565) };
+    return .{ .port = try propertyPort(document.get("server-port"), 25565) };
+}
+
+fn featureEnabled(document: Document, key: []const u8) !bool {
+    const value = document.get(key) orelse return false;
+    if (std.ascii.eqlIgnoreCase(value, "true")) return true;
+    if (std.ascii.eqlIgnoreCase(value, "false")) return false;
+    return error.InvalidServerPropertyBoolean;
+}
+
+fn propertyPort(value: ?[]const u8, default: u16) !u16 {
+    const text = value orelse return default;
+    if (text.len == 0 or std.mem.trim(u8, text, " \t\r\n").len != text.len) return error.InvalidServerPropertyPort;
+    for (text) |byte| if (byte < '0' or byte > '9') return error.InvalidServerPropertyPort;
+    const parsed = std.fmt.parseInt(u32, text, 10) catch return error.InvalidServerPropertyPort;
+    if (parsed == 0 or parsed > std.math.maxInt(u16)) return error.InvalidServerPropertyPort;
+    return @intCast(parsed);
+}
 
 pub fn load(allocator: std.mem.Allocator, io: std.Io, server_dir: std.Io.Dir) !Document {
     const bytes = server_dir.readFileAlloc(
@@ -353,4 +399,32 @@ test "server properties defaults atomic updates and EULA are stable" {
     );
     defer std.testing.allocator.free(eula);
     try std.testing.expectEqualStrings(eula_content, eula);
+}
+
+test "remote feature property resolution is strict" {
+    var rcon = try parse(std.testing.allocator, "enable-rcon=TRUE\nrcon.port=25576\n");
+    defer rcon.deinit();
+    try std.testing.expectEqual(@as(u16, 25576), (try resolveRcon(rcon)).?.port);
+    var disabled = try parse(std.testing.allocator, "enable-rcon=false\n");
+    defer disabled.deinit();
+    try std.testing.expect((try resolveRcon(disabled)) == null);
+    var query_disabled = try parse(std.testing.allocator, "enable-query=false\n");
+    defer query_disabled.deinit();
+    try std.testing.expect((try resolveQuery(query_disabled)) == null);
+    var invalid_port = try parse(std.testing.allocator, "enable-rcon=true\nrcon.port=25575\\ \n");
+    defer invalid_port.deinit();
+    try std.testing.expectError(error.InvalidServerPropertyPort, resolveRcon(invalid_port));
+    var query = try parse(std.testing.allocator, "enable-query=true\nserver-port=25566\n");
+    defer query.deinit();
+    try std.testing.expectEqual(@as(u16, 25566), (try resolveQuery(query)).?.port);
+    var invalid_boolean = try parse(std.testing.allocator, "enable-query=maybe\n");
+    defer invalid_boolean.deinit();
+    try std.testing.expectError(error.InvalidServerPropertyBoolean, resolveQuery(invalid_boolean));
+
+    var explicit_query = try parse(std.testing.allocator, "enable-query=true\nquery.port=25570\nserver-port=broken\n");
+    defer explicit_query.deinit();
+    try std.testing.expectEqual(@as(u16, 25570), (try resolveQuery(explicit_query)).?.port);
+    var fallback_invalid = try parse(std.testing.allocator, "enable-query=true\nserver-port=broken\n");
+    defer fallback_invalid.deinit();
+    try std.testing.expectError(error.InvalidServerPropertyPort, resolveQuery(fallback_invalid));
 }

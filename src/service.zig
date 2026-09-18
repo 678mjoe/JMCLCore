@@ -29,6 +29,8 @@ const neoforge = @import("loaders/neoforge.zig");
 const neoforge_executor = @import("loaders/neoforge_executor.zig");
 const server_lifecycle = @import("server/lifecycle.zig");
 const server_properties = @import("server/properties.zig");
+const server_rcon = @import("server/rcon.zig");
+const server_query = @import("server/query.zig");
 const server_store = @import("server/server_store.zig");
 const version_manifest = @import("install/version_manifest.zig");
 const version_metadata = @import("install/version_metadata.zig");
@@ -581,6 +583,86 @@ pub const Service = struct {
         };
         defer manifest.deinit();
         return server_store.openServer(self.io, root, id) catch return error.ServerNotFound;
+    }
+
+    pub const ServerRemoteError = error{
+        UnsupportedPlatform,
+        ServerNotFound,
+        ServerNotRunning,
+        ServerPropertiesInvalid,
+        ServerRconDisabled,
+        ServerRconAuthenticationFailed,
+        ServerRconUnavailable,
+        ServerRconProtocolError,
+        ServerQueryDisabled,
+        ServerQueryUnavailable,
+        ServerQueryProtocolError,
+        InvalidServerRemoteInput,
+        OutOfMemory,
+    };
+
+    pub const ServerRconReply = server_rcon.Reply;
+    pub const ServerQueryResult = server_query.Result;
+
+    /// Executes a single RCON command against an already-running managed
+    /// server. This intentionally does not acquire lockStopped: properties
+    /// mutations already do that, while this operation requires a live server.
+    pub fn executeServerRcon(
+        self: Service,
+        directory: []const u8,
+        id: []const u8,
+        password: []const u8,
+        command: []const u8,
+        max_bytes: usize,
+    ) ServerRemoteError!ServerRconReply {
+        if (comptime builtin.os.tag != .linux) return error.UnsupportedPlatform;
+        var server_dir = self.openServerDirChecked(directory, id) catch |err| switch (err) {
+            error.ServerNotFound => return error.ServerNotFound,
+            else => return error.ServerPropertiesInvalid,
+        };
+        defer server_dir.close(self.io);
+        var status = server_lifecycle.status(self.allocator, self.io, server_dir) catch return error.ServerRconUnavailable;
+        defer status.deinit();
+        if (!status.running) return error.ServerNotRunning;
+        var properties = server_properties.load(self.allocator, self.io, server_dir) catch return error.ServerPropertiesInvalid;
+        defer properties.deinit();
+        const config = server_properties.resolveRcon(properties) catch return error.ServerPropertiesInvalid;
+        const rcon_config = config orelse return error.ServerRconDisabled;
+        return server_rcon.execute(self.allocator, self.io, rcon_config.port, password, command, max_bytes) catch |err| switch (err) {
+            error.AuthenticationFailed => return error.ServerRconAuthenticationFailed,
+            error.TransportUnavailable => return error.ServerRconUnavailable,
+            error.ProtocolError => return error.ServerRconProtocolError,
+            error.InvalidInput => return error.InvalidServerRemoteInput,
+            error.OutOfMemory => return error.OutOfMemory,
+        };
+    }
+
+    /// Reads one basic or full GameSpy4 Query response from an already-running
+    /// managed server, always through IPv4 loopback.
+    pub fn queryServer(
+        self: Service,
+        directory: []const u8,
+        id: []const u8,
+        mode: server_query.Mode,
+    ) ServerRemoteError!ServerQueryResult {
+        if (comptime builtin.os.tag != .linux) return error.UnsupportedPlatform;
+        var server_dir = self.openServerDirChecked(directory, id) catch |err| switch (err) {
+            error.ServerNotFound => return error.ServerNotFound,
+            else => return error.ServerPropertiesInvalid,
+        };
+        defer server_dir.close(self.io);
+        var status = server_lifecycle.status(self.allocator, self.io, server_dir) catch return error.ServerQueryUnavailable;
+        defer status.deinit();
+        if (!status.running) return error.ServerNotRunning;
+        var properties = server_properties.load(self.allocator, self.io, server_dir) catch return error.ServerPropertiesInvalid;
+        defer properties.deinit();
+        const config = server_properties.resolveQuery(properties) catch return error.ServerPropertiesInvalid;
+        const query_config = config orelse return error.ServerQueryDisabled;
+        return server_query.execute(self.allocator, self.io, query_config.port, mode) catch |err| switch (err) {
+            error.TransportUnavailable => return error.ServerQueryUnavailable,
+            error.ProtocolError => return error.ServerQueryProtocolError,
+            error.OutOfMemory => return error.OutOfMemory,
+        };
     }
 
     fn serverLevelNameAlloc(self: Service, arena: std.mem.Allocator, server_dir: std.Io.Dir) ![]const u8 {
@@ -5155,6 +5237,27 @@ fn writeRunningServerStateFixture(io: std.Io, server_dir: std.Io.Dir, pid: u32, 
     defer std.testing.allocator.free(state);
     try server_dir.createDirPath(io, ".jmcl");
     try server_dir.writeFile(io, .{ .sub_path = server_lifecycle.state_relative_path, .data = state });
+}
+
+test "server remote rejects a stopped managed server before transport" {
+    if (builtin.os.tag != .linux) return error.SkipZigTest;
+    const io = std.testing.io;
+    var temporary = std.testing.tmpDir(.{});
+    defer temporary.cleanup();
+    try temporary.dir.createDir(io, "servers", .default_dir);
+    var path_buffer: [std.fs.max_path_bytes]u8 = undefined;
+    const path_len = try temporary.dir.realPath(io, &path_buffer);
+    const servers_path = try std.fmt.allocPrint(std.testing.allocator, "{s}/servers", .{path_buffer[0..path_len]});
+    defer std.testing.allocator.free(servers_path);
+    const root = try temporary.dir.openDir(io, "servers", .{});
+    defer root.close(io);
+    try server_store.create(io, root, .{ .id = "remote", .name = "Remote", .version_id = "1.21.4" });
+    const server_dir = try root.openDir(io, "remote", .{});
+    defer server_dir.close(io);
+    try server_dir.writeFile(io, .{ .sub_path = server_properties.relative_path, .data = "enable-rcon=true\nrcon.port=25575\n" });
+    const service = Service.init(std.testing.allocator, io, null);
+    try std.testing.expectError(error.ServerNotRunning, service.executeServerRcon(servers_path, "remote", "secret", "list", 1024));
+    try std.testing.expectError(error.ServerNotRunning, service.queryServer(servers_path, "remote", .full));
 }
 
 test "server mod mutations are stopped-gated before filesystem changes" {

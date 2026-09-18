@@ -6,8 +6,13 @@ const install_cli = @import("install.zig");
 const cli_worlds = @import("worlds.zig");
 const cli_server_content = @import("server_content.zig");
 const cli_server_datapacks = @import("server_datapacks.zig");
+const cli_server_remote = @import("server_remote.zig");
 
 const unsupported_platform_message = "Server management is currently supported only on Linux";
+
+fn propertyDisplayValue(key: []const u8, value: []const u8) []const u8 {
+    return if (std.mem.eql(u8, key, "rcon.password")) "<redacted>" else value;
+}
 
 pub fn run(
     service: *jmcl.Service,
@@ -30,7 +35,9 @@ pub fn run(
     if (args.len >= 1 and std.mem.eql(u8, args[0], "status")) return runServerStatus(service, args[1..], stdout, stderr);
     if (args.len >= 1 and std.mem.eql(u8, args[0], "logs")) return runServerLogs(service, args[1..], stdout, stderr);
     if (args.len >= 1 and std.mem.eql(u8, args[0], "command")) return runServerCommand(service, args[1..], stdout, stderr);
-    try stderr.writeAll("usage: jmcl-core server <create|list|show|delete|install|properties|worlds|mods|datapacks|start|stop|restart|status|logs|command> [options]\n");
+    if (args.len >= 1 and std.mem.eql(u8, args[0], "rcon")) return cli_server_remote.runRcon(service, args[1..], stdout, stderr);
+    if (args.len >= 1 and std.mem.eql(u8, args[0], "query")) return cli_server_remote.runQuery(service, args[1..], stdout, stderr);
+    try stderr.writeAll("usage: jmcl-core server <create|list|show|delete|install|properties|worlds|mods|datapacks|start|stop|restart|status|logs|command|rcon|query> [options]\n");
     return 2;
 }
 
@@ -687,14 +694,14 @@ fn runServerPropertiesGet(
         try json.beginObject();
         for (properties.entries.items) |entry| {
             try json.objectField(entry.key);
-            try json.write(entry.value);
+            try json.write(propertyDisplayValue(entry.key, entry.value));
         }
         try json.endObject();
         try json.endObject();
         try stdout.writeByte('\n');
     } else {
         for (properties.entries.items) |entry| {
-            try stdout.print("{s}={s}\n", .{ entry.key, entry.value });
+            try stdout.print("{s}={s}\n", .{ entry.key, propertyDisplayValue(entry.key, entry.value) });
         }
     }
     return 0;
@@ -813,7 +820,7 @@ fn runServerPropertiesSet(
         return 1;
     };
     for (properties.entries.items) |entry| {
-        try stdout.print("{s}={s}\n", .{ entry.key, entry.value });
+        try stdout.print("{s}={s}\n", .{ entry.key, propertyDisplayValue(entry.key, entry.value) });
     }
     return 0;
 }
@@ -1293,6 +1300,11 @@ fn runServerCommand(
     };
     try stdout.print("server\t{s}\naccepted\ttrue\npid\t{d}\n", .{ options.id, pid });
     return 0;
+}
+
+test "property output redacts only RCON password" {
+    try std.testing.expectEqualStrings("<redacted>", propertyDisplayValue("rcon.password", "secret"));
+    try std.testing.expectEqualStrings("demo", propertyDisplayValue("motd", "demo"));
 }
 
 test "create parser maps flags to fields" {

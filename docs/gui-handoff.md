@@ -235,7 +235,9 @@ on Linux:
 | `server.status` | `directory`, `id` | — | returns validated `running`, `stale_state`, PIDs, Java path, start time, and uptime |
 | `server.logs` | `directory`, `id` | `cursor`, `file_id`, `max_bytes` (default 65536, max 1048576) | merged console tail; resume with the preceding `next_cursor` + `file_id`; honor `reset` |
 | `server.command` | `directory`, `id`, one UTF-8 `command` line | — | writes to the console FIFO; returns `accepted:true` and the validated PID |
-| `server.properties.get` | `directory`, `id` | — | returns the full string-valued `properties` object |
+| `server.rcon.command` | `directory`, `id`, masked `password`, `command` | `max_bytes` | enabled running server only; result is bounded `text` plus `truncated` |
+| `server.query` | `directory`, `id` | `mode` (`basic`/`full`) | enabled running server only; normalized GameSpy4 status |
+| `server.properties.get` | `directory`, `id` | — | returns the string-valued `properties` object; `rcon.password` is redacted |
 | `server.properties.set` | `directory`, `id`, non-empty `properties` object | — | stopped server only; lifecycle-locked merge and atomic rewrite; returns the full resulting object |
 | `server.worlds.list` | `directory`, `id` | `minecraft_version` | read-only; base world from `level-name` plus existing `_nether`/`_the_end` siblings |
 | `server.worlds.get` | `directory`, `id`, `world` | `minecraft_version` | read-only; one entry plus `icon_png_base64` |
@@ -257,6 +259,12 @@ on Linux:
 | `server.datapacks.enable` / `server.datapacks.disable` | `directory`, `id`, one of `project`/`file` | — | stopped server only; renames to/from `<file>.disabled` |
 | `server.datapacks.remove` | `directory`, `id`, one of `project`/`file` | — | stopped server only; deletes the world link, store object awaits GC |
 | `server.datapacks.adopt` | `directory`, `id` | `store_directory` | stopped server only; registers unmanaged `<level-name>/datapacks/*.zip` as `manual` |
+
+For `server.rcon.command`, the GUI must mask the password input and must never
+log, cache, place it in telemetry, or include it in task diagnostics. The core
+uses it only for the immediate loopback RCON exchange. RCON is plaintext and
+Query may expose player metadata, so the GUI should continue to reach the core
+over SSH and should not encourage public exposure of either server port.
 
 `server.create`, `server.list`, and `server.get` include `installed`. Treat it
 as authoritative. The v3 completion marker must match the manifest and the

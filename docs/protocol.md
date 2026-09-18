@@ -355,6 +355,8 @@ by the JSON Lines session. A remote GUI may close and reopen
 | `server.status` | `directory`, `id` | — |
 | `server.logs` | `directory`, `id` | `cursor`, `file_id`, `max_bytes` (default 65536, max 1048576) |
 | `server.command` | `directory`, `id`, `command` | — |
+| `server.rcon.command` | `directory`, `id`, `password`, `command` | `max_bytes` (max 262144) |
+| `server.query` | `directory`, `id` | `mode` (`basic` or `full`, default `full`) |
 
 `server.start` and `server.restart` require `installed:true`, use the Java
 major version recorded by the completed-install marker, and honor manifest
@@ -379,6 +381,18 @@ SIGTERM then SIGKILL. Its `termination` is `graceful`, `terminated`, or
 `killed`; calling it while stopped returns `SERVER_NOT_RUNNING`.
 `server.restart` applies the same bounded shutdown before starting a new
 detached process.
+
+`server.rcon.command` and `server.query` require a running server and an
+operator-enabled `enable-rcon=true` or `enable-query=true` respectively. The
+core resolves ports strictly from `server.properties` and connects only to
+IPv4 loopback; there is no host or port parameter. RCON returns
+`{"stage":"server.rcon.command","text":...,"truncated":...}`. Its
+`password` is transient and never included in results or errors. Query returns
+`stage:"server.query"` plus `mode`, `hostname`, `game_type`, `map`,
+`version`, `players`, `max_players`, `host_port`, `host_ip`, `plugins`, and
+`player_names`. RCON is plaintext and Query can disclose player metadata;
+use SSH for RPC transport and do not expose either server port. These calls do
+not alter the stopped-server backup safety model.
 
 `server.logs` reads merged stdout/stderr from `logs/console.log`. With no
 cursor it returns the newest `max_bytes`. To resume, pass both `next_cursor`

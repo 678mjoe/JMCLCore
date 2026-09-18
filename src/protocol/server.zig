@@ -149,9 +149,22 @@ fn writePropertiesObject(
     try json.beginObject();
     for (document.entries.items) |entry| {
         try json.objectField(entry.key);
-        try json.write(entry.value);
+        // RCON credentials are configured by the operator in the local file,
+        // but must never be returned through the SSH-served management API.
+        try json.write(if (std.mem.eql(u8, entry.key, "rcon.password")) "<redacted>" else entry.value);
     }
     try json.endObject();
+}
+
+test "server property serialization redacts RCON password" {
+    var properties = try core.server_properties.parse(std.testing.allocator, "motd=demo\nrcon.password=secret-value\n");
+    defer properties.deinit();
+    var output: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer output.deinit();
+    var json: std.json.Stringify = .{ .writer = &output.writer };
+    try writePropertiesObject(&json, properties);
+    try std.testing.expect(std.mem.indexOf(u8, output.written(), "secret-value") == null);
+    try std.testing.expect(std.mem.indexOf(u8, output.written(), "<redacted>") != null);
 }
 
 pub fn writeCreateResult(

@@ -10,6 +10,7 @@ const content = @import("content.zig");
 const datapacks = @import("datapacks.zig");
 const instance = @import("instance.zig");
 const server = @import("server.zig");
+const server_remote = @import("server_remote.zig");
 const server_content = @import("server_content.zig");
 const server_datapacks = @import("server_datapacks.zig");
 const modpack = @import("modpack.zig");
@@ -198,6 +199,10 @@ pub fn handleLine(
         try server.writeLogsResult(service, writer, request.id, request.params);
     } else if (std.mem.eql(u8, request.method, "server.command")) {
         try server.writeCommandResult(service, writer, request.id, request.params);
+    } else if (std.mem.eql(u8, request.method, "server.rcon.command")) {
+        try server_remote.writeRconResult(service, writer, request.id, request.params);
+    } else if (std.mem.eql(u8, request.method, "server.query")) {
+        try server_remote.writeQueryResult(service, writer, request.id, request.params);
     } else if (std.mem.eql(u8, request.method, "server.properties.get")) {
         try server.writePropertiesGetResult(service, writer, request.id, request.params);
     } else if (std.mem.eql(u8, request.method, "server.properties.set")) {
@@ -791,6 +796,16 @@ test "server methods reject non-Linux hosts" {
         try handleLine(&service, request, &output.writer);
         try std.testing.expect(std.mem.indexOf(u8, output.written(), "UNSUPPORTED_PLATFORM") != null);
     }
+}
+
+test "server RCON validation never echoes password" {
+    const secret = "secret-value";
+    const request = "{\"protocol\":1,\"id\":\"r1\",\"method\":\"server.rcon.command\",\"params\":{\"directory\":\"/missing\",\"id\":\"demo\",\"password\":\"secret-value\",\"command\":\"list\"}}";
+    var output: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer output.deinit();
+    var service = core.Service.init(std.testing.allocator, std.testing.io, null);
+    try handleLine(&service, request, &output.writer);
+    try std.testing.expect(std.mem.indexOf(u8, output.written(), secret) == null);
 }
 
 test {
