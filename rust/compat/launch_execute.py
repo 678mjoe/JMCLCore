@@ -52,6 +52,23 @@ with tempfile.TemporaryDirectory() as tmp:
   assert result['java_source']=='managed',pre.stdout
   assert pathlib.Path(result['launch']['java_executable']).resolve()==(rt/rel).resolve(),pre.stdout
  rpc(installed,True)
+ # Default-host selection is a separate preflight: never execute a fallback JVM.
+ host_arch=__import__('platform').machine().lower()
+ host_arch={'amd64':'x86_64','aarch64':'arm64'}.get(host_arch,host_arch)
+ assert host_arch in ['x86_64','arm64'],host_arch
+ host_platform=platform if host_arch=='x86_64' else ('windows-arm64' if os.name=='nt' else ('mac-os-arm64' if __import__('sys').platform=='darwin' else 'linux-arm64'))
+ host_src=root/'host_probe.rs';host_src.write_text(src.read_text().replace('os.arch = amd64','os.arch = '+host_arch))
+ subprocess.run(['rustc',str(host_src),'-o',str(rt/rel)],check=True)
+ receipt=json.loads((rt/'.jmcl-runtime.json').read_text());receipt['platform']=host_platform
+ (rt/'.jmcl-runtime.json').write_text(json.dumps(receipt))
+ host_request=dict(installed);del host_request['arch']
+ for exe in bins:
+  pre=run(exe,['rpc'],json.dumps({'protocol':1,'id':'host-preflight','method':'launch.plan','params':dict(host_request,natives_directory='unused')}).encode()+b'\n')
+  assert 'result' in json.loads(pre.stdout),pre.stdout
+  result=json.loads(pre.stdout)['result']
+  assert result['java_source']=='managed',pre.stdout
+  assert pathlib.Path(result['launch']['java_executable']).resolve()==(rt/rel).resolve(),pre.stdout
+ print('2 default-host installed-runtime preflights passed (architecture omitted; no execute/download)')
  def cli(args,success=False):
   global count
   z,r=[run(exe,args)for exe in bins]
