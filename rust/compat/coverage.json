@@ -163,7 +163,8 @@
       "disk_cases": [],
       "platform_evidence": {},
       "known_gaps": [
-        "Not implemented."
+        "Not implemented.",
+        "Pinned Windows Zig GC reports one error instead of blocking under an existing held digest lock; exact error/retention/post-release pair allowlisted only in experimental CI. Strict replacement remains blocked."
       ],
       "compatible": false
     },

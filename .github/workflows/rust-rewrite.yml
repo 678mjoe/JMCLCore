@@ -15,6 +15,8 @@ concurrency:
 
 env:
   RUST_VERSION: 1.99.1
+  # Experimental exact allowlist only; strict replacement checks omit this.
+  JMCL_ALLOW_KNOWN_ORACLE_GAPS: "1"
   ORACLE_REVISION: 5a4310debbcee26b3d2391bab2339f79cd6ec52e
 
 jobs:
@@ -119,6 +121,7 @@ jobs:
           cargo fmt --all -- --check
           cargo clippy --locked --all-targets -- -D warnings
           cargo test --locked --all-targets -- --include-ignored
+          cargo test --locked --test store_differential -- --include-ignored --nocapture
           cargo build --locked --release
       - name: Differential implemented-slice compatibility
         run: |

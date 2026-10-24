@@ -85,6 +85,35 @@ fn native_gc_and_digest_lock_match_zig() {
             .args(["--min-age-seconds", "0", "--execute", "--json"])
             .output()
             .unwrap();
+        // A pinned Windows oracle opens an existing lock asynchronously, but
+        // its NtLockFile path does not handle STATUS_PENDING. Do not call this
+        // blocking parity: the experimental gate recognizes only this exact
+        // safe-retention/error + successful post-release pair. Strict mode fails.
+        if cfg!(windows)
+            && std::env::var_os("JMCL_ALLOW_KNOWN_ORACLE_GAPS").as_deref()
+                == Some(std::ffi::OsStr::new("1"))
+        {
+            let held = b"{\"protocol\":1,\"result\":{\"dry_run\":false,\"min_age_seconds\":0,\"summary\":{\"objects_scanned\":2,\"objects_eligible\":0,\"objects_deleted\":0,\"bytes_eligible\":0,\"bytes_deleted\":0,\"objects_linked\":1,\"objects_young\":0,\"objects_ignored\":1,\"objects_busy\":0,\"errors\":1}}}\n";
+            let released = b"{\"protocol\":1,\"result\":{\"dry_run\":false,\"min_age_seconds\":0,\"summary\":{\"objects_scanned\":2,\"objects_eligible\":1,\"objects_deleted\":1,\"bytes_eligible\":8,\"bytes_deleted\":8,\"objects_linked\":1,\"objects_young\":0,\"objects_ignored\":1,\"objects_busy\":0,\"errors\":0}}}\n";
+            assert_eq!(output.status.code(), Some(1), "unexpected oracle lock exit");
+            assert_eq!(output.stdout, held, "unrecognized held-lock oracle output");
+            assert!(output.stderr.is_empty(), "unexpected held-lock diagnostics");
+            assert!(retained, "oracle modified a locked object");
+            assert!(fresh.status.success(), "oracle failed after lock release");
+            assert_eq!(
+                fresh.stdout, released,
+                "unrecognized post-release oracle output"
+            );
+            assert!(
+                fresh.stderr.is_empty(),
+                "unexpected post-release diagnostics"
+            );
+            assert!(!shared.join(object_path(&hash).unwrap()).exists());
+            eprintln!(
+                "KNOWN_ORACLE_GAP windows-gc-lock-contention: exact error/retention observed; fresh GC succeeds after release; blocking parity unresolved; full_compatibility=false"
+            );
+            return;
+        }
         panic!(
             "Zig exited while Rust held digest lock: status={:?}; stdout={}; stderr={}; retained={}; fresh_status={:?}; fresh_stdout={}; fresh_stderr={}; after_release_exists={}",
             output.status,

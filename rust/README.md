@@ -68,3 +68,20 @@ CI runs oracle-dependent tests explicitly with `JMCL_ZIG_ORACLE` and
 `--include-ignored`; a developer run without that flag skips those tests and must
 not be reported as an oracle compatibility pass. Cross-platform results are
 recorded against the exact PR/main revision rather than inferred from Linux.
+
+
+### Windows pinned-oracle lock contention
+
+Native CI confirmed that pinned Zig GC exits 1 with exactly one collection error
+while Rust holds the eligible object's digest lock; the object is retained. A
+fresh Zig GC after release exits 0 and deletes it. This establishes exclusion,
+**not blocking parity**. Source inspection suggests a cause: Zig's existing-file Windows lock path uses an
+asynchronous handle but does not handle pending completion; the native NT status
+was not directly traced. Neither oracle nor lock behavior
+is changed here; the compatibility decision remains pending.
+
+Strict `store_differential` rejects this difference. Experimental CI explicitly
+sets `JMCL_ALLOW_KNOWN_ORACLE_GAPS=1` and accepts only the exact observed exit/status/
+stdout/stderr/retained-object and post-release pair, on Windows only. Unexpected
+differences fail. CI prints the known-gap reason; this is additional to the three
+oversized-input cases, not a replacement-readiness pass.
