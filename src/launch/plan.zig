@@ -617,7 +617,9 @@ test "builds modern launch arguments with rule features and redaction" {
     defer plan.deinit();
 
     try std.testing.expectEqualStrings("/java/bin/java", plan.value.argv[0]);
-    try std.testing.expect(std.mem.indexOf(u8, plan.value.jvm_args[2], "/game/libraries/test.jar") != null);
+    const expected_library = try std.fs.path.join(std.testing.allocator, &.{ "/game", "libraries/test.jar" });
+    defer std.testing.allocator.free(expected_library);
+    try std.testing.expect(std.mem.indexOf(u8, plan.value.jvm_args[2], expected_library) != null);
     try std.testing.expectEqualStrings("Player", plan.value.game_args[1]);
     try std.testing.expectEqualStrings("1280", plan.value.game_args[5]);
     try std.testing.expectEqual(@as(usize, 4), plan.value.sensitive_argv_indices.len);

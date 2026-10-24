@@ -1,4 +1,6 @@
 const std = @import("std");
+const builtin = @import("builtin");
+const hard_link = @import("hard_link.zig");
 const artifact_store = @import("artifact_store.zig");
 const install_plan = @import("plan.zig");
 
@@ -285,13 +287,18 @@ fn findPlannedFile(files: []const install_plan.File, path: []const u8) ?install_
 }
 
 fn openVerified(root: std.Io.Dir, io: std.Io, expected: install_plan.File) !std.Io.File {
-    const file = try root.openFile(io, expected.path, .{
+    var file = try root.openFile(io, expected.path, .{
         .mode = .read_only,
         .allow_directory = false,
         .follow_symlinks = false,
         .resolve_beneath = true,
     });
     errdefer file.close(io);
+    // Zig 0.16 opens no-follow Windows files with ASYNCHRONOUS IO but marks
+    // the returned File synchronous. Correct that metadata so both ZIP
+    // preflight and extraction readers wait for pending positional reads.
+    // Keep the no-follow / resolve-beneath options above unchanged.
+    if (builtin.os.tag == .windows) file.flags.nonblocking = true;
     if (!try verifyOpenFile(file, io, expected)) return error.CacheFileInvalid;
     return file;
 }
@@ -329,13 +336,26 @@ fn copyOpenFileAtomic(
     defer atomic_file.deinit(io);
 
     var source_buffer: [64 * 1024]u8 = undefined;
-    var reader: std.Io.File.Reader = .initSize(source, io, &source_buffer, size);
     var destination_buffer: [64 * 1024]u8 = undefined;
     var writer: std.Io.File.Writer = .init(atomic_file.file, io, &destination_buffer);
-    _ = reader.interface.streamRemaining(&writer.interface) catch |err| switch (err) {
-        error.ReadFailed => return reader.err.?,
-        error.WriteFailed => return writer.err.?,
-    };
+    if (builtin.os.tag == .windows) {
+        // The source is an overlapped Windows handle. Explicit offsets avoid
+        // Zig 0.16's synchronous-reader path and remain independent of hashing.
+        var offset: u64 = 0;
+        while (offset < size) {
+            const wanted: usize = @intCast(@min(source_buffer.len, size - offset));
+            const count = try hard_link.readFileWindows(source, source_buffer[0..wanted], offset);
+            if (count == 0) return error.UnexpectedEndOfFile;
+            try writer.interface.writeAll(source_buffer[0..count]);
+            offset += count;
+        }
+    } else {
+        var reader: std.Io.File.Reader = .initSize(source, io, &source_buffer, size);
+        _ = reader.interface.streamRemaining(&writer.interface) catch |err| switch (err) {
+            error.ReadFailed => return reader.err.?,
+            error.WriteFailed => return writer.err.?,
+        };
+    }
     try writer.flush();
     try atomic_file.file.sync(io);
     if (replace) {
@@ -481,4 +501,52 @@ test "prepares native files and legacy asset projections" {
     defer second_result.deinit();
     try std.testing.expectEqual(@as(usize, 0), second_result.projections_created);
     try std.testing.expectEqual(@as(usize, 1), second_result.projections_cached);
+}
+
+test "atomic asset projection copies multiple buffers after hashing the source" {
+    const io = std.testing.io;
+    var temporary = std.testing.tmpDir(.{});
+    defer temporary.cleanup();
+    var data: [128 * 1024 + 17]u8 = undefined;
+    for (&data, 0..) |*byte, index| byte.* = @truncate(index);
+    try temporary.dir.writeFile(io, .{ .sub_path = "source", .data = &data });
+    try temporary.dir.writeFile(io, .{ .sub_path = "destination", .data = "old" });
+    const source = try temporary.dir.openFile(io, "source", .{});
+    defer source.close(io);
+    const expected_hash = try artifact_store.hashFile(source, io);
+    try copyOpenFileAtomic(source, io, temporary.dir, "destination", data.len, true);
+    const destination = try temporary.dir.openFile(io, "destination", .{});
+    defer destination.close(io);
+    try std.testing.expectEqual(@as(u64, data.len), (try destination.stat(io)).size);
+    try std.testing.expectEqualSlices(u8, &expected_hash, &(try artifact_store.hashFile(destination, io)));
+}
+
+test "verified no-follow archives support positional readers" {
+    const io = std.testing.io;
+    var temporary = std.testing.tmpDir(.{});
+    defer temporary.cleanup();
+    const data = "verified archive bytes";
+    try temporary.dir.writeFile(io, .{ .sub_path = "archive", .data = data });
+    var digest: [Sha1.digest_length]u8 = undefined;
+    Sha1.hash(data, &digest, .{});
+    const hash = std.fmt.bytesToHex(digest, .lower);
+    const file = try openVerified(temporary.dir, io, .{
+        .path = "archive",
+        .url = "https://example.invalid/archive",
+        .fallback_url = null,
+        .sha1 = &hash,
+        .size = data.len,
+        .usage = .{ .native = true },
+    });
+    defer file.close(io);
+    if (builtin.os.tag == .windows) try std.testing.expect(file.flags.nonblocking);
+    var buffer: [8]u8 = undefined;
+    var reader = file.reader(io, &buffer);
+    try reader.seekTo(9);
+    var actual: [7]u8 = undefined;
+    try reader.interface.readSliceAll(&actual);
+    try std.testing.expectEqualStrings("archive", &actual);
+    try reader.seekTo(0);
+    try reader.interface.readSliceAll(&actual);
+    try std.testing.expectEqualStrings("verifie", &actual);
 }

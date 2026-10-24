@@ -90,7 +90,9 @@ Mojang requires explicit EULA acceptance: install operations require
 
 - `server.install` resolves Mojang metadata, selects a compatible JVM, and
   downloads `server.jar` through the shared size+SHA-1 verified artifact
-  pipeline. The jar is materialized by hard link with atomic copy fallback.
+  pipeline. The jar is materialized by hard link with a non-atomic copy
+  fallback when hard links are unavailable; interrupted installation must be
+  reverified before starting the server.
 - Every install request must pass `accept_eula:true`. The acceptance is stored
   in `server.json`, and successful installation atomically writes `eula.txt`.
 - A missing `server.properties` receives conservative defaults. Existing

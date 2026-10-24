@@ -22,7 +22,10 @@ For each planned file, the executor:
 4. Otherwise streams the object into a store-local temporary file.
 5. Rejects responses larger or smaller than the declared size.
 6. Verifies SHA-1 before publication.
-7. Materializes the instance path with a hard link or atomic copy fallback.
+7. Materializes the instance path with a hard link or copy fallback. Copy
+   fallback is not an atomic replacement; Windows also has a separate
+   delete-and-replace path for invalid destinations. See
+   [storage boundaries](content-addressed-storage.md#atomic-materialization).
 
 Temporary files are cleaned on ordinary errors. A process crash can still leave
 implementation-generated temporary names on platforms that cannot use unnamed

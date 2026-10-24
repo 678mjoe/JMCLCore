@@ -35,6 +35,8 @@ zig build
 zig build test
 ```
 
+The current bounded reliability repair plan is in [ROADMAP.md](ROADMAP.md).
+
 ## CLI
 
 ```sh
@@ -129,7 +131,8 @@ unavailable, while static files remain BMCLAPI-first with official fallback.
 Verified immutable files are stored once under `./.jmclcore/objects` and
 materialized into `.minecraft` with hard links. Use `--store-directory PATH` to
 select another store. Cross-filesystem placements automatically fall back to
-atomic copies.
+copies that are not atomic replacements; later installations reverify them.
+See [storage boundaries](docs/content-addressed-storage.md#atomic-materialization).
 
 Managed Java runtimes download into the artifact store under `runtimes/` from
 Mojang's runtime catalog, with an Azul Zulu fallback for platforms Mojang does

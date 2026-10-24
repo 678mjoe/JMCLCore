@@ -587,6 +587,11 @@ pub fn importWorld(backing: std.mem.Allocator, io: std.Io, saves_dir: std.Io.Dir
     defer if (trash_name) |trash| saves_dir.deleteTree(io, trash) catch {};
     if (statOptional(io, saves_dir, target)) {
         if (!replace) return error.WorldExists;
+        // Import and backup restore share this path. Probe immediately before
+        // replacing the target, using the same live-session guard as the other
+        // world mutations. This is not exclusion against an external game
+        // starting after the probe; callers must still serialize mutations.
+        try ensureMutable(io, saves_dir, target);
         var trash_buffer: [max_world_name_bytes + 32]u8 = undefined;
         const trash = try tempName(&trash_buffer, trash_marker, target, std.mem.readInt(u64, &random_bytes, .little));
         try saves_dir.rename(target, saves_dir, trash, io);
@@ -675,12 +680,12 @@ pub fn backupFileName(buffer: []u8, world: []const u8, now_ms: i64, label: ?[]co
     const day_seconds = epoch_seconds_value.getDaySeconds();
     return if (label) |text|
         std.fmt.bufPrint(buffer, "{s}-{d:0>4}{d:0>2}{d:0>2}-{d:0>2}{d:0>2}{d:0>2}-{s}.zip", .{
-            world, year_day.year, month_day.month.numeric(), month_day.day_index + 1,
+            world,                         year_day.year,                    month_day.month.numeric(),          month_day.day_index + 1,
             day_seconds.getHoursIntoDay(), day_seconds.getMinutesIntoHour(), day_seconds.getSecondsIntoMinute(), text,
         }) catch return error.InvalidName
     else
         std.fmt.bufPrint(buffer, "{s}-{d:0>4}{d:0>2}{d:0>2}-{d:0>2}{d:0>2}{d:0>2}.zip", .{
-            world, year_day.year, month_day.month.numeric(), month_day.day_index + 1,
+            world,                         year_day.year,                    month_day.month.numeric(),          month_day.day_index + 1,
             day_seconds.getHoursIntoDay(), day_seconds.getMinutesIntoHour(), day_seconds.getSecondsIntoMinute(),
         }) catch return error.InvalidName;
 }
@@ -993,6 +998,45 @@ test "export keeps the world registry out of vanilla archives" {
     try std.testing.expect(saw_datapack);
 }
 
+test "import replace rejects a locked target and preserves existing files" {
+    const io = std.testing.io;
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    try tmp.dir.createDirPath(io, "saves");
+    var saves_dir = try tmp.dir.openDir(io, "saves", .{ .iterate = true });
+    defer saves_dir.close(io);
+    var source = try saves_dir.createDirPathOpen(io, "Source", .{});
+    try source.writeFile(io, .{ .sub_path = "level.dat", .data = "archive" });
+    source.close(io);
+    _ = try exportWorld(std.testing.allocator, io, saves_dir, "Source", tmp.dir, "world.zip");
+    var target = try saves_dir.createDirPathOpen(io, "Target", .{});
+    try target.writeFile(io, .{ .sub_path = "level.dat", .data = "live-world" });
+    try target.writeFile(io, .{ .sub_path = "keep.txt", .data = "keep" });
+    const lock_file = try target.createFile(io, session_lock_name, .{});
+    target.close(io);
+    defer lock_file.close(io);
+    try lock_file.lock(io, .exclusive);
+
+    // Existing-target behavior stays WorldExists without overwrite permission.
+    try std.testing.expectError(error.WorldExists, importWorld(std.testing.allocator, io, saves_dir, tmp.dir, "world.zip", "Target", false));
+    const attempted = importWorld(std.testing.allocator, io, saves_dir, tmp.dir, "world.zip", "Target", true);
+    defer if (attempted) |name| std.testing.allocator.free(name) else |_| {};
+    try std.testing.expectError(error.WorldLocked, attempted);
+    const existing = try saves_dir.readFileAlloc(io, "Target/level.dat", std.testing.allocator, .limited(64));
+    defer std.testing.allocator.free(existing);
+    try std.testing.expectEqualStrings("live-world", existing);
+    const kept = try saves_dir.readFileAlloc(io, "Target/keep.txt", std.testing.allocator, .limited(64));
+    defer std.testing.allocator.free(kept);
+    try std.testing.expectEqualStrings("keep", kept);
+    var iterator = saves_dir.iterate();
+    var entries: usize = 0;
+    while (try iterator.next(io)) |entry| {
+        try std.testing.expect(std.mem.eql(u8, entry.name, "Source") or std.mem.eql(u8, entry.name, "Target"));
+        entries += 1;
+    }
+    try std.testing.expectEqual(@as(usize, 2), entries);
+}
+
 test "import replace swaps the existing world" {
     const io = std.testing.io;
     var tmp = std.testing.tmpDir(.{});
@@ -1009,6 +1053,8 @@ test "import replace swaps the existing world" {
     var alpha2 = try saves_dir.openDir(io, "Alpha", .{});
     try alpha2.writeFile(io, .{ .sub_path = "level.dat", .data = "corrupted" });
     try alpha2.writeFile(io, .{ .sub_path = "extra.txt", .data = "junk" });
+    // A stale session.lock file is not a running game and must not block restore.
+    try alpha2.writeFile(io, .{ .sub_path = session_lock_name, .data = "stale" });
     alpha2.close(io);
 
     const imported = try importWorld(std.testing.allocator, io, saves_dir, tmp.dir, "alpha.zip", "Alpha", true);

@@ -37,8 +37,9 @@ Installation uses the following order:
    that lock.
 3. Import an existing valid instance file when possible.
 4. Otherwise download, hash, and atomically publish the object.
-5. Create a temporary hard link in the instance and atomically replace the
-   final destination.
+5. On Linux/macOS, create a temporary hard link in the instance and atomically
+   replace the final destination. Windows retains a valid destination; an
+   invalid destination is removed before creating its replacement link.
 
 If hard links are unavailable, cross a filesystem boundary, or exceed the
 filesystem link limit, JMCL copies the verified object instead. The copied
@@ -54,7 +55,8 @@ creation in `std.Io`.
 
 Hard links share the same underlying file and permissions. JMCL never modifies
 a published object in place. Repairs and upgrades publish a new inode and
-atomically replace instance links. Mutable files such as saves, logs, options,
+replace instance links using the platform-specific steps above. Mutable files
+such as saves, logs, options,
 configuration, and extracted natives never enter the shared store.
 
 ## Garbage Collection

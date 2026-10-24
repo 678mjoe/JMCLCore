@@ -28,8 +28,13 @@ credential storage, and all caller-supplied secrets.
   concurrently.
 - Protocol v1 has no cancellation. Long operations (`install.execute`,
   `launch.execute`, `modpack.install`) run to completion; killing the child is
-  the only abort and is safe (atomic writes everywhere), but treat any
-  in-flight credential rotation as needing recovery (see §8).
+  the only abort, not a transaction rollback. Treat an interrupted operation
+  as incomplete: inspect its state and reverify/repair install artifacts before
+  use. The shared store verifies artifacts before reuse, but cross-filesystem
+  copy fallback and Windows destination replacement are not atomic (see
+  [storage boundaries](content-addressed-storage.md#atomic-materialization)).
+  Do not blindly replay mutable world operations. Treat any in-flight
+  credential rotation as needing recovery (see §8).
 
 ## 2. Wire Format
 
@@ -192,8 +197,11 @@ no Windows reserved stems. At most one loader field (`fabric_loader`,
 
 World (save) management operates on the same game `directory` as content
 methods. Worlds are mutable instance-private state: never content-addressed,
-never hard-linked. Mutations are crash-safe staging operations and refuse
-worlds in use by a running game (`session.lock` flock-held -> `WORLD_LOCKED`; stale lock files are tolerated):
+never hard-linked. Mutations use staging and probe for worlds in use by a
+running game (`session.lock` held -> `WORLD_LOCKED`; stale lock files are
+tolerated). The probe does not prevent an external launch after the check;
+callers still coordinate launches and mutations. See [world mutation and
+interruption boundaries](worlds.md#mutations):
 
 | Method | Required params | Optional params | Notes |
 |---|---|---|---|
