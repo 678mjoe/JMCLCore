@@ -941,6 +941,57 @@ mod tests {
         file.try_lock().unwrap();
     }
     #[test]
+    fn concurrent_digest_transactions_create_nested_destinations() {
+        use std::sync::{Barrier, atomic::AtomicUsize};
+        // The content resolver can produce two different paths for one digest.
+        // Keep their preflight and lock acquisition concurrent, and diagnose
+        // each actual filesystem phase rather than serializing the fixture.
+        for round in 0..32 {
+            let temp = tempfile::tempdir().unwrap();
+            let store = Store::open(temp.path().join("cas")).unwrap();
+            let root = ArtifactRoot::open(temp.path().join("game")).unwrap();
+            let hash = hash(b"content");
+            let ready = Barrier::new(2);
+            let downloads = AtomicUsize::new(0);
+            std::thread::scope(|scope| {
+                for name in ["mods/a.jar", "mods/dependency.jar"] {
+                    let (store, root, hash, ready, downloads) =
+                        (&store, &root, &hash, &ready, &downloads);
+                    scope.spawn(move || {
+                        assert!(!root.verify(name, hash, 7).expect("destination preflight"));
+                        ready.wait();
+                        let tx = store.transaction(hash).expect("digest lock");
+                        if !tx.verify(7).expect("locked cache verification") {
+                            tx.remove_invalid(7).expect("remove invalid cache entry");
+                            let mut staged = tx.stage(7).expect("create staging object");
+                            staged
+                                .file_mut()
+                                .write_all(b"content")
+                                .expect("write staged bytes");
+                            staged.publish(false).expect("publish staged object");
+                            downloads.fetch_add(1, Ordering::SeqCst);
+                        }
+                        assert_eq!(
+                            tx.materialize_at(root, name, 7).unwrap_or_else(|e| panic!(
+                                "round {round}, {name}: materialize: {e:?}"
+                            )),
+                            Placement::HardLink
+                        );
+                    });
+                }
+            });
+            assert_eq!(downloads.load(Ordering::SeqCst), 1);
+            let a = root.open_file("mods/a.jar").unwrap().metadata().unwrap();
+            let b = root
+                .open_file("mods/dependency.jar")
+                .unwrap()
+                .metadata()
+                .unwrap();
+            assert!(same(&a, &b));
+            assert_eq!(a.nlink(), 3);
+        }
+    }
+    #[test]
     fn fallback_errors_are_bounded() {
         assert!(fallback(rustix::io::Errno::XDEV));
         assert!(fallback(rustix::io::Errno::MLINK));

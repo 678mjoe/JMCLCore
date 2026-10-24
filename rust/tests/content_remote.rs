@@ -286,7 +286,12 @@ fn dependency_resolution_order_cycle_and_version_switch() {
     std::fs::create_dir(&game).unwrap();
     let root = Root::open(game.to_str().unwrap()).unwrap();
     let store = Store::open(t.path().join("cas")).unwrap();
-    root.install_resolved(
+    let events = std::sync::Mutex::new(Vec::new());
+    let report = |event| {
+        events.lock().unwrap().push(format!("{event:?}"));
+        Ok(())
+    };
+    let outcome = root.install_resolved(
         &store,
         Kind::Mod,
         "1.20.1",
@@ -294,9 +299,34 @@ fn dependency_resolution_order_cycle_and_version_switch() {
         r,
         install::Options::default(),
         &f,
-        None,
-    )
-    .unwrap();
+        Some(&report),
+    );
+    if let Err(error) = outcome {
+        // Synthetic test paths only; never enabled in production. Preserve the
+        // failure and tree before cleanup, without retrying or repairing it.
+        fn tree(path: &std::path::Path, prefix: &str) {
+            let mut entries = match std::fs::read_dir(path) {
+                Ok(entries) => entries.collect::<Result<Vec<_>, _>>().unwrap(),
+                Err(e) => {
+                    eprintln!("{prefix}: read_dir {e:?}");
+                    return;
+                }
+            };
+            entries.sort_by_key(|entry| entry.file_name());
+            for entry in entries {
+                let name = format!("{prefix}/{}", entry.file_name().to_string_lossy());
+                let metadata = entry.path().symlink_metadata().unwrap();
+                eprintln!("{name}: {metadata:?}");
+                if metadata.is_dir() {
+                    tree(&entry.path(), &name);
+                }
+            }
+        }
+        eprintln!("install events: {:#?}", events.lock().unwrap());
+        tree(t.path(), "fixture");
+        panic!("two same-digest content files failed: {error:?}");
+    }
+
     root.toggle(Kind::Mod, Some("project"), None, false)
         .unwrap();
     let mut next = version();

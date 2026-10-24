@@ -327,57 +327,6 @@ pub fn run(
     }
     result
 }
-#[cfg(test)]
-mod tests {
-    use super::*;
-    #[test]
-    fn framing_and_split_redaction() {
-        let mut r = Redactor::new(&["fake-secret"], Stream::Stdout);
-        let mut logs = Vec::new();
-        let mut cb = |e: Event<'_>| {
-            if let Event::Log { bytes, end, .. } = e {
-                logs.push((bytes.to_vec(), end))
-            }
-        };
-        r.feed(b"prefix fake-", &mut cb);
-        r.feed(b"secret\r\n\nlast\r", &mut cb);
-        r.finish(&mut cb);
-        assert_eq!(
-            logs,
-            vec![
-                (b"prefix <redacted>".to_vec(), RecordEnd::Newline),
-                (vec![], RecordEnd::Newline),
-                (b"last".to_vec(), RecordEnd::Eof)
-            ]
-        )
-    }
-    #[test]
-    fn exact_limit_newline() {
-        let mut f = Framer::new(Stream::Stdout);
-        let mut ends = vec![];
-        let mut cb = |e: Event<'_>| {
-            if let Event::Log { bytes, end, .. } = e {
-                ends.push((bytes.len(), end))
-            }
-        };
-        f.feed(&vec![b'x'; 16384], &mut cb);
-        f.feed(b"\n", &mut cb);
-        f.finish(&mut cb);
-        assert_eq!(ends, vec![(16384, RecordEnd::Newline)])
-    }
-    #[test]
-    fn secret_environment_filtered() {
-        let env = HashMap::from([
-            (OsString::from("HOME"), OsString::from("home")),
-            (OsString::from("FAKE_TOKEN"), OsString::from("fake-secret")),
-            (
-                OsString::from("JAVA_TOOL_OPTIONS"),
-                OsString::from("ignored"),
-            ),
-        ]);
-        assert_eq!(environment(&env).len(), 1)
-    }
-}
 
 #[cfg(windows)]
 fn drain_windows<T: Read + std::os::windows::io::AsRawHandle>(
@@ -526,4 +475,56 @@ pub fn run(
         let _ = child.wait();
     }
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn framing_and_split_redaction() {
+        let mut r = Redactor::new(&["fake-secret"], Stream::Stdout);
+        let mut logs = Vec::new();
+        let mut cb = |e: Event<'_>| {
+            if let Event::Log { bytes, end, .. } = e {
+                logs.push((bytes.to_vec(), end))
+            }
+        };
+        r.feed(b"prefix fake-", &mut cb);
+        r.feed(b"secret\r\n\nlast\r", &mut cb);
+        r.finish(&mut cb);
+        assert_eq!(
+            logs,
+            vec![
+                (b"prefix <redacted>".to_vec(), RecordEnd::Newline),
+                (vec![], RecordEnd::Newline),
+                (b"last".to_vec(), RecordEnd::Eof)
+            ]
+        )
+    }
+    #[test]
+    fn exact_limit_newline() {
+        let mut f = Framer::new(Stream::Stdout);
+        let mut ends = vec![];
+        let mut cb = |e: Event<'_>| {
+            if let Event::Log { bytes, end, .. } = e {
+                ends.push((bytes.len(), end))
+            }
+        };
+        f.feed(&vec![b'x'; 16384], &mut cb);
+        f.feed(b"\n", &mut cb);
+        f.finish(&mut cb);
+        assert_eq!(ends, vec![(16384, RecordEnd::Newline)])
+    }
+    #[test]
+    fn secret_environment_filtered() {
+        let env = HashMap::from([
+            (OsString::from("HOME"), OsString::from("home")),
+            (OsString::from("FAKE_TOKEN"), OsString::from("fake-secret")),
+            (
+                OsString::from("JAVA_TOOL_OPTIONS"),
+                OsString::from("ignored"),
+            ),
+        ]);
+        assert_eq!(environment(&env).len(), 1)
+    }
 }
