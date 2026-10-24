@@ -99,7 +99,7 @@
 - **证据与原因边界：** `content_install_wire::injected_version_switch_wire_and_disk` 的原生上下文诊断同时记录双方 wire、磁盘与只读属性。基线 `src/service.zig:3548–3565` 在下载之后、保存 registry 之前重命名禁用文件。固定 Zig 0.16.0 `lib/std/Io/Threaded.zig:7385–7415` 先以 `GENERIC_WRITE | DELETE` 打开只读源，之后才设置 rename 的 `IGNORE_READONLY_ATTRIBUTE`；该打开步骤失败是原因推断，尚无直接 NT 调用跟踪证明。Rust 的对应句柄不要求文件数据写权限。
 - **批准的纠正：** 成功完成合法禁用内容换版，不因兼容此缺陷而增加数据写权限、清除共享 inode 的 readonly 属性、复制替代硬链接或保留意外启用的新文件。旧禁用文件移除、新 registry 更新和新禁用文件必须同时通过测试。
 - **精确门禁：** 仅 Windows 且显式设置 `JMCL_ALLOW_ZIG007_READONLY_RENAME=1` 时，测试接受预先列明的四类内容 × 两个 provider 的 disabled 合成案例。它逐字节断言 Zig 的两条既定 file/progress 事件、固定错误和精确残留磁盘状态，同时逐字节断言 Rust 的成功响应与更新 registry；还验证新文件、CAS 对象和旁路共享链接的字节、真实文件身份及 readonly。任何别的错误、事件、文件或 registry 改变都失败。如果原版在某个组合成功，仍要求双方严格相等，不强制制造预期失败。不设置开关仍为严格差分；启用例外不表示完全兼容。
-- **覆盖边界：** 原生已观察的是上述 mods/Modrinth 案例；其余七个组合是共享 `setInstanceContentVersion` 路径的明确预测，必须各自满足同一精确证据才能计为例外，不能预先称为已观察通过。Linux 仍运行真实 oracle 严格差分，并用明确合成的失败状态验证匹配器与负对照；这不是 Windows 验收替代品。错误码、额外事件、registry、额外文件、Rust 失败/错误字节、私有复制和可写文件均有拒绝对照。
+- **覆盖边界：** 最初原生观察仅覆盖上述 mods/Modrinth 案例；随后 [Windows 精确门禁运行](https://github.com/678mjoe/JMCLCore/actions/runs/40103030834/job/120898896518) 分别确认四类内容 × 两个 provider 的八个 disabled 案例均符合该错误/残留状态及 Rust 纠正不变量，其余 32 个案例仍严格相同。此处仅描述该缺陷测试，不能推断该工作流的其它测试或项目整体通过。Linux 仍运行真实 oracle 严格差分，并用明确合成的失败状态验证匹配器与负对照；这不是 Windows 验收替代品。错误码、额外事件、registry、额外文件、Rust 失败/错误字节、私有复制和可写文件均有拒绝对照。
 
 ## 源码确认的独立风险：带凭据请求的跨源重定向
 

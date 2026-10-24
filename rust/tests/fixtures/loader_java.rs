@@ -40,7 +40,18 @@ fn main() {
     assert!(std::path::Path::new(&args[8]).file_name().unwrap() == "dep-1.jar");
     let cwd = std::env::current_dir().unwrap();
     let output = std::path::Path::new(&args[4]);
-    assert!(output.starts_with(&cwd));
+    // GetFinalPathNameByHandleW yields a verbatim path (\\?\ prefix), while
+    // current_dir may spell the same directory as an ordinary drive path.
+    // Compare existing directory identities, not incompatible lexical prefixes;
+    // the output leaf does not exist yet and must not be canonicalized.
+    let root = fs::canonicalize(&cwd).unwrap();
+    let parent = fs::canonicalize(output.parent().unwrap()).unwrap();
+    assert!(
+        parent.starts_with(&root),
+        "fixture output parent {:?} escapes {:?}",
+        parent,
+        root
+    );
     let mut order = fs::OpenOptions::new()
         .create(true)
         .append(true)

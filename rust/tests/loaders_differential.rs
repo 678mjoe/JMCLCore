@@ -247,6 +247,22 @@ fn synthetic_native_chain_and_state() {
         let out = c.rust();
         assert_eq!(out.last().unwrap()["status"], "patched", "{out:?}");
         assert_eq!(out.last().unwrap()["processors_run"], 2);
+        let expected = if c.server() { "server" } else { "client" };
+        let patched = c
+            .root()
+            .join(format!("libraries/a/patched/1/patched-1-{expected}.jar"));
+        assert_eq!(fs::read(patched).unwrap(), expected.as_bytes());
+        assert_eq!(
+            out.last().unwrap()["patched_sha1"],
+            hash(expected.as_bytes())
+        );
+        assert_eq!(out.last().unwrap()["patched_size"], expected.len());
+        let state: Value = serde_json::from_slice(
+            &fs::read(c.root().join(c.support()).join("state.json")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(state["patched_sha1"], hash(expected.as_bytes()));
+        assert_eq!(state["patched_size"], expected.len());
         assert!(!c.root().join(c.support()).join("work").exists());
         let out = c.rust();
         assert_eq!(out.last().unwrap()["status"], "cached");
@@ -348,6 +364,10 @@ fn cached_output_needs_no_environment_and_is_hardlinked() {
     c.setup();
     let first = c.rust();
     let summary = first.last().unwrap();
+    assert_eq!(
+        summary["status"], "patched",
+        "cache precondition failed: {first:?}"
+    );
     let root = ArtifactRoot::open(c.root()).unwrap();
     let store = Store::open(c.store()).unwrap();
     let second = loaders::run(
@@ -798,4 +818,62 @@ fn unavailable_managed_acquisition_is_explicit_failure() {
     );
     assert!(!c.root().join(".jmcl/install.json").exists());
     assert!(!c.root().join(c.support()).join("state.json").exists());
+}
+
+#[test]
+fn native_fixture_containment_uses_directory_identity() {
+    let temporary = tempfile::tempdir().unwrap();
+    let cwd = temporary.path().join("root");
+    fs::create_dir(&cwd).unwrap();
+    let child = cwd.join("child");
+    fs::create_dir(&child).unwrap();
+    let sibling = temporary.path().join("root-other");
+    fs::create_dir(&sibling).unwrap();
+    let embedded = cwd.join("blob");
+    fs::write(&embedded, b"embedded fixture").unwrap();
+    for (parent, success) in [(&child, true), (&sibling, false)] {
+        let output = fs::canonicalize(parent).unwrap().join("output.jar");
+        let result = Command::new(java())
+            .args(["-cp", "fixture", "fixture.Main"])
+            .arg(&output)
+            .args(["client", "literal value"])
+            .arg(&embedded)
+            .arg("dep-1.jar")
+            .current_dir(&cwd)
+            .output()
+            .unwrap();
+        assert_eq!(
+            result.status.success(),
+            success,
+            "{}",
+            String::from_utf8_lossy(&result.stderr)
+        );
+        if success {
+            assert_eq!(fs::read(&output).unwrap(), b"client");
+        } else {
+            assert!(!output.exists());
+        }
+    }
+}
+#[test]
+#[cfg(windows)]
+#[ignore = "requires pinned Windows Zig path diagnostic"]
+fn windows_verbatim_join_diagnostic() {
+    let exe =
+        std::env::var_os("JMCL_ZIG_LOADERS_ORACLE").expect("JMCL_ZIG_LOADERS_ORACLE required");
+    let temporary = tempfile::tempdir().unwrap();
+    let out = Command::new(exe)
+        .arg("--path-probe")
+        .arg(temporary.path())
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let observed: Value = serde_json::from_slice(&out.stdout).unwrap();
+    eprintln!("Windows pinned loader path evidence: {observed}");
+    assert_eq!(observed["mixed"], "BadPathName");
+    assert_eq!(observed["native"], "ok");
 }
