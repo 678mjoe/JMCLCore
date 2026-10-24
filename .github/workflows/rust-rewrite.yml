@@ -1,0 +1,135 @@
+name: Experimental Rust rewrite compatibility
+
+on:
+  pull_request:
+  push:
+    branches: [main, rust-rewrite]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rust-rewrite-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  RUST_VERSION: 1.99.1
+  # Experimental exact allowlist only; strict replacement checks omit this.
+  JMCL_ALLOW_KNOWN_ORACLE_GAPS: "1"
+  ORACLE_REVISION: 5a4310debbcee26b3d2391bab2339f79cd6ec52e
+
+jobs:
+  native:
+    # Standard public runners only; no secrets, releases or uploaded artifacts.
+    if: github.event.repository.visibility == 'public'
+    name: Experimental Rust (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        os: [ubuntu-24.04, macos-15, macos-15-intel, windows-2025]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          repository: 678mjoe/JMCLCore
+          ref: ${{ env.ORACLE_REVISION }}
+          path: .ci-oracle
+          persist-credentials: false
+      - name: Install pinned Rust through official rustup
+        run: |
+          rustup toolchain install "$RUST_VERSION" --profile minimal --component rustfmt --component clippy
+          rustup default "$RUST_VERSION"
+      - name: Install checksum-pinned official Zig 0.16.0
+        run: |
+          python - <<'PYTHON'
+          #!/usr/bin/env python3
+          """Install the pinned official Zig archive in RUNNER_TEMP, never system-wide.
+
+          SHA-256 values: https://ziglang.org/download/index.json (0.16.0).
+          Only the four explicitly supported native CI host architectures are accepted.
+          """
+          import hashlib
+          import os
+          from pathlib import Path
+          import platform
+          import shutil
+          import subprocess
+          import tempfile
+          import urllib.request
+          import zipfile
+
+          VERSION = "0.16.0"
+          ARCHIVES = {
+              ("Linux", "x86_64"): ("x86_64-linux", "tar.xz", "70e49664a74374b48b51e6f3fdfbf437f6395d42509050588bd49abe52ba3d00"),
+              ("Darwin", "x86_64"): ("x86_64-macos", "tar.xz", "0387557ed1877bc6a2e1802c8391953baddba76081876301c522f52977b52ba7"),
+              ("Darwin", "arm64"): ("aarch64-macos", "tar.xz", "b23d70deaa879b5c2d486ed3316f7eaa53e84acf6fc9cc747de152450d401489"),
+              ("Windows", "AMD64"): ("x86_64-windows", "zip", "68659eb5f1e4eb1437a722f1dd889c5a322c9954607f5edcf337bc3684a75a7e"),
+          }
+
+
+          def main():
+              target, extension, digest = ARCHIVES[(platform.system(), platform.machine())]
+              name = f"zig-{target}-{VERSION}"
+              root = Path(tempfile.mkdtemp(prefix="jmcl-zig-", dir=os.environ["RUNNER_TEMP"]))
+              archive = root / f"{name}.{extension}"
+              url = f"https://ziglang.org/download/{VERSION}/{archive.name}"
+              with urllib.request.urlopen(url, timeout=120) as response, archive.open("wb") as output:
+                  shutil.copyfileobj(response, output)
+              if hashlib.sha256(archive.read_bytes()).hexdigest() != digest:
+                  raise RuntimeError("Official Zig archive SHA-256 mismatch; refusing to extract or execute")
+              if extension == "zip":
+                  with zipfile.ZipFile(archive) as compressed:
+                      compressed.extractall(root)
+              else:
+                  subprocess.run(["tar", "-xJf", str(archive), "-C", str(root)], check=True)
+              binary = root / name / ("zig.exe" if platform.system() == "Windows" else "zig")
+              actual = subprocess.check_output([str(binary), "version"], text=True).strip()
+              if actual != VERSION:
+                  raise RuntimeError(f"Unexpected Zig version: {actual}")
+              with open(os.environ["GITHUB_PATH"], "a", encoding="utf-8") as output:
+                  output.write(str(binary.parent) + "\n")
+              print(f"Verified Zig {actual} for {target}: sha256={digest}")
+
+
+          if __name__ == "__main__":
+              main()
+          PYTHON
+      - name: Build pinned Zig oracle (not an implementation dependency)
+        run: |
+          test "$(git -C .ci-oracle rev-parse HEAD)" = "$ORACLE_REVISION"
+          (cd .ci-oracle && zig build -Doptimize=ReleaseSafe --summary all)
+          python - <<'PYTHON'
+          import os
+          from pathlib import Path
+          binary = Path(".ci-oracle/zig-out/bin") / ("jmcl-core.exe" if os.name == "nt" else "jmcl-core")
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as output:
+              output.write(f"JMCL_ZIG_ORACLE={binary.resolve()}\n")
+          PYTHON
+      - name: Rust formatting and tests
+        working-directory: rust
+        run: |
+          if [[ "$RUNNER_OS" == "Linux" ]]; then export JMCL_REQUIRE_CROSS_DEVICE=1; fi
+          cargo fmt --all -- --check
+          cargo clippy --locked --all-targets -- -D warnings
+          cargo test --locked --all-targets -- --include-ignored
+          cargo test --locked --test store_differential -- --include-ignored --nocapture
+          cargo build --locked --release
+      - name: Differential implemented-slice compatibility
+        run: |
+          python rust/compat/validate_coverage.py --oracle-source .ci-oracle
+          if [[ "$RUNNER_OS" == "Windows" ]]; then
+            python rust/compat/check.py --zig .ci-oracle/zig-out/bin/jmcl-core.exe --rust rust/target/release/jmcl-core-rust.exe --oracle-source .ci-oracle --allow-known-gaps
+            python rust/compat/accounts.py --zig .ci-oracle/zig-out/bin/jmcl-core.exe --rust rust/target/release/jmcl-core-rust.exe
+          else
+            python rust/compat/check.py --zig .ci-oracle/zig-out/bin/jmcl-core --rust rust/target/release/jmcl-core-rust --oracle-source .ci-oracle --allow-known-gaps
+            python rust/compat/accounts.py --zig .ci-oracle/zig-out/bin/jmcl-core --rust rust/target/release/jmcl-core-rust
+          fi

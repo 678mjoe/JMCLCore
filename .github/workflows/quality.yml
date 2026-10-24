@@ -3,7 +3,7 @@ name: Core build and tests
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [main, rust-rewrite]
   workflow_dispatch:
 
 permissions:

@@ -1,0 +1,1773 @@
+{
+  "oracle_commit": "5a4310debbcee26b3d2391bab2339f79cd6ec52e",
+  "full_compatibility": false,
+  "replacement_allowed": false,
+  "scope_note": "Per-method finite evidence inventory, not proof of full parity. CI execution evidence is recorded separately with exact commit. Unsupported methods and unresolved behavioral gaps block replacement.",
+  "methods": [
+    {
+      "method": "ping",
+      "source_inventory": true,
+      "implementation": "implemented_slice",
+      "success_cases": [
+        "check.py: baseline ping/version"
+      ],
+      "invalid_cases": [
+        "check.py: malformed/duplicates/coercion/boundary corpus"
+      ],
+      "error_cases": [
+        "check.py: invalid/unsupported protocol"
+      ],
+      "event_cases": [
+        "check.py: raw stdout terminal ordering and serial recovery"
+      ],
+      "disk_cases": [],
+      "platform_evidence": {
+        "linux": "executed; see milestone evidence",
+        "macos_arm64": "pending CI",
+        "macos_x86_64": "pending CI",
+        "windows": "pending CI"
+      },
+      "known_gaps": [
+        "RPC oversized pipelined request recovery differs from pinned Zig oracle; owner decision pending.",
+        "This finite corpus does not prove all possible inputs."
+      ],
+      "compatible": false
+    },
+    {
+      "method": "core.version",
+      "source_inventory": true,
+      "implementation": "implemented_slice",
+      "success_cases": [
+        "check.py: baseline ping/version"
+      ],
+      "invalid_cases": [
+        "check.py: malformed/duplicates/coercion/boundary corpus"
+      ],
+      "error_cases": [
+        "check.py: invalid/unsupported protocol"
+      ],
+      "event_cases": [
+        "check.py: raw stdout terminal ordering and serial recovery"
+      ],
+      "disk_cases": [],
+      "platform_evidence": {
+        "linux": "executed; see milestone evidence",
+        "macos_arm64": "pending CI",
+        "macos_x86_64": "pending CI",
+        "windows": "pending CI"
+      },
+      "known_gaps": [
+        "RPC oversized pipelined request recovery differs from pinned Zig oracle; owner decision pending.",
+        "This finite corpus does not prove all possible inputs."
+      ],
+      "compatible": false
+    },
+    {
+      "method": "version.list",
+      "source_inventory": true,
+      "implementation": "not_started",
+      "success_cases": [],
+      "invalid_cases": [],
+      "error_cases": [],
+      "event_cases": [],
+      "disk_cases": [],
+      "platform_evidence": {},
+      "known_gaps": [
+        "Not implemented."
+      ],
+      "compatible": false
+    },
+    {
+      "method": "version.get",
+      "source_inventory": true,
+      "implementation": "not_started",
+      "success_cases": [],
+      "invalid_cases": [],
+      "error_cases": [],
+      "event_cases": [],
+      "disk_cases": [],
+      "platform_evidence": {},
+      "known_gaps": [
+        "Not implemented."
+      ],
+      "compatible": false
+    },
+    {
+      "method": "version.resolve",
+      "source_inventory": true,
+      "implementation": "not_started",
+      "success_cases": [],
+      "invalid_cases": [],
+      "error_cases": [],
+      "event_cases": [],
+      "disk_cases": [],
+      "platform_evidence": {},
+      "known_gaps": [
+        "Not implemented."
+      ],
+      "compatible": false
+    },
+    {
+      "method": "install.plan",
+      "source_inventory": true,
+      "implementation": "not_started",
+      "success_cases": [],
+      "invalid_cases": [],
+      "error_cases": [],
+      "event_cases": [],
+      "disk_cases": [],
+      "platform_evidence": {},
+      "known_gaps": [
+        "Not implemented."
+      ],
+      "compatible": false
+    },
+    {
+      "method": "install.execute",
+      "source_inventory": true,
+      "implementation": "not_started",
+      "success_cases": [],
+      "invalid_cases": [],
+      "error_cases": [],
+      "event_cases": [],
+      "disk_cases": [],
+      "platform_evidence": {},
+      "known_gaps": [
+        "Not implemented."
+      ],
+      "compatible": false
+    },
+    {
+      "method": "install.prepare",
+      "source_inventory": true,
+      "implementation": "not_started",
+      "success_cases": [],
+      "invalid_cases": [],
+      "error_cases": [],
+      "event_cases": [],
+      "disk_cases": [],
+      "platform_evidence": {},
+      "known_gaps": [
+        "Not implemented."
+      ],
+      "compatible": false
+    },
+    {
+      "method": "store.gc",
+      "source_inventory": true,
+      "implementation": "not_started",
+      "success_cases": [],
+      "invalid_cases": [],
+      "error_cases": [],
+      "event_cases": [],
+      "disk_cases": [],
+      "platform_evidence": {},
+      "known_gaps": [
+        "Not implemented.",
+        "Pinned Windows Zig GC reports one error instead of blocking under an existing held digest lock; exact error/retention/post-release pair allowlisted only in experimental CI. Strict replacement remains blocked."
+      ],
+      "compatible": false
+    },
+    {
+      "method": "mods.list",
+      "source_inventory": true,
+      "implementation": "not_started",
+      "success_cases": [],
+      "invalid_cases": [],
+      "error_cases": [],
+      "event_cases": [],
+      "disk_cases": [],
+      "platform_evidence": {},
+      "known_gaps": [
+        "Not implemented."
+      ],
+      "compatible": false
+    },
+    {
+      "method": "mods.install",
+      "source_inventory": true,
+      "implementation": "not_started",
+      "success_cases": [],
+      "invalid_cases": [],
+      "error_cases": [],
+      "event_cases": [],
+      "disk_cases": [],
+      "platform_evidence": {},
+      "known_gaps": [
+        "Not implemented."
+      ],
+      "compatible": false
+    },
+    {
+      "method": "mods.set-version",
+      "source_inventory": true,
+      "implementation": "not_started",
+      "success_cases": [],
+      "invalid_cases": [],
+      "error_cases": [],
+      "event_cases": [],
+      "disk_cases": [],
+      "platform_evidence": {},
+      "known_gaps": [
+        "Not implemented."
+      ],
+      "compatible": false
+    },
+    {
+      "method": "mods.enable",
+      "source_inventory": true,
+      "implementation": "not_started",
+      "success_cases": [],
+      "invalid_cases": [],
+      "error_cases": [],
+      "event_cases": [],
+      "disk_cases": [],
+      "platform_evidence": {},
+      "known_gaps": [
+        "Not implemented."
+      ],
+      "compatible": false
+    },
+    {
+      "method": "mods.disable",
+      "source_inventory": true,
+      "implementation": "not_started",
+      "success_cases": [],
+      "invalid_cases": [],
+      "error_cases": [],
+      "event_cases": [],
+      "disk_cases": [],
+      "platform_evidence": {},
+      "known_gaps": [
+        "Not implemented."
+      ],
+      "compatible": false
+    },
+    {
+      "method": "mods.remove",
+      "source_inventory": true,
+      "implementation": "not_started",
+      "success_cases": [],
+      "invalid_cases": [],
+      "error_cases": [],
+      "event_cases": [],
+      "disk_cases": [],
+      "platform_evidence": {},
+      "known_gaps": [
+        "Not implemented."
+      ],
+      "compatible": false
+    },
+    {
+      "method": "mods.adopt",
+      "source_inventory": true,
+      "implementation": "not_started",
+      "success_cases": [],
+      "invalid_cases": [],
+      "error_cases": [],
+      "event_cases": [],
+      "disk_cases": [],
+      "platform_evidence": {},
+      "known_gaps": [
+        "Not implemented."
+      ],
+      "compatible": false
+    },
+    {
+      "method": "resourcepacks.list",
+      "source_inventory": true,
+      "implementation": "not_started",
+      "success_cases": [],
+      "invalid_cases": [],
+      "error_cases": [],
+      "event_cases": [],
+      "disk_cases": [],
+      "platform_evidence": {},
+      "known_gaps": [
+        "Not implemented."
+      ],
+      "compatible": false
+    },
+    {
+      "method": "resourcepacks.install",
+      "source_inventory": true,
+      "implementation": "not_started",
+      "success_cases": [],
+      "invalid_cases": [],
+      "error_cases": [],
+      "event_cases": [],
+      "disk_cases": [],
+      "platform_evidence": {},
+      "known_gaps": [
+        "Not implemented."
+      ],
+      "compatible": false
+    },
+    {
+      "method": "resourcepacks.set-version",
+      "source_inventory": true,
+      "implementation": "not_started",
+      "success_cases": [],
+      "invalid_cases": [],
+      "error_cases": [],
+      "event_cases": [],
+      "disk_cases": [],
+      "platform_evidence": {},
+      "known_gaps": [
+        "Not implemented."
+      ],
+      "compatible": false
+    },
+    {
+      "method": "resourcepacks.enable",
+      "source_inventory": true,
+      "implementation": "not_started",
+      "success_cases": [],
+      "invalid_cases": [],
+      "error_cases": [],
+      "event_cases": [],
+      "disk_cases": [],
+      "platform_evidence": {},
+      "known_gaps": [
+        "Not implemented."
+      ],
+      "compatible": false
+    },
+    {
+      "method": "resourcepacks.disable",
+      "source_inventory": true,
+      "implementation": "not_started",
+      "success_cases": [],
+      "invalid_cases": [],
+      "error_cases": [],
+      "event_cases": [],
+      "disk_cases": [],
+      "platform_evidence": {},
+      "known_gaps": [
+        "Not implemented."
+      ],
+      "compatible": false
+    },
+    {
+      "method": "resourcepacks.remove",
+      "source_inventory": true,
+      "implementation": "not_started",
+      "success_cases": [],
+      "invalid_cases": [],
+      "error_cases": [],
+      "event_cases": [],
+      "disk_cases": [],
+      "platform_evidence": {},
+      "known_gaps": [
+        "Not implemented."
+      ],
+      "compatible": false
+    },
+    {
+      "method": "resourcepacks.adopt",
+      "source_inventory": true,
+      "implementation": "not_started",
+      "success_cases": [],
+      "invalid_cases": [],
+      "error_cases": [],
+      "event_cases": [],
+      "disk_cases": [],
+      "platform_evidence": {},
+      "known_gaps": [
+        "Not implemented."
+      ],
+      "compatible": false
+    },
+    {
+      "method": "shaderpacks.list",
+      "source_inventory": true,
+      "implementation": "not_started",
+      "success_cases": [],
+      "invalid_cases": [],
+      "error_cases": [],
+      "event_cases": [],
+      "disk_cases": [],
+      "platform_evidence": {},
+      "known_gaps": [
+        "Not implemented."
+      ],
+      "compatible": false
+    },
+    {
+      "method": "shaderpacks.install",
+      "source_inventory": true,
+      "implementation": "not_started",
+      "success_cases": [],
+      "invalid_cases": [],
+      "error_cases": [],
+      "event_cases": [],
+      "disk_cases": [],
+      "platform_evidence": {},
+      "known_gaps": [
+        "Not implemented."
+      ],
+      "compatible": false
+    },
+    {
+      "method": "shaderpacks.set-version",
+      "source_inventory": true,
+      "implementation": "not_started",
+      "success_cases": [],
+      "invalid_cases": [],
+      "error_cases": [],
+      "event_cases": [],
+      "disk_cases": [],
+      "platform_evidence": {},
+      "known_gaps": [
+        "Not implemented."
+      ],
+      "compatible": false
+    },
+    {
+      "method": "shaderpacks.enable",
+      "source_inventory": true,
+      "implementation": "not_started",
+      "success_cases": [],
+      "invalid_cases": [],
+      "error_cases": [],
+      "event_cases": [],
+      "disk_cases": [],
+      "platform_evidence": {},
+      "known_gaps": [
+        "Not implemented."
+      ],
+      "compatible": false
+    },
+    {
+      "method": "shaderpacks.disable",
+      "source_inventory": true,
+      "implementation": "not_started",
+      "success_cases": [],
+      "invalid_cases": [],
+      "error_cases": [],
+      "event_cases": [],
+      "disk_cases": [],
+      "platform_evidence": {},
+      "known_gaps": [
+        "Not implemented."
+      ],
+      "compatible": false
+    },
+    {
+      "method": "shaderpacks.remove",
+      "source_inventory": true,
+      "implementation": "not_started",
+      "success_cases": [],
+      "invalid_cases": [],
+      "error_cases": [],
+      "event_cases": [],
+      "disk_cases": [],
+      "platform_evidence": {},
+      "known_gaps": [
+        "Not implemented."
+      ],
+      "compatible": false
+    },
+    {
+      "method": "shaderpacks.adopt",
+      "source_inventory": true,
+      "implementation": "not_started",
+      "success_cases": [],
+      "invalid_cases": [],
+      "error_cases": [],
+      "event_cases": [],
+      "disk_cases": [],
+      "platform_evidence": {},
+      "known_gaps": [
+        "Not implemented."
+      ],
+      "compatible": false
+    },
+    {
+      "method": "datapacks.list",
+      "source_inventory": true,
+      "implementation": "not_started",
+      "success_cases": [],
+      "invalid_cases": [],
+      "error_cases": [],
+      "event_cases": [],
+      "disk_cases": [],
+      "platform_evidence": {},
+      "known_gaps": [
+        "Not implemented."
+      ],
+      "compatible": false
+    },
+    {
+      "method": "datapacks.install",
+      "source_inventory": true,
+      "implementation": "not_started",
+      "success_cases": [],
+      "invalid_cases": [],
+      "error_cases": [],
+      "event_cases": [],
+      "disk_cases": [],
+      "platform_evidence": {},
+      "known_gaps": [
+        "Not implemented."
+      ],
+      "compatible": false
+    },
+    {
+      "method": "datapacks.set-version",
+      "source_inventory": true,
+      "implementation": "not_started",
+      "success_cases": [],
+      "invalid_cases": [],
+      "error_cases": [],
+      "event_cases": [],
+      "disk_cases": [],
+      "platform_evidence": {},
+      "known_gaps": [
+        "Not implemented."
+      ],
+      "compatible": false
+    },
+    {
+      "method": "datapacks.enable",
+      "source_inventory": true,
+      "implementation": "not_started",
+      "success_cases": [],
+      "invalid_cases": [],
+      "error_cases": [],
+      "event_cases": [],
+      "disk_cases": [],
+      "platform_evidence": {},
+      "known_gaps": [
+        "Not implemented."
+      ],
+      "compatible": false
+    },
+    {
+      "method": "datapacks.disable",
+      "source_inventory": true,
+      "implementation": "not_started",
+      "success_cases": [],
+      "invalid_cases": [],
+      "error_cases": [],
+      "event_cases": [],
+      "disk_cases": [],
+      "platform_evidence": {},
+      "known_gaps": [
+        "Not implemented."
+      ],
+      "compatible": false
+    },
+    {
+      "method": "datapacks.remove",
+      "source_inventory": true,
+      "implementation": "not_started",
+      "success_cases": [],
+      "invalid_cases": [],
+      "error_cases": [],
+      "event_cases": [],
+      "disk_cases": [],
+      "platform_evidence": {},
+      "known_gaps": [
+        "Not implemented."
+      ],
+      "compatible": false
+    },
+    {
+      "method": "datapacks.adopt",
+      "source_inventory": true,
+      "implementation": "not_started",
+      "success_cases": [],
+      "invalid_cases": [],
+      "error_cases": [],
+      "event_cases": [],
+      "disk_cases": [],
+      "platform_evidence": {},
+      "known_gaps": [
+        "Not implemented."
+      ],
+      "compatible": false
+    },
+    {
+      "method": "modpack.install",
+      "source_inventory": true,
+      "implementation": "not_started",
+      "success_cases": [],
+      "invalid_cases": [],
+      "error_cases": [],
+      "event_cases": [],
+      "disk_cases": [],
+      "platform_evidence": {},
+      "known_gaps": [
+        "Not implemented."
+      ],
+      "compatible": false
+    },
+    {
+      "method": "instance.create",
+      "source_inventory": true,
+      "implementation": "partial",
+      "success_cases": [
+        "tests/instance_differential.rs: shared_directory_bidirectional"
+      ],
+      "invalid_cases": [
+        "tests/instance_differential.rs: invalid_parameter_and_disk_corpus",
+        "tests/instance_differential.rs: schema_numeric_compatibility"
+      ],
+      "error_cases": [
+        "tests/instance_differential.rs: invalid_parameter_and_disk_corpus"
+      ],
+      "event_cases": [
+        "tests/instance_differential.rs: envelope and result field ordering"
+      ],
+      "disk_cases": [
+        "tests/instance_differential.rs: shared_directory_bidirectional",
+        "tests/instance_differential.rs: configured_root_symlink_ancestor_matches_oracle",
+        "tests/instance_differential.rs: read-only manifest alias and deletion safety"
+      ],
+      "platform_evidence": {
+        "linux": "executed; see milestone evidence",
+        "macos_arm64": "pending CI",
+        "macos_x86_64": "pending CI",
+        "windows": "adapter implemented and cross-compiled; native CI pending"
+      },
+      "known_gaps": [
+        "Native platform matrix pending.",
+        "validate=true metadata/loader resolution unported."
+      ],
+      "compatible": false
+    },
+    {
+      "method": "instance.list",
+      "source_inventory": true,
+      "implementation": "implemented_slice",
+      "success_cases": [
+        "tests/instance_differential.rs: shared_directory_bidirectional"
+      ],
+      "invalid_cases": [
+        "tests/instance_differential.rs: invalid_parameter_and_disk_corpus",
+        "tests/instance_differential.rs: schema_numeric_compatibility"
+      ],
+      "error_cases": [
+        "tests/instance_differential.rs: invalid_parameter_and_disk_corpus"
+      ],
+      "event_cases": [
+        "tests/instance_differential.rs: envelope and result field ordering"
+      ],
+      "disk_cases": [
+        "tests/instance_differential.rs: shared_directory_bidirectional",
+        "tests/instance_differential.rs: configured_root_symlink_ancestor_matches_oracle",
+        "tests/instance_differential.rs: read-only manifest alias and deletion safety"
+      ],
+      "platform_evidence": {
+        "linux": "executed; see milestone evidence",
+        "macos_arm64": "pending CI",
+        "macos_x86_64": "pending CI",
+        "windows": "adapter implemented and cross-compiled; native CI pending"
+      },
+      "known_gaps": [
+        "Native platform matrix pending."
+      ],
+      "compatible": false
+    },
+    {
+      "method": "instance.get",
+      "source_inventory": true,
+      "implementation": "implemented_slice",
+      "success_cases": [
+        "tests/instance_differential.rs: shared_directory_bidirectional"
+      ],
+      "invalid_cases": [
+        "tests/instance_differential.rs: invalid_parameter_and_disk_corpus",
+        "tests/instance_differential.rs: schema_numeric_compatibility"
+      ],
+      "error_cases": [
+        "tests/instance_differential.rs: invalid_parameter_and_disk_corpus"
+      ],
+      "event_cases": [
+        "tests/instance_differential.rs: envelope and result field ordering"
+      ],
+      "disk_cases": [
+        "tests/instance_differential.rs: shared_directory_bidirectional",
+        "tests/instance_differential.rs: configured_root_symlink_ancestor_matches_oracle",
+        "tests/instance_differential.rs: read-only manifest alias and deletion safety"
+      ],
+      "platform_evidence": {
+        "linux": "executed; see milestone evidence",
+        "macos_arm64": "pending CI",
+        "macos_x86_64": "pending CI",
+        "windows": "adapter implemented and cross-compiled; native CI pending"
+      },
+      "known_gaps": [
+        "Native platform matrix pending."
+      ],
+      "compatible": false
+    },
+    {
+      "method": "instance.delete",
+      "source_inventory": true,
+      "implementation": "implemented_slice",
+      "success_cases": [
+        "tests/instance_differential.rs: shared_directory_bidirectional"
+      ],
+      "invalid_cases": [
+        "tests/instance_differential.rs: invalid_parameter_and_disk_corpus",
+        "tests/instance_differential.rs: schema_numeric_compatibility"
+      ],
+      "error_cases": [
+        "tests/instance_differential.rs: invalid_parameter_and_disk_corpus"
+      ],
+      "event_cases": [
+        "tests/instance_differential.rs: envelope and result field ordering"
+      ],
+      "disk_cases": [
+        "tests/instance_differential.rs: shared_directory_bidirectional",
+        "tests/instance_differential.rs: configured_root_symlink_ancestor_matches_oracle",
+        "tests/instance_differential.rs: read-only manifest alias and deletion safety"
+      ],
+      "platform_evidence": {
+        "linux": "executed; see milestone evidence",
+        "macos_arm64": "pending CI",
+        "macos_x86_64": "pending CI",
+        "windows": "adapter implemented and cross-compiled; native CI pending"
+      },
+      "known_gaps": [
+        "Native platform matrix pending."
+      ],
+      "compatible": false
+    },
+    {
+      "method": "server.create",
+      "source_inventory": true,
+      "implementation": "not_started",
+      "success_cases": [],
+      "invalid_cases": [],
+      "error_cases": [],
+      "event_cases": [],
+      "disk_cases": [],
+      "platform_evidence": {},
+      "known_gaps": [
+        "Not implemented."
+      ],
+      "compatible": false
+    },
+    {
+      "method": "server.list",
+      "source_inventory": true,
+      "implementation": "not_started",
+      "success_cases": [],
+      "invalid_cases": [],
+      "error_cases": [],
+      "event_cases": [],
+      "disk_cases": [],
+      "platform_evidence": {},
+      "known_gaps": [
+        "Not implemented."
+      ],
+      "compatible": false
+    },
+    {
+      "method": "server.get",
+      "source_inventory": true,
+      "implementation": "not_started",
+      "success_cases": [],
+      "invalid_cases": [],
+      "error_cases": [],
+      "event_cases": [],
+      "disk_cases": [],
+      "platform_evidence": {},
+      "known_gaps": [
+        "Not implemented."
+      ],
+      "compatible": false
+    },
+    {
+      "method": "server.delete",
+      "source_inventory": true,
+      "implementation": "not_started",
+      "success_cases": [],
+      "invalid_cases": [],
+      "error_cases": [],
+      "event_cases": [],
+      "disk_cases": [],
+      "platform_evidence": {},
+      "known_gaps": [
+        "Not implemented."
+      ],
+      "compatible": false
+    },
+    {
+      "method": "server.install",
+      "source_inventory": true,
+      "implementation": "not_started",
+      "success_cases": [],
+      "invalid_cases": [],
+      "error_cases": [],
+      "event_cases": [],
+      "disk_cases": [],
+      "platform_evidence": {},
+      "known_gaps": [
+        "Not implemented."
+      ],
+      "compatible": false
+    },
+    {
+      "method": "server.start",
+      "source_inventory": true,
+      "implementation": "not_started",
+      "success_cases": [],
+      "invalid_cases": [],
+      "error_cases": [],
+      "event_cases": [],
+      "disk_cases": [],
+      "platform_evidence": {},
+      "known_gaps": [
+        "Not implemented."
+      ],
+      "compatible": false
+    },
+    {
+      "method": "server.stop",
+      "source_inventory": true,
+      "implementation": "not_started",
+      "success_cases": [],
+      "invalid_cases": [],
+      "error_cases": [],
+      "event_cases": [],
+      "disk_cases": [],
+      "platform_evidence": {},
+      "known_gaps": [
+        "Not implemented."
+      ],
+      "compatible": false
+    },
+    {
+      "method": "server.restart",
+      "source_inventory": true,
+      "implementation": "not_started",
+      "success_cases": [],
+      "invalid_cases": [],
+      "error_cases": [],
+      "event_cases": [],
+      "disk_cases": [],
+      "platform_evidence": {},
+      "known_gaps": [
+        "Not implemented."
+      ],
+      "compatible": false
+    },
+    {
+      "method": "server.status",
+      "source_inventory": true,
+      "implementation": "not_started",
+      "success_cases": [],
+      "invalid_cases": [],
+      "error_cases": [],
+      "event_cases": [],
+      "disk_cases": [],
+      "platform_evidence": {},
+      "known_gaps": [
+        "Not implemented."
+      ],
+      "compatible": false
+    },
+    {
+      "method": "server.logs",
+      "source_inventory": true,
+      "implementation": "not_started",
+      "success_cases": [],
+      "invalid_cases": [],
+      "error_cases": [],
+      "event_cases": [],
+      "disk_cases": [],
+      "platform_evidence": {},
+      "known_gaps": [
+        "Not implemented."
+      ],
+      "compatible": false
+    },
+    {
+      "method": "server.command",
+      "source_inventory": true,
+      "implementation": "not_started",
+      "success_cases": [],
+      "invalid_cases": [],
+      "error_cases": [],
+      "event_cases": [],
+      "disk_cases": [],
+      "platform_evidence": {},
+      "known_gaps": [
+        "Not implemented."
+      ],
+      "compatible": false
+    },
+    {
+      "method": "server.rcon.command",
+      "source_inventory": true,
+      "implementation": "not_started",
+      "success_cases": [],
+      "invalid_cases": [],
+      "error_cases": [],
+      "event_cases": [],
+      "disk_cases": [],
+      "platform_evidence": {},
+      "known_gaps": [
+        "Not implemented."
+      ],
+      "compatible": false
+    },
+    {
+      "method": "server.query",
+      "source_inventory": true,
+      "implementation": "not_started",
+      "success_cases": [],
+      "invalid_cases": [],
+      "error_cases": [],
+      "event_cases": [],
+      "disk_cases": [],
+      "platform_evidence": {},
+      "known_gaps": [
+        "Not implemented."
+      ],
+      "compatible": false
+    },
+    {
+      "method": "server.properties.get",
+      "source_inventory": true,
+      "implementation": "not_started",
+      "success_cases": [],
+      "invalid_cases": [],
+      "error_cases": [],
+      "event_cases": [],
+      "disk_cases": [],
+      "platform_evidence": {},
+      "known_gaps": [
+        "Not implemented."
+      ],
+      "compatible": false
+    },
+    {
+      "method": "server.properties.set",
+      "source_inventory": true,
+      "implementation": "not_started",
+      "success_cases": [],
+      "invalid_cases": [],
+      "error_cases": [],
+      "event_cases": [],
+      "disk_cases": [],
+      "platform_evidence": {},
+      "known_gaps": [
+        "Not implemented."
+      ],
+      "compatible": false
+    },
+    {
+      "method": "server.mods.list",
+      "source_inventory": true,
+      "implementation": "not_started",
+      "success_cases": [],
+      "invalid_cases": [],
+      "error_cases": [],
+      "event_cases": [],
+      "disk_cases": [],
+      "platform_evidence": {},
+      "known_gaps": [
+        "Not implemented."
+      ],
+      "compatible": false
+    },
+    {
+      "method": "server.mods.install",
+      "source_inventory": true,
+      "implementation": "not_started",
+      "success_cases": [],
+      "invalid_cases": [],
+      "error_cases": [],
+      "event_cases": [],
+      "disk_cases": [],
+      "platform_evidence": {},
+      "known_gaps": [
+        "Not implemented."
+      ],
+      "compatible": false
+    },
+    {
+      "method": "server.mods.set-version",
+      "source_inventory": true,
+      "implementation": "not_started",
+      "success_cases": [],
+      "invalid_cases": [],
+      "error_cases": [],
+      "event_cases": [],
+      "disk_cases": [],
+      "platform_evidence": {},
+      "known_gaps": [
+        "Not implemented."
+      ],
+      "compatible": false
+    },
+    {
+      "method": "server.mods.enable",
+      "source_inventory": true,
+      "implementation": "not_started",
+      "success_cases": [],
+      "invalid_cases": [],
+      "error_cases": [],
+      "event_cases": [],
+      "disk_cases": [],
+      "platform_evidence": {},
+      "known_gaps": [
+        "Not implemented."
+      ],
+      "compatible": false
+    },
+    {
+      "method": "server.mods.disable",
+      "source_inventory": true,
+      "implementation": "not_started",
+      "success_cases": [],
+      "invalid_cases": [],
+      "error_cases": [],
+      "event_cases": [],
+      "disk_cases": [],
+      "platform_evidence": {},
+      "known_gaps": [
+        "Not implemented."
+      ],
+      "compatible": false
+    },
+    {
+      "method": "server.mods.remove",
+      "source_inventory": true,
+      "implementation": "not_started",
+      "success_cases": [],
+      "invalid_cases": [],
+      "error_cases": [],
+      "event_cases": [],
+      "disk_cases": [],
+      "platform_evidence": {},
+      "known_gaps": [
+        "Not implemented."
+      ],
+      "compatible": false
+    },
+    {
+      "method": "server.mods.adopt",
+      "source_inventory": true,
+      "implementation": "not_started",
+      "success_cases": [],
+      "invalid_cases": [],
+      "error_cases": [],
+      "event_cases": [],
+      "disk_cases": [],
+      "platform_evidence": {},
+      "known_gaps": [
+        "Not implemented."
+      ],
+      "compatible": false
+    },
+    {
+      "method": "server.datapacks.list",
+      "source_inventory": true,
+      "implementation": "not_started",
+      "success_cases": [],
+      "invalid_cases": [],
+      "error_cases": [],
+      "event_cases": [],
+      "disk_cases": [],
+      "platform_evidence": {},
+      "known_gaps": [
+        "Not implemented."
+      ],
+      "compatible": false
+    },
+    {
+      "method": "server.datapacks.install",
+      "source_inventory": true,
+      "implementation": "not_started",
+      "success_cases": [],
+      "invalid_cases": [],
+      "error_cases": [],
+      "event_cases": [],
+      "disk_cases": [],
+      "platform_evidence": {},
+      "known_gaps": [
+        "Not implemented."
+      ],
+      "compatible": false
+    },
+    {
+      "method": "server.datapacks.set-version",
+      "source_inventory": true,
+      "implementation": "not_started",
+      "success_cases": [],
+      "invalid_cases": [],
+      "error_cases": [],
+      "event_cases": [],
+      "disk_cases": [],
+      "platform_evidence": {},
+      "known_gaps": [
+        "Not implemented."
+      ],
+      "compatible": false
+    },
+    {
+      "method": "server.datapacks.enable",
+      "source_inventory": true,
+      "implementation": "not_started",
+      "success_cases": [],
+      "invalid_cases": [],
+      "error_cases": [],
+      "event_cases": [],
+      "disk_cases": [],
+      "platform_evidence": {},
+      "known_gaps": [
+        "Not implemented."
+      ],
+      "compatible": false
+    },
+    {
+      "method": "server.datapacks.disable",
+      "source_inventory": true,
+      "implementation": "not_started",
+      "success_cases": [],
+      "invalid_cases": [],
+      "error_cases": [],
+      "event_cases": [],
+      "disk_cases": [],
+      "platform_evidence": {},
+      "known_gaps": [
+        "Not implemented."
+      ],
+      "compatible": false
+    },
+    {
+      "method": "server.datapacks.remove",
+      "source_inventory": true,
+      "implementation": "not_started",
+      "success_cases": [],
+      "invalid_cases": [],
+      "error_cases": [],
+      "event_cases": [],
+      "disk_cases": [],
+      "platform_evidence": {},
+      "known_gaps": [
+        "Not implemented."
+      ],
+      "compatible": false
+    },
+    {
+      "method": "server.datapacks.adopt",
+      "source_inventory": true,
+      "implementation": "not_started",
+      "success_cases": [],
+      "invalid_cases": [],
+      "error_cases": [],
+      "event_cases": [],
+      "disk_cases": [],
+      "platform_evidence": {},
+      "known_gaps": [
+        "Not implemented."
+      ],
+      "compatible": false
+    },
+    {
+      "method": "worlds.list",
+      "source_inventory": true,
+      "implementation": "not_started",
+      "success_cases": [],
+      "invalid_cases": [],
+      "error_cases": [],
+      "event_cases": [],
+      "disk_cases": [],
+      "platform_evidence": {},
+      "known_gaps": [
+        "Not implemented."
+      ],
+      "compatible": false
+    },
+    {
+      "method": "worlds.get",
+      "source_inventory": true,
+      "implementation": "not_started",
+      "success_cases": [],
+      "invalid_cases": [],
+      "error_cases": [],
+      "event_cases": [],
+      "disk_cases": [],
+      "platform_evidence": {},
+      "known_gaps": [
+        "Not implemented."
+      ],
+      "compatible": false
+    },
+    {
+      "method": "worlds.rename",
+      "source_inventory": true,
+      "implementation": "not_started",
+      "success_cases": [],
+      "invalid_cases": [],
+      "error_cases": [],
+      "event_cases": [],
+      "disk_cases": [],
+      "platform_evidence": {},
+      "known_gaps": [
+        "Not implemented."
+      ],
+      "compatible": false
+    },
+    {
+      "method": "worlds.duplicate",
+      "source_inventory": true,
+      "implementation": "not_started",
+      "success_cases": [],
+      "invalid_cases": [],
+      "error_cases": [],
+      "event_cases": [],
+      "disk_cases": [],
+      "platform_evidence": {},
+      "known_gaps": [
+        "Not implemented."
+      ],
+      "compatible": false
+    },
+    {
+      "method": "worlds.delete",
+      "source_inventory": true,
+      "implementation": "not_started",
+      "success_cases": [],
+      "invalid_cases": [],
+      "error_cases": [],
+      "event_cases": [],
+      "disk_cases": [],
+      "platform_evidence": {},
+      "known_gaps": [
+        "Not implemented."
+      ],
+      "compatible": false
+    },
+    {
+      "method": "worlds.export",
+      "source_inventory": true,
+      "implementation": "not_started",
+      "success_cases": [],
+      "invalid_cases": [],
+      "error_cases": [],
+      "event_cases": [],
+      "disk_cases": [],
+      "platform_evidence": {},
+      "known_gaps": [
+        "Not implemented."
+      ],
+      "compatible": false
+    },
+    {
+      "method": "worlds.import",
+      "source_inventory": true,
+      "implementation": "not_started",
+      "success_cases": [],
+      "invalid_cases": [],
+      "error_cases": [],
+      "event_cases": [],
+      "disk_cases": [],
+      "platform_evidence": {},
+      "known_gaps": [
+        "Not implemented."
+      ],
+      "compatible": false
+    },
+    {
+      "method": "worlds.backup",
+      "source_inventory": true,
+      "implementation": "not_started",
+      "success_cases": [],
+      "invalid_cases": [],
+      "error_cases": [],
+      "event_cases": [],
+      "disk_cases": [],
+      "platform_evidence": {},
+      "known_gaps": [
+        "Not implemented."
+      ],
+      "compatible": false
+    },
+    {
+      "method": "worlds.backups",
+      "source_inventory": true,
+      "implementation": "not_started",
+      "success_cases": [],
+      "invalid_cases": [],
+      "error_cases": [],
+      "event_cases": [],
+      "disk_cases": [],
+      "platform_evidence": {},
+      "known_gaps": [
+        "Not implemented."
+      ],
+      "compatible": false
+    },
+    {
+      "method": "worlds.restore",
+      "source_inventory": true,
+      "implementation": "not_started",
+      "success_cases": [],
+      "invalid_cases": [],
+      "error_cases": [],
+      "event_cases": [],
+      "disk_cases": [],
+      "platform_evidence": {},
+      "known_gaps": [
+        "Not implemented."
+      ],
+      "compatible": false
+    },
+    {
+      "method": "worlds.backups.delete",
+      "source_inventory": true,
+      "implementation": "not_started",
+      "success_cases": [],
+      "invalid_cases": [],
+      "error_cases": [],
+      "event_cases": [],
+      "disk_cases": [],
+      "platform_evidence": {},
+      "known_gaps": [
+        "Not implemented."
+      ],
+      "compatible": false
+    },
+    {
+      "method": "server.worlds.list",
+      "source_inventory": true,
+      "implementation": "not_started",
+      "success_cases": [],
+      "invalid_cases": [],
+      "error_cases": [],
+      "event_cases": [],
+      "disk_cases": [],
+      "platform_evidence": {},
+      "known_gaps": [
+        "Not implemented."
+      ],
+      "compatible": false
+    },
+    {
+      "method": "server.worlds.get",
+      "source_inventory": true,
+      "implementation": "not_started",
+      "success_cases": [],
+      "invalid_cases": [],
+      "error_cases": [],
+      "event_cases": [],
+      "disk_cases": [],
+      "platform_evidence": {},
+      "known_gaps": [
+        "Not implemented."
+      ],
+      "compatible": false
+    },
+    {
+      "method": "server.worlds.rename",
+      "source_inventory": true,
+      "implementation": "not_started",
+      "success_cases": [],
+      "invalid_cases": [],
+      "error_cases": [],
+      "event_cases": [],
+      "disk_cases": [],
+      "platform_evidence": {},
+      "known_gaps": [
+        "Not implemented."
+      ],
+      "compatible": false
+    },
+    {
+      "method": "server.worlds.delete",
+      "source_inventory": true,
+      "implementation": "not_started",
+      "success_cases": [],
+      "invalid_cases": [],
+      "error_cases": [],
+      "event_cases": [],
+      "disk_cases": [],
+      "platform_evidence": {},
+      "known_gaps": [
+        "Not implemented."
+      ],
+      "compatible": false
+    },
+    {
+      "method": "server.worlds.backup",
+      "source_inventory": true,
+      "implementation": "not_started",
+      "success_cases": [],
+      "invalid_cases": [],
+      "error_cases": [],
+      "event_cases": [],
+      "disk_cases": [],
+      "platform_evidence": {},
+      "known_gaps": [
+        "Not implemented."
+      ],
+      "compatible": false
+    },
+    {
+      "method": "server.worlds.backups",
+      "source_inventory": true,
+      "implementation": "not_started",
+      "success_cases": [],
+      "invalid_cases": [],
+      "error_cases": [],
+      "event_cases": [],
+      "disk_cases": [],
+      "platform_evidence": {},
+      "known_gaps": [
+        "Not implemented."
+      ],
+      "compatible": false
+    },
+    {
+      "method": "server.worlds.restore",
+      "source_inventory": true,
+      "implementation": "not_started",
+      "success_cases": [],
+      "invalid_cases": [],
+      "error_cases": [],
+      "event_cases": [],
+      "disk_cases": [],
+      "platform_evidence": {},
+      "known_gaps": [
+        "Not implemented."
+      ],
+      "compatible": false
+    },
+    {
+      "method": "server.worlds.backups.delete",
+      "source_inventory": true,
+      "implementation": "not_started",
+      "success_cases": [],
+      "invalid_cases": [],
+      "error_cases": [],
+      "event_cases": [],
+      "disk_cases": [],
+      "platform_evidence": {},
+      "known_gaps": [
+        "Not implemented."
+      ],
+      "compatible": false
+    },
+    {
+      "method": "java.detect",
+      "source_inventory": true,
+      "implementation": "not_started",
+      "success_cases": [],
+      "invalid_cases": [],
+      "error_cases": [],
+      "event_cases": [],
+      "disk_cases": [],
+      "platform_evidence": {},
+      "known_gaps": [
+        "Not implemented."
+      ],
+      "compatible": false
+    },
+    {
+      "method": "java.select",
+      "source_inventory": true,
+      "implementation": "not_started",
+      "success_cases": [],
+      "invalid_cases": [],
+      "error_cases": [],
+      "event_cases": [],
+      "disk_cases": [],
+      "platform_evidence": {},
+      "known_gaps": [
+        "Not implemented."
+      ],
+      "compatible": false
+    },
+    {
+      "method": "launch.plan",
+      "source_inventory": true,
+      "implementation": "not_started",
+      "success_cases": [],
+      "invalid_cases": [],
+      "error_cases": [],
+      "event_cases": [],
+      "disk_cases": [],
+      "platform_evidence": {},
+      "known_gaps": [
+        "Not implemented."
+      ],
+      "compatible": false
+    },
+    {
+      "method": "launch.execute",
+      "source_inventory": true,
+      "implementation": "not_started",
+      "success_cases": [],
+      "invalid_cases": [],
+      "error_cases": [],
+      "event_cases": [],
+      "disk_cases": [],
+      "platform_evidence": {},
+      "known_gaps": [
+        "Not implemented."
+      ],
+      "compatible": false
+    },
+    {
+      "method": "auth.microsoft.device.begin",
+      "source_inventory": true,
+      "implementation": "not_started",
+      "success_cases": [],
+      "invalid_cases": [],
+      "error_cases": [],
+      "event_cases": [],
+      "disk_cases": [],
+      "platform_evidence": {},
+      "known_gaps": [
+        "Not implemented."
+      ],
+      "compatible": false
+    },
+    {
+      "method": "auth.microsoft.device.poll",
+      "source_inventory": true,
+      "implementation": "not_started",
+      "success_cases": [],
+      "invalid_cases": [],
+      "error_cases": [],
+      "event_cases": [],
+      "disk_cases": [],
+      "platform_evidence": {},
+      "known_gaps": [
+        "Not implemented."
+      ],
+      "compatible": false
+    },
+    {
+      "method": "auth.microsoft.refresh",
+      "source_inventory": true,
+      "implementation": "not_started",
+      "success_cases": [],
+      "invalid_cases": [],
+      "error_cases": [],
+      "event_cases": [],
+      "disk_cases": [],
+      "platform_evidence": {},
+      "known_gaps": [
+        "Not implemented."
+      ],
+      "compatible": false
+    },
+    {
+      "method": "auth.minecraft.refresh_exchange",
+      "source_inventory": true,
+      "implementation": "not_started",
+      "success_cases": [],
+      "invalid_cases": [],
+      "error_cases": [],
+      "event_cases": [],
+      "disk_cases": [],
+      "platform_evidence": {},
+      "known_gaps": [
+        "Not implemented."
+      ],
+      "compatible": false
+    },
+    {
+      "method": "auth.minecraft.exchange",
+      "source_inventory": true,
+      "implementation": "not_started",
+      "success_cases": [],
+      "invalid_cases": [],
+      "error_cases": [],
+      "event_cases": [],
+      "disk_cases": [],
+      "platform_evidence": {},
+      "known_gaps": [
+        "Not implemented."
+      ],
+      "compatible": false
+    },
+    {
+      "method": "java.runtime.list",
+      "source_inventory": true,
+      "implementation": "not_started",
+      "success_cases": [],
+      "invalid_cases": [],
+      "error_cases": [],
+      "event_cases": [],
+      "disk_cases": [],
+      "platform_evidence": {},
+      "known_gaps": [
+        "Not implemented."
+      ],
+      "compatible": false
+    },
+    {
+      "method": "java.runtime.install",
+      "source_inventory": true,
+      "implementation": "not_started",
+      "success_cases": [],
+      "invalid_cases": [],
+      "error_cases": [],
+      "event_cases": [],
+      "disk_cases": [],
+      "platform_evidence": {},
+      "known_gaps": [
+        "Not implemented."
+      ],
+      "compatible": false
+    },
+    {
+      "method": "java.runtime.remove",
+      "source_inventory": true,
+      "implementation": "not_started",
+      "success_cases": [],
+      "invalid_cases": [],
+      "error_cases": [],
+      "event_cases": [],
+      "disk_cases": [],
+      "platform_evidence": {},
+      "known_gaps": [
+        "Not implemented."
+      ],
+      "compatible": false
+    },
+    {
+      "method": "account.microsoft.save",
+      "source_inventory": true,
+      "implementation": "implemented_slice",
+      "success_cases": [
+        "accounts.py: 41-case RPC sequence"
+      ],
+      "invalid_cases": [
+        "accounts.py: invalid metadata/params/numeric coercion"
+      ],
+      "error_cases": [
+        "accounts.py: absent and corrupt stored records"
+      ],
+      "event_cases": [
+        "accounts.py: raw terminal responses"
+      ],
+      "disk_cases": [
+        "accounts.py: bidirectional shared-directory takeover and 5 corrupt manifests"
+      ],
+      "platform_evidence": {
+        "linux": "executed; see milestone evidence",
+        "macos_arm64": "pending CI",
+        "macos_x86_64": "pending CI",
+        "windows": "adapter implemented and cross-compiled; native CI pending"
+      },
+      "known_gaps": [
+        "Native platform matrix pending.",
+        "Finite schema/error corpus; remaining equivalence review required."
+      ],
+      "compatible": false
+    },
+    {
+      "method": "account.microsoft.list",
+      "source_inventory": true,
+      "implementation": "implemented_slice",
+      "success_cases": [
+        "accounts.py: 41-case RPC sequence"
+      ],
+      "invalid_cases": [
+        "accounts.py: invalid metadata/params/numeric coercion"
+      ],
+      "error_cases": [
+        "accounts.py: absent and corrupt stored records"
+      ],
+      "event_cases": [
+        "accounts.py: raw terminal responses"
+      ],
+      "disk_cases": [
+        "accounts.py: bidirectional shared-directory takeover and 5 corrupt manifests"
+      ],
+      "platform_evidence": {
+        "linux": "executed; see milestone evidence",
+        "macos_arm64": "pending CI",
+        "macos_x86_64": "pending CI",
+        "windows": "adapter implemented and cross-compiled; native CI pending"
+      },
+      "known_gaps": [
+        "Native platform matrix pending.",
+        "Finite schema/error corpus; remaining equivalence review required."
+      ],
+      "compatible": false
+    },
+    {
+      "method": "account.microsoft.get",
+      "source_inventory": true,
+      "implementation": "implemented_slice",
+      "success_cases": [
+        "accounts.py: 41-case RPC sequence"
+      ],
+      "invalid_cases": [
+        "accounts.py: invalid metadata/params/numeric coercion"
+      ],
+      "error_cases": [
+        "accounts.py: absent and corrupt stored records"
+      ],
+      "event_cases": [
+        "accounts.py: raw terminal responses"
+      ],
+      "disk_cases": [
+        "accounts.py: bidirectional shared-directory takeover and 5 corrupt manifests"
+      ],
+      "platform_evidence": {
+        "linux": "executed; see milestone evidence",
+        "macos_arm64": "pending CI",
+        "macos_x86_64": "pending CI",
+        "windows": "adapter implemented and cross-compiled; native CI pending"
+      },
+      "known_gaps": [
+        "Native platform matrix pending.",
+        "Finite schema/error corpus; remaining equivalence review required."
+      ],
+      "compatible": false
+    },
+    {
+      "method": "account.microsoft.delete",
+      "source_inventory": true,
+      "implementation": "implemented_slice",
+      "success_cases": [
+        "accounts.py: 41-case RPC sequence"
+      ],
+      "invalid_cases": [
+        "accounts.py: invalid metadata/params/numeric coercion"
+      ],
+      "error_cases": [
+        "accounts.py: absent and corrupt stored records"
+      ],
+      "event_cases": [
+        "accounts.py: raw terminal responses"
+      ],
+      "disk_cases": [
+        "accounts.py: bidirectional shared-directory takeover and 5 corrupt manifests"
+      ],
+      "platform_evidence": {
+        "linux": "executed; see milestone evidence",
+        "macos_arm64": "pending CI",
+        "macos_x86_64": "pending CI",
+        "windows": "adapter implemented and cross-compiled; native CI pending"
+      },
+      "known_gaps": [
+        "Native platform matrix pending.",
+        "Finite schema/error corpus; remaining equivalence review required."
+      ],
+      "compatible": false
+    }
+  ],
+  "cli": {
+    "foundation": "help/version/unknown usage raw differential check.py",
+    "instances": "offline create --no-validate/list/show/delete raw differential tests/instance_cli_differential.rs",
+    "remaining": "not implemented"
+  },
+  "storage": {
+    "cas": "module tests plus required Zig GC/digest-lock oracle; hardlink identities checked; store.gc RPC/CLI adapter in progress",
+    "platform": "Native execution matrix pending; Windows UNC/SUBST not yet exercised."
+  }
+}

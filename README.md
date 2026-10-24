@@ -1,3 +1,22 @@
+# JMCLCore — experimental Rust rewrite branch
+
+The long-lived `rust-rewrite` branch develops a Rust rewrite of JMCLCore.
+The `main` branch remains Zig; this experimental branch is **not yet a replacement**.
+Its hard-link-first immutable artifact model, protocol v1, CLI behavior and existing
+disk layouts are compatibility requirements, not optional redesign opportunities.
+
+- [Rust build and current limitations](rust/README.md)
+- [Rewrite roadmap](docs/rewrite/README.md) and [per-method evidence matrix](rust/compat/coverage.json)
+- [Technical design articles](docs/blog/README.md)
+
+The Zig source below is retained with its history and LGPL-3.0-or-later notices as
+the reference implementation. The Rust executable is named `jmcl-core-rust` until
+replacement gates are met. No formal release or change to the original project's
+main implementation is implied by work on this branch. Milestone pull requests
+target `rust-rewrite`, never `main` before replacement is explicitly approved.
+
+## Retained Zig reference documentation
+
 # JMCL Core
 
 English | [简体中文](README-zh_CN.md)
