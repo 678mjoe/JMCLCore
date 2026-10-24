@@ -4,6 +4,7 @@
 //! sentinel. Its response marks the end of the multi-packet command reply;
 //! this never uses a timeout as a delimiter.
 const std = @import("std");
+const builtin = @import("builtin");
 
 pub const max_frame_bytes: usize = 64 * 1024;
 pub const max_reply_bytes: usize = 256 * 1024;
@@ -273,6 +274,8 @@ const FakeServer = struct {
 };
 
 test "RCON fake server proves auth and command sentinel ordering" {
+    // Server operations are Linux-only; this transport fixture requires POSIX poll.
+    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
     const io = std.testing.io;
     var address = std.Io.net.IpAddress.parse("127.0.0.1", 0) catch unreachable;
     var listener = address.listen(io, .{ .reuse_address = true }) catch return error.SkipZigTest;
@@ -288,6 +291,8 @@ test "RCON fake server proves auth and command sentinel ordering" {
 }
 
 test "RCON fake server maps auth id minus one to authentication failure" {
+    // Server operations are Linux-only; this transport fixture requires POSIX poll.
+    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
     const io = std.testing.io;
     var address = std.Io.net.IpAddress.parse("127.0.0.1", 0) catch unreachable;
     var listener = address.listen(io, .{ .reuse_address = true }) catch return error.SkipZigTest;
@@ -300,6 +305,8 @@ test "RCON fake server maps auth id minus one to authentication failure" {
 }
 
 fn expectFakeProtocolError(behavior: FakeServer.Behavior) !void {
+    // Server operations are Linux-only; this transport fixture requires POSIX poll.
+    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
     const io = std.testing.io;
     var address = std.Io.net.IpAddress.parse("127.0.0.1", 0) catch unreachable;
     var listener = address.listen(io, .{ .reuse_address = true }) catch return error.SkipZigTest;
@@ -333,6 +340,8 @@ test "RCON fake server rejects a non-empty sentinel response" {
 }
 
 test "RCON fake server truncates at a valid UTF-8 prefix" {
+    // Server operations are Linux-only; this transport fixture requires POSIX poll.
+    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
     const io = std.testing.io;
     var address = std.Io.net.IpAddress.parse("127.0.0.1", 0) catch unreachable;
     var listener = address.listen(io, .{ .reuse_address = true }) catch return error.SkipZigTest;

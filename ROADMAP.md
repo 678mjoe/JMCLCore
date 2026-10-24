@@ -21,6 +21,9 @@ feature roadmap or a Rust migration design.
    read-only repository permission, and do not publish artifacts, use secrets,
    create releases, or run real accounts/games/servers. Platform skips inside
    tests must remain visible; a green job is not proof of skipped behavior.
+   In particular, the POSIX-poll RCON transport fixtures are skipped on Windows;
+   server operations are Linux-only, while platform-independent parser and
+   client-world tests still run.
 3. **State interruption guarantees accurately.** Correct the GUI contract and
    installation summaries: copy fallback is not atomic replacement, Windows
    has a separate replacement path, and killing the RPC child does not roll
