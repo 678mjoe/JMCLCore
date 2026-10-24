@@ -782,24 +782,6 @@ fn eligible(f: &File, options: GcOptions, s: &mut GcSummary) -> io::Result<bool>
     Ok(true)
 }
 
-/// Rename a validated entry using mutation rights without reopening its path.
-pub(crate) fn rename_at(
-    parent: &File,
-    old: &std::ffi::OsStr,
-    dest: &File,
-    new: &std::ffi::OsStr,
-) -> io::Result<()> {
-    let file = open_nt_raw(
-        Some(parent),
-        &mut leaf(old)?,
-        None,
-        nt::FILE_OPEN,
-        false,
-        true,
-    )?;
-    info(&file)?;
-    named_op(&file, dest, new, true)
-}
 /// Match case-insensitive NT entry lookup without following the entry itself.
 pub(crate) fn entry_exists(parent: &File, name: &std::ffi::OsStr) -> bool {
     let Ok(mut wide) = leaf(name) else {
