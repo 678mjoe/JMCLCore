@@ -28,3 +28,7 @@ The Rust protocol was not changed to compensate, and the paused frontend was not
 ## Not covered
 
 No packaged application, UI, native Tauri IPC, sidecar discovery, keychain, real authentication, progress-stream operation, SSH, game/server, live service, macOS or Windows frontend acceptance was exercised. No claim of full frontend compatibility or replacement readiness follows from this finite smoke test.
+
+## Current frozen source rerun
+
+On 2026-10-24 the same bounded harness was rerun against source `0b878035f81041ccd891098a8a0eb27e0012f48b`, frozen executable SHA-256 `4201b9b01f9bf20521e0cd92f22bb1644901e292ed6d066cf1d8e0e767a800a0`. The unchanged native bridge again passed **19 requests across two sessions**. The unchanged TypeScript wrapper again completed **11 calls against each core**, with the same two explicitly asserted pre-existing mismatches. Pinned Zig hash and frontend source revisions above were unchanged. No frontend file was modified; all original scope exclusions still apply.
