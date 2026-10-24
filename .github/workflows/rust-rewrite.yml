@@ -197,10 +197,15 @@ jobs:
           python - <<'PYTHON'
           import os, subprocess
           suffix = ".exe" if os.name == "nt" else ""
+          failures = []
           for script in ["version_check.py", "java.py", "launch_rpc.py", "launch_execute.py", "instance_install.py", "instance_validation_check.py", "protocol_edges.py", "store.py"]:
-              subprocess.run(["python", f"rust/compat/{script}", "--zig",
-                              f".ci-oracle/zig-out/bin/jmcl-core{suffix}", "--rust",
-                              f"rust/target/release/jmcl-core-rust{suffix}"], check=True)
+              result = subprocess.run(["python", f"rust/compat/{script}", "--zig",
+                                       f".ci-oracle/zig-out/bin/jmcl-core{suffix}", "--rust",
+                                       f"rust/target/release/jmcl-core-rust{suffix}"], check=False)
+              if result.returncode != 0:
+                  failures.append((script, result.returncode))
+          if failures:
+              raise SystemExit(f"Offline corpus failures: {failures}")
           PYTHON
       - name: Pinned Linux server lifecycle and worldset matrix
         if: runner.os == 'Linux'

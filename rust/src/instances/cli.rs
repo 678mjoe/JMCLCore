@@ -91,6 +91,11 @@ pub(crate) fn zig_error(e: &io::Error) -> String {
     if e.raw_os_error() == Some(rustix::io::Errno::ILSEQ.raw_os_error()) {
         return "BadPathName".into();
     }
+    // The NT directory open maps STATUS_NOT_A_DIRECTORY to Win32 ERROR_DIRECTORY.
+    #[cfg(windows)]
+    if e.raw_os_error() == Some(windows_sys::Win32::Foundation::ERROR_DIRECTORY as i32) {
+        return "NotDir".into();
+    }
     // Internal validation returns the exact Zig error name; OS errors map at boundary.
     if e.kind() == io::ErrorKind::InvalidData {
         return e.to_string();
@@ -314,6 +319,23 @@ mod tests {
             )),
             "FixtureSchemaError"
         );
+    }
+    #[test]
+    #[cfg(windows)]
+    fn windows_directory_error_keeps_existing_boundaries() {
+        use windows_sys::Win32::Foundation::{
+            ERROR_ACCESS_DENIED, ERROR_ALREADY_EXISTS, ERROR_DIRECTORY,
+        };
+        for (code, expected) in [
+            (ERROR_DIRECTORY, "NotDir"),
+            (ERROR_ALREADY_EXISTS, "PathAlreadyExists"),
+            (ERROR_ACCESS_DENIED, "AccessDenied"),
+        ] {
+            assert_eq!(
+                zig_error(&io::Error::from_raw_os_error(code as i32)),
+                expected
+            );
+        }
     }
     #[test]
     fn strict_flags() {
