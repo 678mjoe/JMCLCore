@@ -330,6 +330,21 @@ fn exact_processor_oracle() {
             let baseline = zig.zig(&exe);
             let actual_disk = rust.snapshot();
             let baseline_disk = zig.snapshot();
+            if let Some(expected) = zig008_expected("engine", mode, scenario, None) {
+                let observed = json!({"mode":mode,"scenario":scenario,"rust":actual,"zig":baseline,
+                    "rust_disk":actual_disk,"zig_disk":baseline_disk});
+                zig008_check_rust(expected, &observed);
+                zig008_check_files(&rust, expected, false);
+                if zig008_enabled() && (actual != baseline || actual_disk != baseline_disk) {
+                    assert!(
+                        zig008_matches(expected, &observed),
+                        "ZIG008 unapproved engine evidence: {observed}"
+                    );
+                    zig008_check_absence(&zig, &expected["zig_disk"]);
+                    eprintln!("ZIG008_APPROVED engine {mode}/{scenario}");
+                    continue;
+                }
+            }
             if cfg!(windows)
                 && std::env::var("JMCL_DIAGNOSE_WINDOWS_LOADER_MATRIX").as_deref() == Ok("1")
             {
@@ -632,6 +647,27 @@ fn install_processor_protocol_matches_oracle() {
                 );
                 let rust_text = String::from_utf8(out).unwrap();
                 let zig_text = String::from_utf8(result.stdout).unwrap();
+                if let Some(expected) = zig008_expected("rpc", mode, scenario, Some(run)) {
+                    let observed = json!({"mode":mode,"scenario":scenario,"run":run,"rust":rust_text,"zig":zig_text,
+                        "rust_disk":rust.snapshot(),"zig_disk":zig.snapshot(),
+                        "rust_receipt":receipt(&rust),"zig_receipt":receipt(&zig)});
+                    zig008_check_rust(expected, &observed);
+                    zig008_check_files(&rust, expected, true);
+                    if zig008_enabled()
+                        && (rust_text != zig_text
+                            || rust.snapshot() != zig.snapshot()
+                            || receipt(&rust) != receipt(&zig))
+                    {
+                        assert!(
+                            zig008_matches(expected, &observed),
+                            "ZIG008 unapproved RPC evidence: {observed}"
+                        );
+                        zig008_check_absence(&zig, &expected["zig_disk"]);
+                        zig008_assert_absent(&zig.root().join(".jmcl/install.json"));
+                        eprintln!("ZIG008_APPROVED rpc {mode}/{scenario}/run{run}");
+                        continue;
+                    }
+                }
                 if cfg!(windows)
                     && std::env::var("JMCL_DIAGNOSE_WINDOWS_LOADER_MATRIX").as_deref() == Ok("1")
                 {
@@ -926,4 +962,287 @@ fn windows_verbatim_join_diagnostic() {
     eprintln!("Windows pinned loader path evidence: {observed}");
     assert_eq!(observed["mixed"], "BadPathName");
     assert_eq!(observed["native"], "ok");
+}
+
+// These finite rows are reviewed native Windows observations. Their Rust side is
+// independently checked against the pinned Linux oracle by the strict corpus.
+fn zig008_rows(kind: &str) -> &'static Vec<Value> {
+    static ROWS: OnceLock<Value> = OnceLock::new();
+    ROWS.get_or_init(|| serde_json::from_str(include_str!("fixtures/loaders/zig008.json")).unwrap())
+        [kind]
+        .as_array()
+        .unwrap()
+}
+fn zig008_expected(
+    kind: &str,
+    mode: &str,
+    scenario: &str,
+    run: Option<usize>,
+) -> Option<&'static Value> {
+    zig008_rows(kind).iter().find(|row| {
+        row["mode"] == mode
+            && row["scenario"] == scenario
+            && row.get("run").and_then(Value::as_u64) == run.map(|n| n as u64)
+    })
+}
+fn zig008_matches(expected: &Value, observed: &Value) -> bool {
+    // Compare every field, including exact serialized record and state order.
+    let a = expected.as_object().unwrap();
+    let Some(b) = observed.as_object() else {
+        return false;
+    };
+    a.len() == b.len()
+        && a.iter().all(|(key, value)| {
+            b.get(key).is_some_and(|actual| {
+                serde_json::to_vec(value).unwrap() == serde_json::to_vec(actual).unwrap()
+            })
+        })
+}
+fn zig008_enabled() -> bool {
+    cfg!(all(windows, target_arch = "x86_64"))
+        && std::env::var("JMCL_ALLOW_ZIG008_LOADER_PATHS").as_deref() == Ok("1")
+}
+// Receipt target fields are intentionally platform-dependent. Substitute only
+// those two expected fields when validating the contract on a different host;
+// the Windows deviation matcher still uses the untouched native evidence.
+fn zig008_host_receipt(expected: &Value) -> Value {
+    let Some(text) = expected.as_str() else {
+        return expected.clone();
+    };
+    let mut receipt: Value = serde_json::from_str(text).unwrap();
+    assert_eq!(receipt["os"], "windows");
+    assert_eq!(receipt["arch"], "x86_64");
+    let target = jmcl_core_rust::plan::Target::host().unwrap();
+    receipt["os"] = json!(target.os);
+    receipt["arch"] = json!(target.arch);
+    json!(format!("{receipt}\n"))
+}
+fn zig008_check_rust(expected: &Value, observed: &Value) {
+    for key in ["rust", "rust_disk", "rust_receipt"] {
+        assert_eq!(
+            expected
+                .get(key)
+                .map(|v| serde_json::to_vec(&if key == "rust_receipt" {
+                    zig008_host_receipt(v)
+                } else {
+                    v.clone()
+                })
+                .unwrap()),
+            observed.get(key).map(|v| serde_json::to_vec(v).unwrap()),
+            "ZIG008 pinned-Linux contract {}/{}/{} field {key}",
+            observed["mode"],
+            observed["scenario"],
+            observed["run"]
+        );
+    }
+}
+fn receipt(c: &Case) -> Option<String> {
+    fs::read_to_string(c.root().join(".jmcl/install.json")).ok()
+}
+fn zig008_assert_absent(path: &Path) {
+    match fs::symlink_metadata(path) {
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        other => panic!("expected absent entry {path:?}, got {other:?}"),
+    }
+}
+fn zig008_check_absence(c: &Case, disk: &Value) {
+    let root = c.root();
+    for (field, path) in [
+        ("state", root.join(c.support()).join("state.json")),
+        ("order", root.join("processor-order.txt")),
+        (
+            "patched",
+            root.join(format!(
+                "libraries/a/patched/1/patched-1-{}.jar",
+                if c.server() { "server" } else { "client" }
+            )),
+        ),
+    ] {
+        if disk[field].is_null() {
+            zig008_assert_absent(&path);
+        }
+    }
+    let work = root.join(c.support()).join("work");
+    if disk["work_exists"].as_bool().unwrap() {
+        assert!(fs::symlink_metadata(work).unwrap().is_dir());
+    } else {
+        zig008_assert_absent(&work);
+    }
+}
+fn zig008_check_files(c: &Case, expected: &Value, rpc: bool) {
+    assert_eq!(c.snapshot(), expected["rust_disk"]);
+    zig008_check_absence(c, &expected["rust_disk"]);
+    zig008_assert_absent(&c.root().join(c.support()).join("work"));
+    let state = &expected["rust_disk"]["state"];
+    if let Some(state) = state.as_str() {
+        let state: Value = serde_json::from_str(state).unwrap();
+        let expected_bytes = expected["rust_disk"]["patched"]
+            .as_str()
+            .unwrap()
+            .as_bytes();
+        let digest = hash(expected_bytes);
+        assert_eq!(state["patched_sha1"], digest);
+        assert_eq!(state["patched_size"], expected_bytes.len());
+        let patched = c.root().join(format!(
+            "libraries/a/patched/1/patched-1-{}.jar",
+            if c.server() { "server" } else { "client" }
+        ));
+        let object = c
+            .store()
+            .join("objects/sha1")
+            .join(&digest[..2])
+            .join(&digest);
+        assert_eq!(fs::read(&patched).unwrap(), expected_bytes);
+        assert_eq!(fs::read(&object).unwrap(), expected_bytes);
+        assert_shared_file(&object, &patched);
+    } else {
+        zig008_assert_absent(&c.root().join(c.support()).join("state.json"));
+        zig008_assert_absent(&c.root().join(".jmcl/install.json"));
+    }
+    if rpc {
+        assert_eq!(
+            json!(receipt(c)),
+            zig008_host_receipt(&expected["rust_receipt"])
+        );
+    }
+}
+fn assert_shared_file(object: &Path, destination: &Path) {
+    for path in [object, destination] {
+        assert!(fs::metadata(path).unwrap().permissions().readonly());
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        let a = fs::metadata(object).unwrap();
+        let b = fs::metadata(destination).unwrap();
+        assert_eq!((a.dev(), a.ino()), (b.dev(), b.ino()));
+        assert!(a.nlink() >= 2);
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::io::AsRawHandle;
+        use windows_sys::Win32::Storage::FileSystem::{
+            BY_HANDLE_FILE_INFORMATION, GetFileInformationByHandle,
+        };
+        let identity = |path: &Path| {
+            let file = fs::File::open(path).unwrap();
+            let mut info = BY_HANDLE_FILE_INFORMATION::default();
+            assert_ne!(
+                unsafe { GetFileInformationByHandle(file.as_raw_handle(), &mut info) },
+                0
+            );
+            assert!(info.nNumberOfLinks >= 2);
+            (
+                info.dwVolumeSerialNumber,
+                info.nFileIndexHigh,
+                info.nFileIndexLow,
+            )
+        };
+        assert_eq!(identity(object), identity(destination));
+    }
+}
+#[test]
+fn zig008_matcher_rejects_unlisted_or_mutated_evidence() {
+    assert_eq!(zig008_rows("engine").len(), 75);
+    assert_eq!(zig008_rows("rpc").len(), 12);
+    fn leaves(value: &Value, path: String, out: &mut Vec<String>) {
+        match value {
+            Value::Object(object) => {
+                for (key, child) in object {
+                    leaves(child, format!("{path}/{key}"), out);
+                }
+            }
+            Value::Array(array) => {
+                for (index, child) in array.iter().enumerate() {
+                    leaves(child, format!("{path}/{index}"), out);
+                }
+            }
+            _ => out.push(path),
+        }
+    }
+    for mode in ["neo", "neo-server", "forge", "forge-server"] {
+        for scenario in [
+            "state-valid",
+            "state-uppercase",
+            "installer-missing",
+            "profile-missing",
+        ] {
+            assert!(zig008_expected("engine", mode, scenario, None).is_none());
+        }
+    }
+    assert!(zig008_expected("engine", "forge-server", "server-hash-missing", None).is_none());
+    for kind in ["engine", "rpc"] {
+        let mut seen = std::collections::BTreeSet::new();
+        assert!(zig008_expected(kind, "unknown", "success", None).is_none());
+        assert!(zig008_expected(kind, "neo", "unlisted-scenario", None).is_none());
+        for row in zig008_rows(kind) {
+            assert!(seen.insert(format!(
+                "{}/{}/{}",
+                row["mode"], row["scenario"], row["run"]
+            )));
+            assert!(zig008_matches(row, row));
+            let mut paths = Vec::new();
+            leaves(row, String::new(), &mut paths);
+            for path in paths {
+                let mut changed = row.clone();
+                let leaf = changed.pointer_mut(&path).unwrap();
+                *leaf = match leaf {
+                    Value::String(text) => json!(format!("{text}!")),
+                    Value::Bool(value) => json!(!*value),
+                    Value::Number(value) => json!(value.as_u64().unwrap() + 1),
+                    _ => json!("unexpected"),
+                };
+                assert!(!zig008_matches(row, &changed), "{kind} leaf {path}");
+            }
+            // Every named case must reject changes in mode, scenario, run,
+            // events/errors/hashes, disk state/order, and receipt bytes.
+            for key in row.as_object().unwrap().keys() {
+                let mut changed = row.clone();
+                changed[key] = json!({"unexpected":"mutation"});
+                assert!(!zig008_matches(row, &changed), "{kind} {key}");
+                let mut missing = row.clone();
+                missing.as_object_mut().unwrap().remove(key);
+                assert!(!zig008_matches(row, &missing), "missing {kind} {key}");
+            }
+            let mut extra = row.clone();
+            extra["unexpected"] = json!(true);
+            assert!(!zig008_matches(row, &extra));
+        }
+    }
+}
+
+#[test]
+fn zig008_cas_invariant_rejects_private_or_writable_files() {
+    let temporary = tempfile::tempdir().unwrap();
+    let object = temporary.path().join("object");
+    let copy = temporary.path().join("copy");
+    fs::write(&object, b"client").unwrap();
+    fs::write(&copy, b"client").unwrap();
+    let shared = temporary.path().join("shared");
+    fs::hard_link(&object, &shared).unwrap();
+    // Both independent inodes have >=2 links; reject by identity, not just count.
+    fs::hard_link(&copy, temporary.path().join("private-shared")).unwrap();
+    assert!(std::panic::catch_unwind(|| assert_shared_file(&object, &shared)).is_err());
+    for path in [&object, &copy] {
+        let mut permissions = fs::metadata(path).unwrap().permissions();
+        permissions.set_readonly(true);
+        fs::set_permissions(path, permissions).unwrap();
+    }
+    assert_shared_file(&object, &shared);
+    assert!(std::panic::catch_unwind(|| assert_shared_file(&object, &copy)).is_err());
+}
+
+#[test]
+fn zig008_absence_rejects_existing_or_dangling_entries() {
+    let temporary = tempfile::tempdir().unwrap();
+    let path = temporary.path().join("entry");
+    zig008_assert_absent(&path);
+    fs::write(&path, b"not absent").unwrap();
+    assert!(std::panic::catch_unwind(|| zig008_assert_absent(&path)).is_err());
+    fs::remove_file(&path).unwrap();
+    #[cfg(unix)]
+    {
+        std::os::unix::fs::symlink(temporary.path().join("missing-target"), &path).unwrap();
+        assert!(std::panic::catch_unwind(|| zig008_assert_absent(&path)).is_err());
+    }
 }

@@ -223,7 +223,8 @@
       },
       "known_gaps": [
         "Automatic Java acquisition unavailable; local/installed paths only.",
-        "Live transport and combined native execution remain acceptance gates."
+        "Live transport and combined native execution remain acceptance gates.",
+        "ZIG-008: the pinned Windows loader executor rejects mixed separators in verbatim absolute paths before processors. Only named native observations may enter the explicit correction gate; successful Rust outputs/state/receipts require independent pinned-oracle validation, not a generic BadPathName allowance."
       ],
       "compatible": false,
       "approved_deviations": [

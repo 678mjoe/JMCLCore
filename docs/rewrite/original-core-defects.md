@@ -21,7 +21,7 @@
 | [ZIG-005](#zig-005) | Windows 竞争中的 GC 锁返回错误而非等待 | 未修 | 保留互斥并等待；原版等待语义差异仍单列 |
 | [ZIG-006](#zig-006) | Java 归档解包的 staging 写入边界不足 | 已有隔离证据 | 安全例外已批准；实现与验证尚未完成 |
 | [ZIG-007](#zig-007) | Windows 禁用内容换版在只读硬链接重命名时失败 | 原生观察确认特定案例 | Rust 保持禁用状态并完成换版；差分须显式选择窄例外 |
-| [ZIG-008](#zig-008) | Windows loader verbatim 路径混用分隔符导致准备失败 | 原生 neo/success 与最小路径实验已确认 | Rust 合成链成功；完整案例矩阵仍收集中，无例外门禁 |
+| [ZIG-008](#zig-008) | Windows loader verbatim 路径混用分隔符导致准备失败 | 原生 neo/success 与最小路径实验已确认 | 75 个引擎 / 12 个 RPC 已观察差异；仅显式精确案例门禁 |
 
 <a id="zig-001"></a>
 ## ZIG-001 — 超长行后的有效请求被清除
@@ -112,7 +112,10 @@
 - **最小隔离实验：** `windows_verbatim_join_diagnostic` 在临时目录中，使用原版 `hard_link.absolutePathAlloc` 获取 verbatim 绝对路径，再按原版方式 join `.jmcl-path-probe/nested`。保留混合分隔符的 `createDirPath` 返回 `BadPathName`；仅将 `/` 换为原生反斜杠的对照成功。测试输出两条完整路径与准确错误；实际 processor oracle 和固定基线没有改写。
 - **源码链条：** 固定基线 `src/install/hard_link.zig:149–161` 从目录句柄取得 Windows 绝对路径；`src/loaders/neoforge_executor.zig:204–240` 把它与含 `/` 的 Maven 父目录或工作目录 join 后交给 `cwd().createDirPath`。Zig 0.16 的 join 不重写片段内部的分隔符，而 verbatim 路径处理保留这些字符。该准备阶段在 processor 循环之前。`src/loaders/forge_executor.zig` 的客户端/服务端入口也调用同一 `runLayout`，但是否触发仍依赖各案例的前置验证和缓存；不能将全部 Forge 输入称为已观察失败。
 - **独立于 ZIG-003：** 此处没有进入最终成功响应，不能用释放后 hash 的窄例外去接受 `BadPathName`、缺失 processor event 或错误 receipt。Rust 不应为模仿缺陷而破坏路径或故意中断正常合成链。
-- **当前门禁：** 尚无 ZIG-008 接受开关或兼容性豁免。Windows 设置 `JMCL_DIAGNOSE_WINDOWS_LOADER_MATRIX=1` 只让既有有限语料收集所有响应/磁盘/receipt 对照，最后仍因任何差异失败；未设置时保持首次差异即失败。原生当前只确认上述首个成功案例和路径实验；后续逐模式、逐场景、逐次运行的显式差异列表必须来自完整原生证据，不能预先放行任意 `BadPathName`。
+- **完整原生矩阵：** [Windows job 120923637973](https://github.com/678mjoe/JMCLCore/actions/runs/40111376472/job/120923637973)，提交 `4a7f902`，采集 92 个引擎案例（Unix 非 UTF-8 四案例在 Windows 不适用）与 24 次 RPC。引擎 75 个差异全部为原版准确单条 `BadPathName`，17 个保持严格一致：每种模式的 `state-valid`、`state-uppercase`、`installer-missing`、`profile-missing`，以及 `forge-server/server-hash-missing`。RPC 差异仅为 `neo|forge × success|failed|hash-mismatch × run0|run1` 共 12 次，其余 12 次保持严格一致。CLI 没有新增例外。
+- **精确门禁：** 仅 Windows x86_64 且 `JMCL_ALLOW_ZIG008_LOADER_PATHS=1` 时，允许 [`zig008.json`](../../rust/tests/fixtures/loaders/zig008.json) 中逐一列明的 75/12 行。每行包含原版准确记录与磁盘快照、Rust 准确记录与磁盘快照，以及 RPC 双方准确 receipt 字节；任一不同即失败，不接受通用 `BadPathName` 或 `PROCESSOR_FAILED`。若命名案例双方实际一致，仍走严格相等路径，不强制原版失败。未设置开关仍为严格差分。诊断开关 `JMCL_DIAGNOSE_WINDOWS_LOADER_MATRIX=1` 本身仍不接受差异；不能将此门禁称为完整兼容。
+- **预期值独立验证：** 这些 Rust 预期不是只根据 Windows 当前实现生成后直接认可：全部命名案例还必须在 Linux 对固定 Zig 基线进行实际严格差分，并逐字段核对同一预期记录、state、输出、顺序和 receipt；RPC 原有 ZIG-003 只校正其既定 Debug 释放后 hash 模式。跨主机 receipt 只根据明确目标替换预期 `os`/`arch`，不归一化其它字段；Windows 接受门禁仍比较未修改的原生 receipt。Linux 验证不是 Windows 门禁的原生运行结果。
+- **拒绝对照：** 每个命名行逐字段删除、增加字段、逐叶值变异（包括事件、错误、hash、state、顺序、receipt）必须被匹配器拒绝；未知模式/场景、重复行及上述 17 个严格案例不能进入例外。真实文件检查另有私有副本及可写硬链接负对照，避免 JSON 正确而 CAS 共享身份错误。
 - **Rust 正向约束：** `synthetic_native_chain_and_state` 必须执行真实合成子进程，验证输出内容、SHA1、大小、state、工作目录清理和缓存；CAS 对象及硬链接检查不能被 oracle 的原版失败取代。异常路径继续要求准确错误、事件顺序及没有错误的完成 receipt。
 
 ## 源码确认的独立风险：带凭据请求的跨源重定向
