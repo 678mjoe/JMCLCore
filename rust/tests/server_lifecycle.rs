@@ -150,6 +150,25 @@ fn stop_escalates_only_verified_synthetic_children() {
         fs::write(java, script).unwrap();
         let start = rpc("server.start", f.params());
         assert_eq!(start["result"]["running"], true, "{start}");
+        // The production acknowledgement means "spawned", not "application
+        // initialized". Wait for this fixture's marker after installing its
+        // TERM trap before asserting which escalation stage must be required.
+        let deadline = Instant::now() + Duration::from_secs(3);
+        loop {
+            let logs = rpc("server.logs", f.params());
+            if logs["result"]["text"]
+                .as_str()
+                .unwrap_or("")
+                .contains("synthetic-start")
+            {
+                break;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "synthetic fixture did not become ready: {logs}"
+            );
+            std::thread::sleep(Duration::from_millis(10));
+        }
         let mut stop = f.params();
         stop["grace_ms"] = 0.into();
         let result = rpc("server.stop", stop);

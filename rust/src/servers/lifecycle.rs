@@ -217,8 +217,19 @@ pub fn process_matches(state: &State) -> io::Result<bool> {
         Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(false),
         Err(e) => return Err(e),
     };
+    read_process_identity(f, state)
+}
+fn read_process_identity(reader: impl Read, state: &State) -> io::Result<bool> {
     let mut bytes = Vec::new();
-    f.take(64 * 1024).read_to_end(&mut bytes)?;
+    if let Err(error) = reader.take(64 * 1024).read_to_end(&mut bytes) {
+        // Linux can retain an opened /proc/<pid>/cmdline descriptor after the
+        // process exits, then return ESRCH from read. Disappearance is never
+        // proof of identity: report no match and do not authorize a signal.
+        if error.raw_os_error() == Some(libc::ESRCH) {
+            return Ok(false);
+        }
+        return Err(error);
+    }
     if bytes.is_empty() || bytes.len() == 64 * 1024 {
         return Ok(false);
     }
@@ -751,6 +762,73 @@ mod tests {
             java_path: "/synthetic/java".into(),
             started_at_ms: now_ms(),
         }
+    }
+    #[test]
+    fn identity_read_after_owned_child_exit_is_not_a_stop_failure() {
+        let mut state = state();
+        let identity = format!("-Djmcl.server.identity={}", state.identity);
+        let child = std::process::Command::new("/bin/sh")
+            .args(["-c", "read line", identity.as_str()])
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::null())
+            .spawn()
+            .unwrap();
+        let mut child = KillOnDrop(Some(child));
+        let process = child.0.as_mut().unwrap();
+        state.pid = process.id();
+        let deadline = Instant::now() + Duration::from_secs(3);
+        while !process_matches(&state).unwrap() {
+            assert!(
+                Instant::now() < deadline,
+                "synthetic child did not exec with identity"
+            );
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        let identity_file = File::open(format!("/proc/{}/cmdline", state.pid)).unwrap();
+        process.kill().unwrap();
+        process.wait().unwrap();
+        child.0.take();
+        // Keep the opened proc descriptor across exit: the kernel now returns
+        // ESRCH from read, rather than ENOENT from a new pathname lookup.
+        assert!(!read_process_identity(identity_file, &state).unwrap());
+    }
+    #[test]
+    fn identity_read_only_treats_process_disappearance_as_no_match() {
+        struct Failed(i32);
+        impl Read for Failed {
+            fn read(&mut self, _: &mut [u8]) -> io::Result<usize> {
+                Err(io::Error::from_raw_os_error(self.0))
+            }
+        }
+        let state = state();
+        for errno in [libc::EACCES, libc::EIO] {
+            assert_eq!(
+                read_process_identity(Failed(errno), &state)
+                    .unwrap_err()
+                    .raw_os_error(),
+                Some(errno)
+            );
+        }
+        assert!(!read_process_identity(Failed(libc::ESRCH), &state).unwrap());
+        let exact = format!("java\0-Djmcl.server.identity={}\0nogui\0", state.identity);
+        assert!(read_process_identity(exact.as_bytes(), &state).unwrap());
+        // Even partially read matching bytes followed by disappearance cannot
+        // become identity evidence and authorize a later signal.
+        assert!(
+            !read_process_identity(exact.as_bytes().chain(Failed(libc::ESRCH)), &state).unwrap()
+        );
+        assert_eq!(
+            read_process_identity(exact.as_bytes().chain(Failed(libc::EIO)), &state)
+                .unwrap_err()
+                .raw_os_error(),
+            Some(libc::EIO)
+        );
+        assert!(
+            !read_process_identity(b"java\0-Djmcl.server.identity=other\0".as_slice(), &state)
+                .unwrap()
+        );
+        assert!(!read_process_identity(&[][..], &state).unwrap());
+        assert!(!read_process_identity(vec![b'x'; 64 * 1024].as_slice(), &state).unwrap());
     }
     #[test]
     fn stale_identity_never_signals_real_pid() {
