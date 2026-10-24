@@ -10,3 +10,10 @@ pub mod store;
 pub mod accounts;
 pub mod instances;
 pub mod servers;
+
+pub mod content;
+pub mod java;
+pub mod metadata;
+pub mod plan;
+pub mod version;
+pub mod worlds;

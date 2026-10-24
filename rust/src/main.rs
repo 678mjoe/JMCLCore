@@ -1,6 +1,9 @@
 use jmcl_core_rust::{VERSION, protocol};
 use std::io::{self, Write};
 fn run(args: &[String], stdout: &mut impl Write, stderr: &mut impl Write) -> io::Result<u8> {
+    if let Some(result) = jmcl_core_rust::version::cli(args, stdout, stderr) {
+        return result;
+    }
     match args.first().map(String::as_str) {
         None | Some("help" | "--help") => {
             stdout.write_all(include_bytes!("help.txt"))?;
@@ -26,7 +29,16 @@ fn run(args: &[String], stdout: &mut impl Write, stderr: &mut impl Write) -> io:
             writeln!(stderr, "usage: jmcl-core rpc")?;
             Ok(2)
         }
+        Some("java") => jmcl_core_rust::java::cli(&args[1..], stdout, stderr),
         Some("instance") => {
+            if args.get(1).is_some_and(|a| a == "worlds")
+                && let Some(result) = jmcl_core_rust::worlds::cli(&args[2..], stdout, stderr)
+            {
+                return result;
+            }
+            if let Some(result) = jmcl_core_rust::content::cli(&args[1..], stdout, stderr) {
+                return result;
+            }
             if let Some(result) = jmcl_core_rust::instances::cli(&args[1..], stdout, stderr) {
                 result
             } else {

@@ -65,60 +65,124 @@
     {
       "method": "version.list",
       "source_inventory": true,
-      "implementation": "not_started",
-      "success_cases": [],
-      "invalid_cases": [],
-      "error_cases": [],
-      "event_cases": [],
-      "disk_cases": [],
-      "platform_evidence": {},
+      "implementation": "implemented_slice",
+      "success_cases": [
+        "version_check.py + metadata_differential: offline source-aware RPC/CLI, cache and loader/planner fixtures"
+      ],
+      "invalid_cases": [
+        "version_check.py + metadata_differential: offline source-aware RPC/CLI, cache and loader/planner fixtures"
+      ],
+      "error_cases": [
+        "version_check.py + metadata_differential: offline source-aware RPC/CLI, cache and loader/planner fixtures"
+      ],
+      "event_cases": [
+        "version_check.py + metadata_differential: offline source-aware RPC/CLI, cache and loader/planner fixtures"
+      ],
+      "disk_cases": [
+        "version_check.py: old metadata cache envelope read/write fixtures"
+      ],
+      "platform_evidence": {
+        "linux": "Executed locally; exact combined milestone evidence recorded separately",
+        "macos_arm64": "pending combined CI",
+        "macos_x86_64": "pending combined CI",
+        "windows": "pending combined native CI; reqwest AWS-LC crosscheck needs MinGW C compiler"
+      },
       "known_gaps": [
-        "Not implemented."
+        "Finite fixture corpus does not establish all upstream schemas, platform errors or live network behavior.",
+        "Oversized request recovery global oracle divergence remains pending owner decision."
       ],
       "compatible": false
     },
     {
       "method": "version.get",
       "source_inventory": true,
-      "implementation": "not_started",
-      "success_cases": [],
-      "invalid_cases": [],
-      "error_cases": [],
-      "event_cases": [],
-      "disk_cases": [],
-      "platform_evidence": {},
+      "implementation": "implemented_slice",
+      "success_cases": [
+        "version_check.py + metadata_differential: offline source-aware RPC/CLI, cache and loader/planner fixtures"
+      ],
+      "invalid_cases": [
+        "version_check.py + metadata_differential: offline source-aware RPC/CLI, cache and loader/planner fixtures"
+      ],
+      "error_cases": [
+        "version_check.py + metadata_differential: offline source-aware RPC/CLI, cache and loader/planner fixtures"
+      ],
+      "event_cases": [
+        "version_check.py + metadata_differential: offline source-aware RPC/CLI, cache and loader/planner fixtures"
+      ],
+      "disk_cases": [
+        "version_check.py: old metadata cache envelope read/write fixtures"
+      ],
+      "platform_evidence": {
+        "linux": "Executed locally; exact combined milestone evidence recorded separately",
+        "macos_arm64": "pending combined CI",
+        "macos_x86_64": "pending combined CI",
+        "windows": "pending combined native CI; reqwest AWS-LC crosscheck needs MinGW C compiler"
+      },
       "known_gaps": [
-        "Not implemented."
+        "Finite fixture corpus does not establish all upstream schemas, platform errors or live network behavior.",
+        "Oversized request recovery global oracle divergence remains pending owner decision."
       ],
       "compatible": false
     },
     {
       "method": "version.resolve",
       "source_inventory": true,
-      "implementation": "not_started",
-      "success_cases": [],
-      "invalid_cases": [],
-      "error_cases": [],
-      "event_cases": [],
-      "disk_cases": [],
-      "platform_evidence": {},
+      "implementation": "implemented_slice",
+      "success_cases": [
+        "version_check.py + metadata_differential: offline source-aware RPC/CLI, cache and loader/planner fixtures"
+      ],
+      "invalid_cases": [
+        "version_check.py + metadata_differential: offline source-aware RPC/CLI, cache and loader/planner fixtures"
+      ],
+      "error_cases": [
+        "version_check.py + metadata_differential: offline source-aware RPC/CLI, cache and loader/planner fixtures"
+      ],
+      "event_cases": [
+        "version_check.py + metadata_differential: offline source-aware RPC/CLI, cache and loader/planner fixtures"
+      ],
+      "disk_cases": [
+        "version_check.py: old metadata cache envelope read/write fixtures"
+      ],
+      "platform_evidence": {
+        "linux": "Executed locally; exact combined milestone evidence recorded separately",
+        "macos_arm64": "pending combined CI",
+        "macos_x86_64": "pending combined CI",
+        "windows": "pending combined native CI; reqwest AWS-LC crosscheck needs MinGW C compiler"
+      },
       "known_gaps": [
-        "Not implemented."
+        "Finite fixture corpus does not establish all upstream schemas, platform errors or live network behavior.",
+        "Oversized request recovery global oracle divergence remains pending owner decision."
       ],
       "compatible": false
     },
     {
       "method": "install.plan",
       "source_inventory": true,
-      "implementation": "not_started",
-      "success_cases": [],
-      "invalid_cases": [],
-      "error_cases": [],
-      "event_cases": [],
-      "disk_cases": [],
-      "platform_evidence": {},
+      "implementation": "implemented_slice",
+      "success_cases": [
+        "version_check.py + metadata_differential: offline source-aware RPC/CLI, cache and loader/planner fixtures"
+      ],
+      "invalid_cases": [
+        "version_check.py + metadata_differential: offline source-aware RPC/CLI, cache and loader/planner fixtures"
+      ],
+      "error_cases": [
+        "version_check.py + metadata_differential: offline source-aware RPC/CLI, cache and loader/planner fixtures"
+      ],
+      "event_cases": [
+        "version_check.py + metadata_differential: offline source-aware RPC/CLI, cache and loader/planner fixtures"
+      ],
+      "disk_cases": [
+        "version_check.py: old metadata cache envelope read/write fixtures"
+      ],
+      "platform_evidence": {
+        "linux": "Executed locally; exact combined milestone evidence recorded separately",
+        "macos_arm64": "pending combined CI",
+        "macos_x86_64": "pending combined CI",
+        "windows": "pending combined native CI; reqwest AWS-LC crosscheck needs MinGW C compiler"
+      },
       "known_gaps": [
-        "Not implemented."
+        "Finite fixture corpus does not establish all upstream schemas, platform errors or live network behavior.",
+        "Oversized request recovery global oracle divergence remains pending owner decision."
       ],
       "compatible": false
     },
@@ -171,15 +235,31 @@
     {
       "method": "mods.list",
       "source_inventory": true,
-      "implementation": "not_started",
-      "success_cases": [],
-      "invalid_cases": [],
-      "error_cases": [],
-      "event_cases": [],
-      "disk_cases": [],
-      "platform_evidence": {},
+      "implementation": "implemented_slice",
+      "success_cases": [
+        "content_oracle/content_cli_oracle: registry bytes, raw results, errors, locks, aliases, provider asymmetry"
+      ],
+      "invalid_cases": [
+        "content_oracle/content_cli_oracle: registry bytes, raw results, errors, locks, aliases, provider asymmetry"
+      ],
+      "error_cases": [
+        "content_oracle/content_cli_oracle: registry bytes, raw results, errors, locks, aliases, provider asymmetry"
+      ],
+      "event_cases": [
+        "content_oracle/content_cli_oracle: registry bytes, raw results, errors, locks, aliases, provider asymmetry"
+      ],
+      "disk_cases": [
+        "content_oracle/content_cli_oracle: registry bytes, raw results, errors, locks, aliases, provider asymmetry"
+      ],
+      "platform_evidence": {
+        "linux": "Executed locally; exact combined milestone evidence recorded separately",
+        "macos_arm64": "pending combined CI",
+        "macos_x86_64": "pending combined CI",
+        "windows": "pending combined native CI; reqwest AWS-LC crosscheck needs MinGW C compiler"
+      },
       "known_gaps": [
-        "Not implemented."
+        "Finite fixture corpus does not establish all upstream schemas, platform errors or live network behavior.",
+        "Oversized request recovery global oracle divergence remains pending owner decision."
       ],
       "compatible": false
     },
@@ -216,45 +296,93 @@
     {
       "method": "mods.enable",
       "source_inventory": true,
-      "implementation": "not_started",
-      "success_cases": [],
-      "invalid_cases": [],
-      "error_cases": [],
-      "event_cases": [],
-      "disk_cases": [],
-      "platform_evidence": {},
+      "implementation": "implemented_slice",
+      "success_cases": [
+        "content_oracle/content_cli_oracle: registry bytes, raw results, errors, locks, aliases, provider asymmetry"
+      ],
+      "invalid_cases": [
+        "content_oracle/content_cli_oracle: registry bytes, raw results, errors, locks, aliases, provider asymmetry"
+      ],
+      "error_cases": [
+        "content_oracle/content_cli_oracle: registry bytes, raw results, errors, locks, aliases, provider asymmetry"
+      ],
+      "event_cases": [
+        "content_oracle/content_cli_oracle: registry bytes, raw results, errors, locks, aliases, provider asymmetry"
+      ],
+      "disk_cases": [
+        "content_oracle/content_cli_oracle: registry bytes, raw results, errors, locks, aliases, provider asymmetry"
+      ],
+      "platform_evidence": {
+        "linux": "Executed locally; exact combined milestone evidence recorded separately",
+        "macos_arm64": "pending combined CI",
+        "macos_x86_64": "pending combined CI",
+        "windows": "pending combined native CI; reqwest AWS-LC crosscheck needs MinGW C compiler"
+      },
       "known_gaps": [
-        "Not implemented."
+        "Finite fixture corpus does not establish all upstream schemas, platform errors or live network behavior.",
+        "Oversized request recovery global oracle divergence remains pending owner decision."
       ],
       "compatible": false
     },
     {
       "method": "mods.disable",
       "source_inventory": true,
-      "implementation": "not_started",
-      "success_cases": [],
-      "invalid_cases": [],
-      "error_cases": [],
-      "event_cases": [],
-      "disk_cases": [],
-      "platform_evidence": {},
+      "implementation": "implemented_slice",
+      "success_cases": [
+        "content_oracle/content_cli_oracle: registry bytes, raw results, errors, locks, aliases, provider asymmetry"
+      ],
+      "invalid_cases": [
+        "content_oracle/content_cli_oracle: registry bytes, raw results, errors, locks, aliases, provider asymmetry"
+      ],
+      "error_cases": [
+        "content_oracle/content_cli_oracle: registry bytes, raw results, errors, locks, aliases, provider asymmetry"
+      ],
+      "event_cases": [
+        "content_oracle/content_cli_oracle: registry bytes, raw results, errors, locks, aliases, provider asymmetry"
+      ],
+      "disk_cases": [
+        "content_oracle/content_cli_oracle: registry bytes, raw results, errors, locks, aliases, provider asymmetry"
+      ],
+      "platform_evidence": {
+        "linux": "Executed locally; exact combined milestone evidence recorded separately",
+        "macos_arm64": "pending combined CI",
+        "macos_x86_64": "pending combined CI",
+        "windows": "pending combined native CI; reqwest AWS-LC crosscheck needs MinGW C compiler"
+      },
       "known_gaps": [
-        "Not implemented."
+        "Finite fixture corpus does not establish all upstream schemas, platform errors or live network behavior.",
+        "Oversized request recovery global oracle divergence remains pending owner decision."
       ],
       "compatible": false
     },
     {
       "method": "mods.remove",
       "source_inventory": true,
-      "implementation": "not_started",
-      "success_cases": [],
-      "invalid_cases": [],
-      "error_cases": [],
-      "event_cases": [],
-      "disk_cases": [],
-      "platform_evidence": {},
+      "implementation": "implemented_slice",
+      "success_cases": [
+        "content_oracle/content_cli_oracle: registry bytes, raw results, errors, locks, aliases, provider asymmetry"
+      ],
+      "invalid_cases": [
+        "content_oracle/content_cli_oracle: registry bytes, raw results, errors, locks, aliases, provider asymmetry"
+      ],
+      "error_cases": [
+        "content_oracle/content_cli_oracle: registry bytes, raw results, errors, locks, aliases, provider asymmetry"
+      ],
+      "event_cases": [
+        "content_oracle/content_cli_oracle: registry bytes, raw results, errors, locks, aliases, provider asymmetry"
+      ],
+      "disk_cases": [
+        "content_oracle/content_cli_oracle: registry bytes, raw results, errors, locks, aliases, provider asymmetry"
+      ],
+      "platform_evidence": {
+        "linux": "Executed locally; exact combined milestone evidence recorded separately",
+        "macos_arm64": "pending combined CI",
+        "macos_x86_64": "pending combined CI",
+        "windows": "pending combined native CI; reqwest AWS-LC crosscheck needs MinGW C compiler"
+      },
       "known_gaps": [
-        "Not implemented."
+        "Finite fixture corpus does not establish all upstream schemas, platform errors or live network behavior.",
+        "Oversized request recovery global oracle divergence remains pending owner decision."
       ],
       "compatible": false
     },
@@ -276,15 +404,31 @@
     {
       "method": "resourcepacks.list",
       "source_inventory": true,
-      "implementation": "not_started",
-      "success_cases": [],
-      "invalid_cases": [],
-      "error_cases": [],
-      "event_cases": [],
-      "disk_cases": [],
-      "platform_evidence": {},
+      "implementation": "implemented_slice",
+      "success_cases": [
+        "content_oracle/content_cli_oracle: registry bytes, raw results, errors, locks, aliases, provider asymmetry"
+      ],
+      "invalid_cases": [
+        "content_oracle/content_cli_oracle: registry bytes, raw results, errors, locks, aliases, provider asymmetry"
+      ],
+      "error_cases": [
+        "content_oracle/content_cli_oracle: registry bytes, raw results, errors, locks, aliases, provider asymmetry"
+      ],
+      "event_cases": [
+        "content_oracle/content_cli_oracle: registry bytes, raw results, errors, locks, aliases, provider asymmetry"
+      ],
+      "disk_cases": [
+        "content_oracle/content_cli_oracle: registry bytes, raw results, errors, locks, aliases, provider asymmetry"
+      ],
+      "platform_evidence": {
+        "linux": "Executed locally; exact combined milestone evidence recorded separately",
+        "macos_arm64": "pending combined CI",
+        "macos_x86_64": "pending combined CI",
+        "windows": "pending combined native CI; reqwest AWS-LC crosscheck needs MinGW C compiler"
+      },
       "known_gaps": [
-        "Not implemented."
+        "Finite fixture corpus does not establish all upstream schemas, platform errors or live network behavior.",
+        "Oversized request recovery global oracle divergence remains pending owner decision."
       ],
       "compatible": false
     },
@@ -321,45 +465,93 @@
     {
       "method": "resourcepacks.enable",
       "source_inventory": true,
-      "implementation": "not_started",
-      "success_cases": [],
-      "invalid_cases": [],
-      "error_cases": [],
-      "event_cases": [],
-      "disk_cases": [],
-      "platform_evidence": {},
+      "implementation": "implemented_slice",
+      "success_cases": [
+        "content_oracle/content_cli_oracle: registry bytes, raw results, errors, locks, aliases, provider asymmetry"
+      ],
+      "invalid_cases": [
+        "content_oracle/content_cli_oracle: registry bytes, raw results, errors, locks, aliases, provider asymmetry"
+      ],
+      "error_cases": [
+        "content_oracle/content_cli_oracle: registry bytes, raw results, errors, locks, aliases, provider asymmetry"
+      ],
+      "event_cases": [
+        "content_oracle/content_cli_oracle: registry bytes, raw results, errors, locks, aliases, provider asymmetry"
+      ],
+      "disk_cases": [
+        "content_oracle/content_cli_oracle: registry bytes, raw results, errors, locks, aliases, provider asymmetry"
+      ],
+      "platform_evidence": {
+        "linux": "Executed locally; exact combined milestone evidence recorded separately",
+        "macos_arm64": "pending combined CI",
+        "macos_x86_64": "pending combined CI",
+        "windows": "pending combined native CI; reqwest AWS-LC crosscheck needs MinGW C compiler"
+      },
       "known_gaps": [
-        "Not implemented."
+        "Finite fixture corpus does not establish all upstream schemas, platform errors or live network behavior.",
+        "Oversized request recovery global oracle divergence remains pending owner decision."
       ],
       "compatible": false
     },
     {
       "method": "resourcepacks.disable",
       "source_inventory": true,
-      "implementation": "not_started",
-      "success_cases": [],
-      "invalid_cases": [],
-      "error_cases": [],
-      "event_cases": [],
-      "disk_cases": [],
-      "platform_evidence": {},
+      "implementation": "implemented_slice",
+      "success_cases": [
+        "content_oracle/content_cli_oracle: registry bytes, raw results, errors, locks, aliases, provider asymmetry"
+      ],
+      "invalid_cases": [
+        "content_oracle/content_cli_oracle: registry bytes, raw results, errors, locks, aliases, provider asymmetry"
+      ],
+      "error_cases": [
+        "content_oracle/content_cli_oracle: registry bytes, raw results, errors, locks, aliases, provider asymmetry"
+      ],
+      "event_cases": [
+        "content_oracle/content_cli_oracle: registry bytes, raw results, errors, locks, aliases, provider asymmetry"
+      ],
+      "disk_cases": [
+        "content_oracle/content_cli_oracle: registry bytes, raw results, errors, locks, aliases, provider asymmetry"
+      ],
+      "platform_evidence": {
+        "linux": "Executed locally; exact combined milestone evidence recorded separately",
+        "macos_arm64": "pending combined CI",
+        "macos_x86_64": "pending combined CI",
+        "windows": "pending combined native CI; reqwest AWS-LC crosscheck needs MinGW C compiler"
+      },
       "known_gaps": [
-        "Not implemented."
+        "Finite fixture corpus does not establish all upstream schemas, platform errors or live network behavior.",
+        "Oversized request recovery global oracle divergence remains pending owner decision."
       ],
       "compatible": false
     },
     {
       "method": "resourcepacks.remove",
       "source_inventory": true,
-      "implementation": "not_started",
-      "success_cases": [],
-      "invalid_cases": [],
-      "error_cases": [],
-      "event_cases": [],
-      "disk_cases": [],
-      "platform_evidence": {},
+      "implementation": "implemented_slice",
+      "success_cases": [
+        "content_oracle/content_cli_oracle: registry bytes, raw results, errors, locks, aliases, provider asymmetry"
+      ],
+      "invalid_cases": [
+        "content_oracle/content_cli_oracle: registry bytes, raw results, errors, locks, aliases, provider asymmetry"
+      ],
+      "error_cases": [
+        "content_oracle/content_cli_oracle: registry bytes, raw results, errors, locks, aliases, provider asymmetry"
+      ],
+      "event_cases": [
+        "content_oracle/content_cli_oracle: registry bytes, raw results, errors, locks, aliases, provider asymmetry"
+      ],
+      "disk_cases": [
+        "content_oracle/content_cli_oracle: registry bytes, raw results, errors, locks, aliases, provider asymmetry"
+      ],
+      "platform_evidence": {
+        "linux": "Executed locally; exact combined milestone evidence recorded separately",
+        "macos_arm64": "pending combined CI",
+        "macos_x86_64": "pending combined CI",
+        "windows": "pending combined native CI; reqwest AWS-LC crosscheck needs MinGW C compiler"
+      },
       "known_gaps": [
-        "Not implemented."
+        "Finite fixture corpus does not establish all upstream schemas, platform errors or live network behavior.",
+        "Oversized request recovery global oracle divergence remains pending owner decision."
       ],
       "compatible": false
     },
@@ -381,15 +573,31 @@
     {
       "method": "shaderpacks.list",
       "source_inventory": true,
-      "implementation": "not_started",
-      "success_cases": [],
-      "invalid_cases": [],
-      "error_cases": [],
-      "event_cases": [],
-      "disk_cases": [],
-      "platform_evidence": {},
+      "implementation": "implemented_slice",
+      "success_cases": [
+        "content_oracle/content_cli_oracle: registry bytes, raw results, errors, locks, aliases, provider asymmetry"
+      ],
+      "invalid_cases": [
+        "content_oracle/content_cli_oracle: registry bytes, raw results, errors, locks, aliases, provider asymmetry"
+      ],
+      "error_cases": [
+        "content_oracle/content_cli_oracle: registry bytes, raw results, errors, locks, aliases, provider asymmetry"
+      ],
+      "event_cases": [
+        "content_oracle/content_cli_oracle: registry bytes, raw results, errors, locks, aliases, provider asymmetry"
+      ],
+      "disk_cases": [
+        "content_oracle/content_cli_oracle: registry bytes, raw results, errors, locks, aliases, provider asymmetry"
+      ],
+      "platform_evidence": {
+        "linux": "Executed locally; exact combined milestone evidence recorded separately",
+        "macos_arm64": "pending combined CI",
+        "macos_x86_64": "pending combined CI",
+        "windows": "pending combined native CI; reqwest AWS-LC crosscheck needs MinGW C compiler"
+      },
       "known_gaps": [
-        "Not implemented."
+        "Finite fixture corpus does not establish all upstream schemas, platform errors or live network behavior.",
+        "Oversized request recovery global oracle divergence remains pending owner decision."
       ],
       "compatible": false
     },
@@ -426,45 +634,93 @@
     {
       "method": "shaderpacks.enable",
       "source_inventory": true,
-      "implementation": "not_started",
-      "success_cases": [],
-      "invalid_cases": [],
-      "error_cases": [],
-      "event_cases": [],
-      "disk_cases": [],
-      "platform_evidence": {},
+      "implementation": "implemented_slice",
+      "success_cases": [
+        "content_oracle/content_cli_oracle: registry bytes, raw results, errors, locks, aliases, provider asymmetry"
+      ],
+      "invalid_cases": [
+        "content_oracle/content_cli_oracle: registry bytes, raw results, errors, locks, aliases, provider asymmetry"
+      ],
+      "error_cases": [
+        "content_oracle/content_cli_oracle: registry bytes, raw results, errors, locks, aliases, provider asymmetry"
+      ],
+      "event_cases": [
+        "content_oracle/content_cli_oracle: registry bytes, raw results, errors, locks, aliases, provider asymmetry"
+      ],
+      "disk_cases": [
+        "content_oracle/content_cli_oracle: registry bytes, raw results, errors, locks, aliases, provider asymmetry"
+      ],
+      "platform_evidence": {
+        "linux": "Executed locally; exact combined milestone evidence recorded separately",
+        "macos_arm64": "pending combined CI",
+        "macos_x86_64": "pending combined CI",
+        "windows": "pending combined native CI; reqwest AWS-LC crosscheck needs MinGW C compiler"
+      },
       "known_gaps": [
-        "Not implemented."
+        "Finite fixture corpus does not establish all upstream schemas, platform errors or live network behavior.",
+        "Oversized request recovery global oracle divergence remains pending owner decision."
       ],
       "compatible": false
     },
     {
       "method": "shaderpacks.disable",
       "source_inventory": true,
-      "implementation": "not_started",
-      "success_cases": [],
-      "invalid_cases": [],
-      "error_cases": [],
-      "event_cases": [],
-      "disk_cases": [],
-      "platform_evidence": {},
+      "implementation": "implemented_slice",
+      "success_cases": [
+        "content_oracle/content_cli_oracle: registry bytes, raw results, errors, locks, aliases, provider asymmetry"
+      ],
+      "invalid_cases": [
+        "content_oracle/content_cli_oracle: registry bytes, raw results, errors, locks, aliases, provider asymmetry"
+      ],
+      "error_cases": [
+        "content_oracle/content_cli_oracle: registry bytes, raw results, errors, locks, aliases, provider asymmetry"
+      ],
+      "event_cases": [
+        "content_oracle/content_cli_oracle: registry bytes, raw results, errors, locks, aliases, provider asymmetry"
+      ],
+      "disk_cases": [
+        "content_oracle/content_cli_oracle: registry bytes, raw results, errors, locks, aliases, provider asymmetry"
+      ],
+      "platform_evidence": {
+        "linux": "Executed locally; exact combined milestone evidence recorded separately",
+        "macos_arm64": "pending combined CI",
+        "macos_x86_64": "pending combined CI",
+        "windows": "pending combined native CI; reqwest AWS-LC crosscheck needs MinGW C compiler"
+      },
       "known_gaps": [
-        "Not implemented."
+        "Finite fixture corpus does not establish all upstream schemas, platform errors or live network behavior.",
+        "Oversized request recovery global oracle divergence remains pending owner decision."
       ],
       "compatible": false
     },
     {
       "method": "shaderpacks.remove",
       "source_inventory": true,
-      "implementation": "not_started",
-      "success_cases": [],
-      "invalid_cases": [],
-      "error_cases": [],
-      "event_cases": [],
-      "disk_cases": [],
-      "platform_evidence": {},
+      "implementation": "implemented_slice",
+      "success_cases": [
+        "content_oracle/content_cli_oracle: registry bytes, raw results, errors, locks, aliases, provider asymmetry"
+      ],
+      "invalid_cases": [
+        "content_oracle/content_cli_oracle: registry bytes, raw results, errors, locks, aliases, provider asymmetry"
+      ],
+      "error_cases": [
+        "content_oracle/content_cli_oracle: registry bytes, raw results, errors, locks, aliases, provider asymmetry"
+      ],
+      "event_cases": [
+        "content_oracle/content_cli_oracle: registry bytes, raw results, errors, locks, aliases, provider asymmetry"
+      ],
+      "disk_cases": [
+        "content_oracle/content_cli_oracle: registry bytes, raw results, errors, locks, aliases, provider asymmetry"
+      ],
+      "platform_evidence": {
+        "linux": "Executed locally; exact combined milestone evidence recorded separately",
+        "macos_arm64": "pending combined CI",
+        "macos_x86_64": "pending combined CI",
+        "windows": "pending combined native CI; reqwest AWS-LC crosscheck needs MinGW C compiler"
+      },
       "known_gaps": [
-        "Not implemented."
+        "Finite fixture corpus does not establish all upstream schemas, platform errors or live network behavior.",
+        "Oversized request recovery global oracle divergence remains pending owner decision."
       ],
       "compatible": false
     },
@@ -486,15 +742,31 @@
     {
       "method": "datapacks.list",
       "source_inventory": true,
-      "implementation": "not_started",
-      "success_cases": [],
-      "invalid_cases": [],
-      "error_cases": [],
-      "event_cases": [],
-      "disk_cases": [],
-      "platform_evidence": {},
+      "implementation": "implemented_slice",
+      "success_cases": [
+        "content_oracle/content_cli_oracle: registry bytes, raw results, errors, locks, aliases, provider asymmetry"
+      ],
+      "invalid_cases": [
+        "content_oracle/content_cli_oracle: registry bytes, raw results, errors, locks, aliases, provider asymmetry"
+      ],
+      "error_cases": [
+        "content_oracle/content_cli_oracle: registry bytes, raw results, errors, locks, aliases, provider asymmetry"
+      ],
+      "event_cases": [
+        "content_oracle/content_cli_oracle: registry bytes, raw results, errors, locks, aliases, provider asymmetry"
+      ],
+      "disk_cases": [
+        "content_oracle/content_cli_oracle: registry bytes, raw results, errors, locks, aliases, provider asymmetry"
+      ],
+      "platform_evidence": {
+        "linux": "Executed locally; exact combined milestone evidence recorded separately",
+        "macos_arm64": "pending combined CI",
+        "macos_x86_64": "pending combined CI",
+        "windows": "pending combined native CI; reqwest AWS-LC crosscheck needs MinGW C compiler"
+      },
       "known_gaps": [
-        "Not implemented."
+        "Finite fixture corpus does not establish all upstream schemas, platform errors or live network behavior.",
+        "Oversized request recovery global oracle divergence remains pending owner decision."
       ],
       "compatible": false
     },
@@ -531,45 +803,93 @@
     {
       "method": "datapacks.enable",
       "source_inventory": true,
-      "implementation": "not_started",
-      "success_cases": [],
-      "invalid_cases": [],
-      "error_cases": [],
-      "event_cases": [],
-      "disk_cases": [],
-      "platform_evidence": {},
+      "implementation": "implemented_slice",
+      "success_cases": [
+        "content_oracle/content_cli_oracle: registry bytes, raw results, errors, locks, aliases, provider asymmetry"
+      ],
+      "invalid_cases": [
+        "content_oracle/content_cli_oracle: registry bytes, raw results, errors, locks, aliases, provider asymmetry"
+      ],
+      "error_cases": [
+        "content_oracle/content_cli_oracle: registry bytes, raw results, errors, locks, aliases, provider asymmetry"
+      ],
+      "event_cases": [
+        "content_oracle/content_cli_oracle: registry bytes, raw results, errors, locks, aliases, provider asymmetry"
+      ],
+      "disk_cases": [
+        "content_oracle/content_cli_oracle: registry bytes, raw results, errors, locks, aliases, provider asymmetry"
+      ],
+      "platform_evidence": {
+        "linux": "Executed locally; exact combined milestone evidence recorded separately",
+        "macos_arm64": "pending combined CI",
+        "macos_x86_64": "pending combined CI",
+        "windows": "pending combined native CI; reqwest AWS-LC crosscheck needs MinGW C compiler"
+      },
       "known_gaps": [
-        "Not implemented."
+        "Finite fixture corpus does not establish all upstream schemas, platform errors or live network behavior.",
+        "Oversized request recovery global oracle divergence remains pending owner decision."
       ],
       "compatible": false
     },
     {
       "method": "datapacks.disable",
       "source_inventory": true,
-      "implementation": "not_started",
-      "success_cases": [],
-      "invalid_cases": [],
-      "error_cases": [],
-      "event_cases": [],
-      "disk_cases": [],
-      "platform_evidence": {},
+      "implementation": "implemented_slice",
+      "success_cases": [
+        "content_oracle/content_cli_oracle: registry bytes, raw results, errors, locks, aliases, provider asymmetry"
+      ],
+      "invalid_cases": [
+        "content_oracle/content_cli_oracle: registry bytes, raw results, errors, locks, aliases, provider asymmetry"
+      ],
+      "error_cases": [
+        "content_oracle/content_cli_oracle: registry bytes, raw results, errors, locks, aliases, provider asymmetry"
+      ],
+      "event_cases": [
+        "content_oracle/content_cli_oracle: registry bytes, raw results, errors, locks, aliases, provider asymmetry"
+      ],
+      "disk_cases": [
+        "content_oracle/content_cli_oracle: registry bytes, raw results, errors, locks, aliases, provider asymmetry"
+      ],
+      "platform_evidence": {
+        "linux": "Executed locally; exact combined milestone evidence recorded separately",
+        "macos_arm64": "pending combined CI",
+        "macos_x86_64": "pending combined CI",
+        "windows": "pending combined native CI; reqwest AWS-LC crosscheck needs MinGW C compiler"
+      },
       "known_gaps": [
-        "Not implemented."
+        "Finite fixture corpus does not establish all upstream schemas, platform errors or live network behavior.",
+        "Oversized request recovery global oracle divergence remains pending owner decision."
       ],
       "compatible": false
     },
     {
       "method": "datapacks.remove",
       "source_inventory": true,
-      "implementation": "not_started",
-      "success_cases": [],
-      "invalid_cases": [],
-      "error_cases": [],
-      "event_cases": [],
-      "disk_cases": [],
-      "platform_evidence": {},
+      "implementation": "implemented_slice",
+      "success_cases": [
+        "content_oracle/content_cli_oracle: registry bytes, raw results, errors, locks, aliases, provider asymmetry"
+      ],
+      "invalid_cases": [
+        "content_oracle/content_cli_oracle: registry bytes, raw results, errors, locks, aliases, provider asymmetry"
+      ],
+      "error_cases": [
+        "content_oracle/content_cli_oracle: registry bytes, raw results, errors, locks, aliases, provider asymmetry"
+      ],
+      "event_cases": [
+        "content_oracle/content_cli_oracle: registry bytes, raw results, errors, locks, aliases, provider asymmetry"
+      ],
+      "disk_cases": [
+        "content_oracle/content_cli_oracle: registry bytes, raw results, errors, locks, aliases, provider asymmetry"
+      ],
+      "platform_evidence": {
+        "linux": "Executed locally; exact combined milestone evidence recorded separately",
+        "macos_arm64": "pending combined CI",
+        "macos_x86_64": "pending combined CI",
+        "windows": "pending combined native CI; reqwest AWS-LC crosscheck needs MinGW C compiler"
+      },
       "known_gaps": [
-        "Not implemented."
+        "Finite fixture corpus does not establish all upstream schemas, platform errors or live network behavior.",
+        "Oversized request recovery global oracle divergence remains pending owner decision."
       ],
       "compatible": false
     },
@@ -1174,165 +1494,363 @@
     {
       "method": "worlds.list",
       "source_inventory": true,
-      "implementation": "not_started",
-      "success_cases": [],
-      "invalid_cases": [],
-      "error_cases": [],
-      "event_cases": [],
-      "disk_cases": [],
-      "platform_evidence": {},
+      "implementation": "implemented_slice",
+      "success_cases": [
+        "worlds::tests: NBT, archive exchange, lock, CLI, copy identity and mutable filesystem oracle corpus"
+      ],
+      "invalid_cases": [
+        "worlds::tests: NBT, archive exchange, lock, CLI, copy identity and mutable filesystem oracle corpus"
+      ],
+      "error_cases": [
+        "worlds::tests: NBT, archive exchange, lock, CLI, copy identity and mutable filesystem oracle corpus"
+      ],
+      "event_cases": [
+        "worlds::tests: NBT, archive exchange, lock, CLI, copy identity and mutable filesystem oracle corpus"
+      ],
+      "disk_cases": [
+        "worlds::tests: NBT, archive exchange, lock, CLI, copy identity and mutable filesystem oracle corpus"
+      ],
+      "platform_evidence": {
+        "linux": "Executed locally; exact combined milestone evidence recorded separately",
+        "macos_arm64": "pending combined CI",
+        "macos_x86_64": "pending combined CI",
+        "windows": "pending combined native CI; reqwest AWS-LC crosscheck needs MinGW C compiler"
+      },
       "known_gaps": [
-        "Not implemented."
+        "Finite fixture corpus does not establish all upstream schemas, platform errors or live network behavior.",
+        "Oversized request recovery global oracle divergence remains pending owner decision.",
+        "ZIP CRC mismatch acceptance differs from Zig; policy review pending.",
+        "Export/backup timestamp CLI corpus incomplete."
       ],
       "compatible": false
     },
     {
       "method": "worlds.get",
       "source_inventory": true,
-      "implementation": "not_started",
-      "success_cases": [],
-      "invalid_cases": [],
-      "error_cases": [],
-      "event_cases": [],
-      "disk_cases": [],
-      "platform_evidence": {},
+      "implementation": "implemented_slice",
+      "success_cases": [
+        "worlds::tests: NBT, archive exchange, lock, CLI, copy identity and mutable filesystem oracle corpus"
+      ],
+      "invalid_cases": [
+        "worlds::tests: NBT, archive exchange, lock, CLI, copy identity and mutable filesystem oracle corpus"
+      ],
+      "error_cases": [
+        "worlds::tests: NBT, archive exchange, lock, CLI, copy identity and mutable filesystem oracle corpus"
+      ],
+      "event_cases": [
+        "worlds::tests: NBT, archive exchange, lock, CLI, copy identity and mutable filesystem oracle corpus"
+      ],
+      "disk_cases": [
+        "worlds::tests: NBT, archive exchange, lock, CLI, copy identity and mutable filesystem oracle corpus"
+      ],
+      "platform_evidence": {
+        "linux": "Executed locally; exact combined milestone evidence recorded separately",
+        "macos_arm64": "pending combined CI",
+        "macos_x86_64": "pending combined CI",
+        "windows": "pending combined native CI; reqwest AWS-LC crosscheck needs MinGW C compiler"
+      },
       "known_gaps": [
-        "Not implemented."
+        "Finite fixture corpus does not establish all upstream schemas, platform errors or live network behavior.",
+        "Oversized request recovery global oracle divergence remains pending owner decision.",
+        "ZIP CRC mismatch acceptance differs from Zig; policy review pending.",
+        "Export/backup timestamp CLI corpus incomplete."
       ],
       "compatible": false
     },
     {
       "method": "worlds.rename",
       "source_inventory": true,
-      "implementation": "not_started",
-      "success_cases": [],
-      "invalid_cases": [],
-      "error_cases": [],
-      "event_cases": [],
-      "disk_cases": [],
-      "platform_evidence": {},
+      "implementation": "implemented_slice",
+      "success_cases": [
+        "worlds::tests: NBT, archive exchange, lock, CLI, copy identity and mutable filesystem oracle corpus"
+      ],
+      "invalid_cases": [
+        "worlds::tests: NBT, archive exchange, lock, CLI, copy identity and mutable filesystem oracle corpus"
+      ],
+      "error_cases": [
+        "worlds::tests: NBT, archive exchange, lock, CLI, copy identity and mutable filesystem oracle corpus"
+      ],
+      "event_cases": [
+        "worlds::tests: NBT, archive exchange, lock, CLI, copy identity and mutable filesystem oracle corpus"
+      ],
+      "disk_cases": [
+        "worlds::tests: NBT, archive exchange, lock, CLI, copy identity and mutable filesystem oracle corpus"
+      ],
+      "platform_evidence": {
+        "linux": "Executed locally; exact combined milestone evidence recorded separately",
+        "macos_arm64": "pending combined CI",
+        "macos_x86_64": "pending combined CI",
+        "windows": "pending combined native CI; reqwest AWS-LC crosscheck needs MinGW C compiler"
+      },
       "known_gaps": [
-        "Not implemented."
+        "Finite fixture corpus does not establish all upstream schemas, platform errors or live network behavior.",
+        "Oversized request recovery global oracle divergence remains pending owner decision.",
+        "ZIP CRC mismatch acceptance differs from Zig; policy review pending.",
+        "Export/backup timestamp CLI corpus incomplete."
       ],
       "compatible": false
     },
     {
       "method": "worlds.duplicate",
       "source_inventory": true,
-      "implementation": "not_started",
-      "success_cases": [],
-      "invalid_cases": [],
-      "error_cases": [],
-      "event_cases": [],
-      "disk_cases": [],
-      "platform_evidence": {},
+      "implementation": "implemented_slice",
+      "success_cases": [
+        "worlds::tests: NBT, archive exchange, lock, CLI, copy identity and mutable filesystem oracle corpus"
+      ],
+      "invalid_cases": [
+        "worlds::tests: NBT, archive exchange, lock, CLI, copy identity and mutable filesystem oracle corpus"
+      ],
+      "error_cases": [
+        "worlds::tests: NBT, archive exchange, lock, CLI, copy identity and mutable filesystem oracle corpus"
+      ],
+      "event_cases": [
+        "worlds::tests: NBT, archive exchange, lock, CLI, copy identity and mutable filesystem oracle corpus"
+      ],
+      "disk_cases": [
+        "worlds::tests: NBT, archive exchange, lock, CLI, copy identity and mutable filesystem oracle corpus"
+      ],
+      "platform_evidence": {
+        "linux": "Executed locally; exact combined milestone evidence recorded separately",
+        "macos_arm64": "pending combined CI",
+        "macos_x86_64": "pending combined CI",
+        "windows": "pending combined native CI; reqwest AWS-LC crosscheck needs MinGW C compiler"
+      },
       "known_gaps": [
-        "Not implemented."
+        "Finite fixture corpus does not establish all upstream schemas, platform errors or live network behavior.",
+        "Oversized request recovery global oracle divergence remains pending owner decision.",
+        "ZIP CRC mismatch acceptance differs from Zig; policy review pending.",
+        "Export/backup timestamp CLI corpus incomplete."
       ],
       "compatible": false
     },
     {
       "method": "worlds.delete",
       "source_inventory": true,
-      "implementation": "not_started",
-      "success_cases": [],
-      "invalid_cases": [],
-      "error_cases": [],
-      "event_cases": [],
-      "disk_cases": [],
-      "platform_evidence": {},
+      "implementation": "implemented_slice",
+      "success_cases": [
+        "worlds::tests: NBT, archive exchange, lock, CLI, copy identity and mutable filesystem oracle corpus"
+      ],
+      "invalid_cases": [
+        "worlds::tests: NBT, archive exchange, lock, CLI, copy identity and mutable filesystem oracle corpus"
+      ],
+      "error_cases": [
+        "worlds::tests: NBT, archive exchange, lock, CLI, copy identity and mutable filesystem oracle corpus"
+      ],
+      "event_cases": [
+        "worlds::tests: NBT, archive exchange, lock, CLI, copy identity and mutable filesystem oracle corpus"
+      ],
+      "disk_cases": [
+        "worlds::tests: NBT, archive exchange, lock, CLI, copy identity and mutable filesystem oracle corpus"
+      ],
+      "platform_evidence": {
+        "linux": "Executed locally; exact combined milestone evidence recorded separately",
+        "macos_arm64": "pending combined CI",
+        "macos_x86_64": "pending combined CI",
+        "windows": "pending combined native CI; reqwest AWS-LC crosscheck needs MinGW C compiler"
+      },
       "known_gaps": [
-        "Not implemented."
+        "Finite fixture corpus does not establish all upstream schemas, platform errors or live network behavior.",
+        "Oversized request recovery global oracle divergence remains pending owner decision.",
+        "ZIP CRC mismatch acceptance differs from Zig; policy review pending.",
+        "Export/backup timestamp CLI corpus incomplete."
       ],
       "compatible": false
     },
     {
       "method": "worlds.export",
       "source_inventory": true,
-      "implementation": "not_started",
-      "success_cases": [],
-      "invalid_cases": [],
-      "error_cases": [],
-      "event_cases": [],
-      "disk_cases": [],
-      "platform_evidence": {},
+      "implementation": "implemented_slice",
+      "success_cases": [
+        "worlds::tests: NBT, archive exchange, lock, CLI, copy identity and mutable filesystem oracle corpus"
+      ],
+      "invalid_cases": [
+        "worlds::tests: NBT, archive exchange, lock, CLI, copy identity and mutable filesystem oracle corpus"
+      ],
+      "error_cases": [
+        "worlds::tests: NBT, archive exchange, lock, CLI, copy identity and mutable filesystem oracle corpus"
+      ],
+      "event_cases": [
+        "worlds::tests: NBT, archive exchange, lock, CLI, copy identity and mutable filesystem oracle corpus"
+      ],
+      "disk_cases": [
+        "worlds::tests: NBT, archive exchange, lock, CLI, copy identity and mutable filesystem oracle corpus"
+      ],
+      "platform_evidence": {
+        "linux": "Executed locally; exact combined milestone evidence recorded separately",
+        "macos_arm64": "pending combined CI",
+        "macos_x86_64": "pending combined CI",
+        "windows": "pending combined native CI; reqwest AWS-LC crosscheck needs MinGW C compiler"
+      },
       "known_gaps": [
-        "Not implemented."
+        "Finite fixture corpus does not establish all upstream schemas, platform errors or live network behavior.",
+        "Oversized request recovery global oracle divergence remains pending owner decision.",
+        "ZIP CRC mismatch acceptance differs from Zig; policy review pending.",
+        "Export/backup timestamp CLI corpus incomplete."
       ],
       "compatible": false
     },
     {
       "method": "worlds.import",
       "source_inventory": true,
-      "implementation": "not_started",
-      "success_cases": [],
-      "invalid_cases": [],
-      "error_cases": [],
-      "event_cases": [],
-      "disk_cases": [],
-      "platform_evidence": {},
+      "implementation": "implemented_slice",
+      "success_cases": [
+        "worlds::tests: NBT, archive exchange, lock, CLI, copy identity and mutable filesystem oracle corpus"
+      ],
+      "invalid_cases": [
+        "worlds::tests: NBT, archive exchange, lock, CLI, copy identity and mutable filesystem oracle corpus"
+      ],
+      "error_cases": [
+        "worlds::tests: NBT, archive exchange, lock, CLI, copy identity and mutable filesystem oracle corpus"
+      ],
+      "event_cases": [
+        "worlds::tests: NBT, archive exchange, lock, CLI, copy identity and mutable filesystem oracle corpus"
+      ],
+      "disk_cases": [
+        "worlds::tests: NBT, archive exchange, lock, CLI, copy identity and mutable filesystem oracle corpus"
+      ],
+      "platform_evidence": {
+        "linux": "Executed locally; exact combined milestone evidence recorded separately",
+        "macos_arm64": "pending combined CI",
+        "macos_x86_64": "pending combined CI",
+        "windows": "pending combined native CI; reqwest AWS-LC crosscheck needs MinGW C compiler"
+      },
       "known_gaps": [
-        "Not implemented."
+        "Finite fixture corpus does not establish all upstream schemas, platform errors or live network behavior.",
+        "Oversized request recovery global oracle divergence remains pending owner decision.",
+        "ZIP CRC mismatch acceptance differs from Zig; policy review pending.",
+        "Export/backup timestamp CLI corpus incomplete."
       ],
       "compatible": false
     },
     {
       "method": "worlds.backup",
       "source_inventory": true,
-      "implementation": "not_started",
-      "success_cases": [],
-      "invalid_cases": [],
-      "error_cases": [],
-      "event_cases": [],
-      "disk_cases": [],
-      "platform_evidence": {},
+      "implementation": "implemented_slice",
+      "success_cases": [
+        "worlds::tests: NBT, archive exchange, lock, CLI, copy identity and mutable filesystem oracle corpus"
+      ],
+      "invalid_cases": [
+        "worlds::tests: NBT, archive exchange, lock, CLI, copy identity and mutable filesystem oracle corpus"
+      ],
+      "error_cases": [
+        "worlds::tests: NBT, archive exchange, lock, CLI, copy identity and mutable filesystem oracle corpus"
+      ],
+      "event_cases": [
+        "worlds::tests: NBT, archive exchange, lock, CLI, copy identity and mutable filesystem oracle corpus"
+      ],
+      "disk_cases": [
+        "worlds::tests: NBT, archive exchange, lock, CLI, copy identity and mutable filesystem oracle corpus"
+      ],
+      "platform_evidence": {
+        "linux": "Executed locally; exact combined milestone evidence recorded separately",
+        "macos_arm64": "pending combined CI",
+        "macos_x86_64": "pending combined CI",
+        "windows": "pending combined native CI; reqwest AWS-LC crosscheck needs MinGW C compiler"
+      },
       "known_gaps": [
-        "Not implemented."
+        "Finite fixture corpus does not establish all upstream schemas, platform errors or live network behavior.",
+        "Oversized request recovery global oracle divergence remains pending owner decision.",
+        "ZIP CRC mismatch acceptance differs from Zig; policy review pending.",
+        "Export/backup timestamp CLI corpus incomplete."
       ],
       "compatible": false
     },
     {
       "method": "worlds.backups",
       "source_inventory": true,
-      "implementation": "not_started",
-      "success_cases": [],
-      "invalid_cases": [],
-      "error_cases": [],
-      "event_cases": [],
-      "disk_cases": [],
-      "platform_evidence": {},
+      "implementation": "implemented_slice",
+      "success_cases": [
+        "worlds::tests: NBT, archive exchange, lock, CLI, copy identity and mutable filesystem oracle corpus"
+      ],
+      "invalid_cases": [
+        "worlds::tests: NBT, archive exchange, lock, CLI, copy identity and mutable filesystem oracle corpus"
+      ],
+      "error_cases": [
+        "worlds::tests: NBT, archive exchange, lock, CLI, copy identity and mutable filesystem oracle corpus"
+      ],
+      "event_cases": [
+        "worlds::tests: NBT, archive exchange, lock, CLI, copy identity and mutable filesystem oracle corpus"
+      ],
+      "disk_cases": [
+        "worlds::tests: NBT, archive exchange, lock, CLI, copy identity and mutable filesystem oracle corpus"
+      ],
+      "platform_evidence": {
+        "linux": "Executed locally; exact combined milestone evidence recorded separately",
+        "macos_arm64": "pending combined CI",
+        "macos_x86_64": "pending combined CI",
+        "windows": "pending combined native CI; reqwest AWS-LC crosscheck needs MinGW C compiler"
+      },
       "known_gaps": [
-        "Not implemented."
+        "Finite fixture corpus does not establish all upstream schemas, platform errors or live network behavior.",
+        "Oversized request recovery global oracle divergence remains pending owner decision.",
+        "ZIP CRC mismatch acceptance differs from Zig; policy review pending.",
+        "Export/backup timestamp CLI corpus incomplete."
       ],
       "compatible": false
     },
     {
       "method": "worlds.restore",
       "source_inventory": true,
-      "implementation": "not_started",
-      "success_cases": [],
-      "invalid_cases": [],
-      "error_cases": [],
-      "event_cases": [],
-      "disk_cases": [],
-      "platform_evidence": {},
+      "implementation": "implemented_slice",
+      "success_cases": [
+        "worlds::tests: NBT, archive exchange, lock, CLI, copy identity and mutable filesystem oracle corpus"
+      ],
+      "invalid_cases": [
+        "worlds::tests: NBT, archive exchange, lock, CLI, copy identity and mutable filesystem oracle corpus"
+      ],
+      "error_cases": [
+        "worlds::tests: NBT, archive exchange, lock, CLI, copy identity and mutable filesystem oracle corpus"
+      ],
+      "event_cases": [
+        "worlds::tests: NBT, archive exchange, lock, CLI, copy identity and mutable filesystem oracle corpus"
+      ],
+      "disk_cases": [
+        "worlds::tests: NBT, archive exchange, lock, CLI, copy identity and mutable filesystem oracle corpus"
+      ],
+      "platform_evidence": {
+        "linux": "Executed locally; exact combined milestone evidence recorded separately",
+        "macos_arm64": "pending combined CI",
+        "macos_x86_64": "pending combined CI",
+        "windows": "pending combined native CI; reqwest AWS-LC crosscheck needs MinGW C compiler"
+      },
       "known_gaps": [
-        "Not implemented."
+        "Finite fixture corpus does not establish all upstream schemas, platform errors or live network behavior.",
+        "Oversized request recovery global oracle divergence remains pending owner decision.",
+        "ZIP CRC mismatch acceptance differs from Zig; policy review pending.",
+        "Export/backup timestamp CLI corpus incomplete."
       ],
       "compatible": false
     },
     {
       "method": "worlds.backups.delete",
       "source_inventory": true,
-      "implementation": "not_started",
-      "success_cases": [],
-      "invalid_cases": [],
-      "error_cases": [],
-      "event_cases": [],
-      "disk_cases": [],
-      "platform_evidence": {},
+      "implementation": "implemented_slice",
+      "success_cases": [
+        "worlds::tests: NBT, archive exchange, lock, CLI, copy identity and mutable filesystem oracle corpus"
+      ],
+      "invalid_cases": [
+        "worlds::tests: NBT, archive exchange, lock, CLI, copy identity and mutable filesystem oracle corpus"
+      ],
+      "error_cases": [
+        "worlds::tests: NBT, archive exchange, lock, CLI, copy identity and mutable filesystem oracle corpus"
+      ],
+      "event_cases": [
+        "worlds::tests: NBT, archive exchange, lock, CLI, copy identity and mutable filesystem oracle corpus"
+      ],
+      "disk_cases": [
+        "worlds::tests: NBT, archive exchange, lock, CLI, copy identity and mutable filesystem oracle corpus"
+      ],
+      "platform_evidence": {
+        "linux": "Executed locally; exact combined milestone evidence recorded separately",
+        "macos_arm64": "pending combined CI",
+        "macos_x86_64": "pending combined CI",
+        "windows": "pending combined native CI; reqwest AWS-LC crosscheck needs MinGW C compiler"
+      },
       "known_gaps": [
-        "Not implemented."
+        "Finite fixture corpus does not establish all upstream schemas, platform errors or live network behavior.",
+        "Oversized request recovery global oracle divergence remains pending owner decision.",
+        "ZIP CRC mismatch acceptance differs from Zig; policy review pending.",
+        "Export/backup timestamp CLI corpus incomplete."
       ],
       "compatible": false
     },
@@ -1459,30 +1977,62 @@
     {
       "method": "java.detect",
       "source_inventory": true,
-      "implementation": "not_started",
-      "success_cases": [],
-      "invalid_cases": [],
-      "error_cases": [],
-      "event_cases": [],
-      "disk_cases": [],
-      "platform_evidence": {},
+      "implementation": "implemented_slice",
+      "success_cases": [
+        "java.py + java_process/java_receipts: raw RPC/CLI, receipt takeover, bounded native probe and selection"
+      ],
+      "invalid_cases": [
+        "java.py + java_process/java_receipts: raw RPC/CLI, receipt takeover, bounded native probe and selection"
+      ],
+      "error_cases": [
+        "java.py + java_process/java_receipts: raw RPC/CLI, receipt takeover, bounded native probe and selection"
+      ],
+      "event_cases": [
+        "java.py + java_process/java_receipts: raw RPC/CLI, receipt takeover, bounded native probe and selection"
+      ],
+      "disk_cases": [
+        "java.py + java_process/java_receipts: raw RPC/CLI, receipt takeover, bounded native probe and selection"
+      ],
+      "platform_evidence": {
+        "linux": "Executed locally; exact combined milestone evidence recorded separately",
+        "macos_arm64": "pending combined CI",
+        "macos_x86_64": "pending combined CI",
+        "windows": "pending combined native CI; reqwest AWS-LC crosscheck needs MinGW C compiler"
+      },
       "known_gaps": [
-        "Not implemented."
+        "Finite fixture corpus does not establish all upstream schemas, platform errors or live network behavior.",
+        "Oversized request recovery global oracle divergence remains pending owner decision."
       ],
       "compatible": false
     },
     {
       "method": "java.select",
       "source_inventory": true,
-      "implementation": "not_started",
-      "success_cases": [],
-      "invalid_cases": [],
-      "error_cases": [],
-      "event_cases": [],
-      "disk_cases": [],
-      "platform_evidence": {},
+      "implementation": "implemented_slice",
+      "success_cases": [
+        "java.py + java_process/java_receipts: raw RPC/CLI, receipt takeover, bounded native probe and selection"
+      ],
+      "invalid_cases": [
+        "java.py + java_process/java_receipts: raw RPC/CLI, receipt takeover, bounded native probe and selection"
+      ],
+      "error_cases": [
+        "java.py + java_process/java_receipts: raw RPC/CLI, receipt takeover, bounded native probe and selection"
+      ],
+      "event_cases": [
+        "java.py + java_process/java_receipts: raw RPC/CLI, receipt takeover, bounded native probe and selection"
+      ],
+      "disk_cases": [
+        "java.py + java_process/java_receipts: raw RPC/CLI, receipt takeover, bounded native probe and selection"
+      ],
+      "platform_evidence": {
+        "linux": "Executed locally; exact combined milestone evidence recorded separately",
+        "macos_arm64": "pending combined CI",
+        "macos_x86_64": "pending combined CI",
+        "windows": "pending combined native CI; reqwest AWS-LC crosscheck needs MinGW C compiler"
+      },
       "known_gaps": [
-        "Not implemented."
+        "Finite fixture corpus does not establish all upstream schemas, platform errors or live network behavior.",
+        "Oversized request recovery global oracle divergence remains pending owner decision."
       ],
       "compatible": false
     },
@@ -1594,15 +2144,31 @@
     {
       "method": "java.runtime.list",
       "source_inventory": true,
-      "implementation": "not_started",
-      "success_cases": [],
-      "invalid_cases": [],
-      "error_cases": [],
-      "event_cases": [],
-      "disk_cases": [],
-      "platform_evidence": {},
+      "implementation": "implemented_slice",
+      "success_cases": [
+        "java.py + java_process/java_receipts: raw RPC/CLI, receipt takeover, bounded native probe and selection"
+      ],
+      "invalid_cases": [
+        "java.py + java_process/java_receipts: raw RPC/CLI, receipt takeover, bounded native probe and selection"
+      ],
+      "error_cases": [
+        "java.py + java_process/java_receipts: raw RPC/CLI, receipt takeover, bounded native probe and selection"
+      ],
+      "event_cases": [
+        "java.py + java_process/java_receipts: raw RPC/CLI, receipt takeover, bounded native probe and selection"
+      ],
+      "disk_cases": [
+        "java.py + java_process/java_receipts: raw RPC/CLI, receipt takeover, bounded native probe and selection"
+      ],
+      "platform_evidence": {
+        "linux": "Executed locally; exact combined milestone evidence recorded separately",
+        "macos_arm64": "pending combined CI",
+        "macos_x86_64": "pending combined CI",
+        "windows": "pending combined native CI; reqwest AWS-LC crosscheck needs MinGW C compiler"
+      },
       "known_gaps": [
-        "Not implemented."
+        "Finite fixture corpus does not establish all upstream schemas, platform errors or live network behavior.",
+        "Oversized request recovery global oracle divergence remains pending owner decision."
       ],
       "compatible": false
     },
@@ -1624,15 +2190,31 @@
     {
       "method": "java.runtime.remove",
       "source_inventory": true,
-      "implementation": "not_started",
-      "success_cases": [],
-      "invalid_cases": [],
-      "error_cases": [],
-      "event_cases": [],
-      "disk_cases": [],
-      "platform_evidence": {},
+      "implementation": "implemented_slice",
+      "success_cases": [
+        "java.py + java_process/java_receipts: raw RPC/CLI, receipt takeover, bounded native probe and selection"
+      ],
+      "invalid_cases": [
+        "java.py + java_process/java_receipts: raw RPC/CLI, receipt takeover, bounded native probe and selection"
+      ],
+      "error_cases": [
+        "java.py + java_process/java_receipts: raw RPC/CLI, receipt takeover, bounded native probe and selection"
+      ],
+      "event_cases": [
+        "java.py + java_process/java_receipts: raw RPC/CLI, receipt takeover, bounded native probe and selection"
+      ],
+      "disk_cases": [
+        "java.py + java_process/java_receipts: raw RPC/CLI, receipt takeover, bounded native probe and selection"
+      ],
+      "platform_evidence": {
+        "linux": "Executed locally; exact combined milestone evidence recorded separately",
+        "macos_arm64": "pending combined CI",
+        "macos_x86_64": "pending combined CI",
+        "windows": "pending combined native CI; reqwest AWS-LC crosscheck needs MinGW C compiler"
+      },
       "known_gaps": [
-        "Not implemented."
+        "Finite fixture corpus does not establish all upstream schemas, platform errors or live network behavior.",
+        "Oversized request recovery global oracle divergence remains pending owner decision."
       ],
       "compatible": false
     },
