@@ -73,7 +73,7 @@ fn invalid(err: &mut impl Write) -> io::Result<u8> {
 fn text<'a>(v: &'a Value, key: &str) -> &'a str {
     v.get(key).and_then(Value::as_str).unwrap_or("-")
 }
-fn row(out: &mut impl Write, v: &Value) -> io::Result<()> {
+pub(super) fn row(out: &mut impl Write, v: &Value) -> io::Result<()> {
     writeln!(
         out,
         "{}\t{}\t{}\t{}\t{}\t{}\t{}",
@@ -90,7 +90,7 @@ fn row(out: &mut impl Write, v: &Value) -> io::Result<()> {
         text(v, "version_relation")
     )
 }
-fn detail(out: &mut impl Write, v: &Value, meta: bool) -> io::Result<()> {
+pub(super) fn detail(out: &mut impl Write, v: &Value, meta: bool) -> io::Result<()> {
     writeln!(out, "name: {}", text(v, "name"))?;
     if meta {
         writeln!(
@@ -298,4 +298,17 @@ fn run(args: &[String], out: &mut impl Write, err: &mut impl Write) -> io::Resul
         _ => unreachable!(),
     }
     Ok(0)
+}
+
+#[cfg(all(test, unix))]
+mod native_error_tests {
+    #[test]
+    fn raw_name_error_keeps_world_operation_message() {
+        let error = super::Error::Io(std::io::Error::from_raw_os_error(
+            rustix::io::Errno::ILSEQ.raw_os_error(),
+        ));
+        let mut out = Vec::new();
+        assert_eq!(super::report(&mut out, "import", error).unwrap(), 1);
+        assert_eq!(out, b"failed to import world: BadPathName\n");
+    }
 }

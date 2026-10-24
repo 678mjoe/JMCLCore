@@ -58,8 +58,98 @@ fn normalized_hash(hash: &str) -> std::io::Result<String> {
 #[cfg(unix)]
 mod unix;
 #[cfg(unix)]
-pub use unix::{ObjectLock, Store};
+pub(crate) use unix::path_from_bytes;
+#[cfg(unix)]
+pub use unix::{ArtifactRoot, ObjectLock, StagedObject, Store};
 #[cfg(windows)]
 pub(crate) mod windows;
 #[cfg(windows)]
-pub use windows::{ObjectLock, Store};
+pub(crate) use windows::path_from_bytes;
+#[cfg(windows)]
+pub use windows::{ArtifactRoot, ObjectLock, StagedObject, Store};
+
+/// One digest transaction, tied to the store which owns its OS lock. Keeps
+/// downloads, publication and materialization under the same non-reentrant lock.
+pub struct ObjectTransaction<'a> {
+    store: &'a Store,
+    hash: String,
+    guard: ObjectLock,
+}
+impl Store {
+    pub fn transaction(&self, hash: &str) -> std::io::Result<ObjectTransaction<'_>> {
+        let hash = normalized_hash(hash)?;
+        let guard = self.lock_object(&hash)?;
+        Ok(ObjectTransaction {
+            store: self,
+            hash,
+            guard,
+        })
+    }
+}
+impl ObjectTransaction<'_> {
+    pub fn verify(&self, size: u64) -> std::io::Result<bool> {
+        self.store.verify(&self.hash, size)
+    }
+    pub fn import_from(
+        &self,
+        source: &ArtifactRoot,
+        relative: &str,
+        size: u64,
+    ) -> std::io::Result<Placement> {
+        let (dir, name) = source.parent(relative, false)?;
+        self.store
+            .import_at_locked(&dir, name.as_ref(), &self.hash, size)
+    }
+    pub fn materialize_at(
+        &self,
+        destination: &ArtifactRoot,
+        relative: &str,
+        size: u64,
+    ) -> std::io::Result<Placement> {
+        let (dir, name) = destination.parent(relative, true)?;
+        self.store
+            .materialize_at_locked(&dir, name.as_ref(), &self.hash, size)
+    }
+    /// Remove a failed verification result while the digest lock is held, as
+    /// the legacy installer does before reacquiring the object.
+    pub fn remove_invalid(&self, size: u64) -> std::io::Result<()> {
+        if !self.verify(size)? {
+            self.store.remove_object_locked(&self.hash)?;
+        }
+        Ok(())
+    }
+    pub fn stage(&self, size: u64) -> std::io::Result<StagedObject<'_>> {
+        self.store.stage_locked(&self.hash, size, &self.guard)
+    }
+}
+fn relative_parts(path: &str) -> std::io::Result<Vec<&str>> {
+    if path.is_empty()
+        || path.contains(['\\', ':', '\0'])
+        || path
+            .split('/')
+            .any(|p| p.is_empty() || p == "." || p == "..")
+    {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "UnsafeRelativePath",
+        ));
+    }
+    Ok(path.split('/').collect())
+}
+
+mod commands;
+pub use commands::{cli, handle};
+fn native_parts(path: &[u8]) -> std::io::Result<Vec<&[u8]>> {
+    let parts: Vec<_> = path.split(|b| *b == b'/').collect();
+    if path.iter().any(|b| matches!(b, b'\\' | b':' | 0))
+        || parts
+            .iter()
+            .any(|p| p.is_empty() || *p == b"." || *p == b"..")
+    {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "UnsafeRelativePath",
+        ));
+    }
+    Ok(parts)
+}

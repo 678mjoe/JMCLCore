@@ -210,7 +210,13 @@ pub fn rename(path: &str, old: &str, new: &str, version: Option<&str>) -> Result
         return Err(Error::InvalidName);
     }
     let s = saves(path)?;
-    let d = guard(&s, old)?;
+    rename_in(&s, old, new, version)
+}
+pub(crate) fn rename_in(s: &fs::Dir, old: &str, new: &str, version: Option<&str>) -> Result<Value> {
+    if old == new {
+        return Err(Error::InvalidName);
+    }
+    let d = guard(s, old)?;
     validate_name(new)?;
     if s.exists(new) {
         return Err(Error::WorldExists);
@@ -220,8 +226,8 @@ pub fn rename(path: &str, old: &str, new: &str, version: Option<&str>) -> Result
         Err(e) => return Err(e),
     }
     drop(d);
-    s.rename(old, &s, new)?;
-    Ok(json!({"stage":"worlds.rename","world":world(&s,new,version)?}))
+    s.rename(old, s, new)?;
+    Ok(json!({"stage":"worlds.rename","world":world(s,new,version)?}))
 }
 pub fn duplicate(path: &str, old: &str, new: &str, version: Option<&str>) -> Result<Value> {
     if old == new {
@@ -248,11 +254,14 @@ pub fn duplicate(path: &str, old: &str, new: &str, version: Option<&str>) -> Res
 }
 pub fn delete(path: &str, name: &str) -> Result<Value> {
     let s = saves(path)?;
-    drop(guard(&s, name)?);
+    delete_in(&s, name)
+}
+pub(crate) fn delete_in(s: &fs::Dir, name: &str) -> Result<Value> {
+    drop(guard(s, name)?);
     let trash = unique(".jmcl-trash-", name)?;
-    s.rename(name, &s, &trash)?;
+    s.rename(name, s, &trash)?;
     if let Err(e) = s.remove_tree(&trash) {
-        let _ = s.rename(&trash, &s, name);
+        let _ = s.rename(&trash, s, name);
         return Err(e);
     }
     Ok(json!({"stage":"worlds.delete","deleted":name}))
@@ -304,6 +313,9 @@ fn backup_world_name(name: &str) -> Option<&str> {
 }
 pub fn backups(path: &str) -> Result<Value> {
     let root = fs::Dir::root(Path::new(path))?;
+    backups_in(&root)
+}
+pub(crate) fn backups_in(root: &fs::Dir) -> Result<Value> {
     let b = match root.child("backups", false) {
         Ok(b) => b,
         Err(Error::Io(e)) if e.kind() == io::ErrorKind::NotFound => {
@@ -346,3 +358,9 @@ pub fn delete_backup(path: &str, name: &str) -> Result<Value> {
 }
 #[cfg(test)]
 mod tests;
+
+#[cfg(target_os = "linux")]
+pub mod server;
+
+#[cfg(target_os = "linux")]
+pub mod server_cli;

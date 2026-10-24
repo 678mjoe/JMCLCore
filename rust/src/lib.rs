@@ -17,3 +17,9 @@ pub mod metadata;
 pub mod plan;
 pub mod version;
 pub mod worlds;
+
+pub mod auth;
+pub mod install;
+
+pub mod launch;
+pub mod modpack;

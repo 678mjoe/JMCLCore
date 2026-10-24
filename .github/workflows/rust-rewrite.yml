@@ -114,18 +114,33 @@ jobs:
           with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as output:
               output.write(f"JMCL_ZIG_ORACLE={binary.resolve()}\n")
           PYTHON
-      - name: Build pinned metadata differential adapter
+      - name: Build pinned domain differential adapters
         run: |
           python - <<'PYTHON'
           import os, subprocess
           from pathlib import Path
-          binary = Path(os.environ["RUNNER_TEMP"]) / ("jmcl-metadata-oracle.exe" if os.name == "nt" else "jmcl-metadata-oracle")
-          subprocess.run(["zig", "build-exe", "--dep", "jmcl_core",
-                          "-Mroot=rust/compat/metadata_oracle.zig",
-                          f"-Mjmcl_core={Path('.ci-oracle/src/root.zig').resolve()}",
-                          f"-femit-bin={binary}"], check=True)
+          names = {
+              "metadata": "JMCL_ZIG_METADATA_ORACLE",
+              "content_metadata": "JMCL_CONTENT_METADATA_ORACLE",
+              "install": "JMCL_ZIG_INSTALL_ORACLE",
+              "prepare": "JMCL_ZIG_PREPARE_ORACLE",
+              "modpack": "JMCL_MODPACK_ORACLE",
+              "launch": "JMCL_ZIG_LAUNCH_ORACLE",
+              "launch_process": "JMCL_ZIG_LAUNCH_PROCESS_ORACLE",
+          }
+          suffix = ".exe" if os.name == "nt" else ""
           with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as output:
-              output.write(f"JMCL_ZIG_METADATA_ORACLE={binary}\n")
+              for name, variable in names.items():
+                  binary = Path(os.environ["RUNNER_TEMP"]) / f"jmcl-{name}-oracle{suffix}"
+                  subprocess.run(["zig", "build-exe", "--dep", "jmcl_core",
+                                  f"-Mroot=rust/compat/{name}_oracle.zig",
+                                  f"-Mjmcl_core={Path('.ci-oracle/src/root.zig').resolve()}",
+                                  f"-femit-bin={binary}"], check=True)
+                  output.write(f"{variable}={binary}\n")
+              if os.name != "nt":
+                  child = Path(os.environ["RUNNER_TEMP"]) / "jmcl-launch-child"
+                  subprocess.run(["cc", "rust/tests/fixtures/launch/child.c", "-o", str(child)], check=True)
+                  output.write(f"JMCL_FAKE_LAUNCH_CHILD={child}\n")
           PYTHON
       - name: Rust formatting and tests
         working-directory: rust
@@ -133,7 +148,7 @@ jobs:
           if [[ "$RUNNER_OS" == "Linux" ]]; then export JMCL_REQUIRE_CROSS_DEVICE=1; fi
           cargo fmt --all -- --check
           cargo clippy --locked --all-targets -- -D warnings
-          cargo test --locked --all-targets -- --include-ignored
+          cargo test --locked --all-targets -- --include-ignored --show-output
           cargo test --locked --test store_differential -- --include-ignored --nocapture
           cargo build --locked --release
       - name: Differential implemented-slice compatibility
@@ -151,8 +166,12 @@ jobs:
           python - <<'PYTHON'
           import os, subprocess
           suffix = ".exe" if os.name == "nt" else ""
-          for script in ["version_check.py", "java.py"]:
+          for script in ["version_check.py", "java.py", "launch_rpc.py", "store.py"]:
               subprocess.run(["python", f"rust/compat/{script}", "--zig",
                               f".ci-oracle/zig-out/bin/jmcl-core{suffix}", "--rust",
                               f"rust/target/release/jmcl-core-rust{suffix}"], check=True)
           PYTHON
+      - name: Pinned Linux server lifecycle and worldset matrix
+        if: runner.os == 'Linux'
+        run: |
+          python rust/compat/server_oracle.py --zig .ci-oracle/zig-out/bin/jmcl-core --rust rust/target/release/jmcl-core-rust --oracle-source .ci-oracle

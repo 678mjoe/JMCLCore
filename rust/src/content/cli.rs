@@ -4,7 +4,10 @@ use std::io::{self, Write};
 pub fn run(args: &[String], out: &mut impl Write, err: &mut impl Write) -> Option<io::Result<u8>> {
     let kind = Kind::from_directory(args.first()?.as_str())?;
     let op = args.get(1).map(String::as_str).unwrap_or("");
-    if matches!(op, "install" | "set-version" | "adopt") {
+    if op == "adopt" {
+        return Some(adopt(kind, &args[2..], out, err));
+    }
+    if matches!(op, "install" | "set-version") {
         return None;
     }
     Some(inner(kind, op, &args[2.min(args.len())..], out, err))
@@ -34,7 +37,7 @@ fn bad(err: &mut impl Write) -> io::Result<u8> {
     err.write_all(b"error: InvalidArguments\n")?;
     Ok(1)
 }
-fn name(e: &Error) -> String {
+pub(super) fn name(e: &Error) -> String {
     match e {
         Error::Io(e) => crate::instances::cli_error_name(e),
         Error::Invalid => "ContentSelectorRequired".into(),
@@ -232,5 +235,130 @@ fn world_error(err: &mut impl Write, e: &Error, op: &str) -> io::Result<()> {
         Error::WorldLocked => err.write_all(b"the world is in use by a running game\n"),
         Error::NotFound => err.write_all(b"no registered datapack matches the given selector\n"),
         _ => writeln!(err, "datapack {op} failed: {}", name(e)),
+    }
+}
+
+fn adopt(
+    kind: Kind,
+    args: &[String],
+    out: &mut impl Write,
+    err: &mut impl Write,
+) -> io::Result<u8> {
+    let dp = kind == Kind::Datapack;
+    if args.is_empty() {
+        writeln!(
+            err,
+            "usage: jmcl-core instance {} adopt ID{} [--instances-directory PATH] [--store-directory PATH]",
+            kind.directory(),
+            if dp { " --world NAME" } else { "" }
+        )?;
+        return Ok(2);
+    }
+    let id = &args[0];
+    if crate::instances::validate_id(id).is_err() {
+        return bad(err);
+    }
+    let mut directory = "instances";
+    let mut store_directory = crate::store::DEFAULT_DIRECTORY;
+    let mut world = None;
+    let mut i = 1;
+    while i < args.len() {
+        let Some(v) = args.get(i + 1) else {
+            return bad(err);
+        };
+        if v.is_empty() {
+            return bad(err);
+        };
+        match args[i].as_str() {
+            "--instances-directory" => directory = v,
+            "--store-directory" => store_directory = v,
+            "--world" if dp => world = Some(v.as_str()),
+            _ => return bad(err),
+        }
+        i += 2;
+    }
+    if dp && world.is_none() {
+        err.write_all(b"instance datapacks adopt requires --world\n")?;
+        return Ok(2);
+    }
+    let game = crate::instances::minecraft_path(directory, id);
+    let mut content = None;
+    if !dp {
+        let instances = match crate::instances::Root::open(directory) {
+            Ok(r) => r,
+            Err(e) => {
+                writeln!(
+                    err,
+                    "failed to open instances directory: {}",
+                    crate::instances::cli_error_name(&e)
+                )?;
+                return Ok(1);
+            }
+        };
+        if let Err(e) = instances.load(id) {
+            writeln!(
+                err,
+                "failed to load instance: {}",
+                crate::instances::cli_error_name(&e)
+            )?;
+            return Ok(1);
+        }
+        content = Some(match Root::open(&game) {
+            Ok(r) => r,
+            Err(e) => {
+                writeln!(err, "failed to open instance directory: {}", name(&e))?;
+                return Ok(1);
+            }
+        });
+    }
+    let store = match crate::store::Store::open(store_directory) {
+        Ok(r) => r,
+        Err(e) => {
+            writeln!(
+                err,
+                "failed to open artifact store: {}",
+                crate::instances::cli_error_name(&e)
+            )?;
+            return Ok(1);
+        }
+    };
+    let root = if let Some(r) = content {
+        r
+    } else {
+        match Root::world(&game, world.unwrap(), true) {
+            Ok(r) => r,
+            Err(e) => {
+                world_error(err, &e, "adopt")?;
+                return Ok(1);
+            }
+        }
+    };
+    let adopted = match root.adopt(kind, &store) {
+        Ok(a) => a,
+        Err(e) => {
+            if dp {
+                world_error(err, &e, "adopt")?
+            } else {
+                writeln!(err, "failed to adopt unmanaged content: {}", name(&e))?
+            }
+            return Ok(1);
+        }
+    };
+    for a in &adopted {
+        writeln!(out, "adopted\t{}\t{}\t{}", a.file, a.sha1, a.size)?;
+    }
+    writeln!(out, "adoptedCount\t{}", adopted.len())?;
+    Ok(0)
+}
+
+#[cfg(all(test, unix))]
+mod native_error_tests {
+    #[test]
+    fn raw_name_error_keeps_content_boundary() {
+        let error = super::Error::Io(std::io::Error::from_raw_os_error(
+            rustix::io::Errno::ILSEQ.raw_os_error(),
+        ));
+        assert_eq!(super::name(&error), "BadPathName");
+        assert_eq!(super::name(&super::Error::WorldLocked), "WorldLocked");
     }
 }

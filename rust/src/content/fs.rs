@@ -185,6 +185,9 @@ mod platform {
     }
 }
 impl Dir {
+    pub fn artifact_root(&self) -> io::Result<crate::store::ArtifactRoot> {
+        crate::store::ArtifactRoot::from_directory(self.0.try_clone()?)
+    }
     pub fn parent(&self, path: &str) -> io::Result<(Self, String)> {
         let mut parts = path.rsplitn(2, '/');
         let leaf = parts.next().ok_or_else(|| io::Error::other("EmptyPath"))?;

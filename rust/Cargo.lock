@@ -617,6 +617,7 @@ dependencies = [
  "base64 0.22.1",
  "flate2",
  "getrandom 0.4.3",
+ "libc",
  "reqwest",
  "rustix",
  "serde",

@@ -45,6 +45,23 @@ fn atomic_write(dir: &File, name: &str, data: &[u8]) -> io::Result<()> {
     result
 }
 impl Root {
+    /// Read-only existence preflight matches the legacy openDir alias policy.
+    pub fn contains_directory(&self, id: &str) -> io::Result<bool> {
+        validate_id(id).map_err(invalid)?;
+        match fs::read_dir_follow_at(&self.dir, id.as_ref()) {
+            Ok(_) => Ok(true),
+            Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(false),
+            Err(e) => Err(e),
+        }
+    }
+    /// Newly-created instance descendants are resolved from the pinned root.
+    pub fn game_root(&self, id: &str) -> io::Result<crate::store::ArtifactRoot> {
+        validate_id(id).map_err(invalid)?;
+        let child = fs::child(&self.dir, id.as_ref(), true, false, false)?;
+        let game = fs::child(&child, ".minecraft".as_ref(), true, false, false)?;
+        crate::store::ArtifactRoot::from_directory(game)
+    }
+
     pub fn open(path: &str) -> io::Result<Self> {
         if path.is_empty() {
             return Err(invalid("EmptyInstancesRoot"));

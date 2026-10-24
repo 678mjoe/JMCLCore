@@ -21,19 +21,43 @@ fn cv<T>(r: rustix::io::Result<T>) -> io::Result<T> {
 fn invalid(message: &'static str) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidInput, message)
 }
+// Unit-test diagnostics preserve the exact OS error and never retry. Production
+// builds neither emit filesystem details nor change protocol error names.
+fn lock_phase<T>(phase: &str, result: io::Result<T>) -> io::Result<T> {
+    #[cfg(test)]
+    if let Err(error) = &result {
+        eprintln!(
+            "CAS phase {phase}, thread {:?}: {error:?}",
+            std::thread::current().id()
+        );
+    }
+    #[cfg(not(test))]
+    let _ = phase;
+    result
+}
 fn dir_at(parent: &File, name: &std::ffi::OsStr, create: bool) -> io::Result<File> {
     if create {
         match rfs::mkdirat(parent, name, Mode::from_raw_mode(0o755)) {
             Ok(()) | Err(rustix::io::Errno::EXIST) => {}
-            Err(e) => return Err(e.into()),
+            Err(e) => {
+                #[cfg(test)]
+                eprintln!("CAS dir_at mkdir {name:?}: {e:?}");
+                return Err(e.into());
+            }
         }
     }
-    Ok(File::from(cv(rfs::openat(
-        parent,
-        name,
-        OFlags::RDONLY | OFlags::DIRECTORY | OFlags::NOFOLLOW | OFlags::CLOEXEC,
-        Mode::empty(),
-    ))?))
+    Ok(File::from(
+        cv(rfs::openat(
+            parent,
+            name,
+            OFlags::RDONLY | OFlags::DIRECTORY | OFlags::NOFOLLOW | OFlags::CLOEXEC,
+            Mode::empty(),
+        ))
+        .inspect_err(|_error| {
+            #[cfg(test)]
+            eprintln!("CAS dir_at open {name:?}, create={create}: {_error:?}");
+        })?,
+    ))
 }
 /// Resolve caller-configured ancestors, but reject a symlink at the final root.
 /// Subdirectories inside the store continue through `dir_at` with NOFOLLOW.
@@ -138,22 +162,41 @@ impl Store {
     }
     pub fn lock_object(&self, hash: &str) -> io::Result<ObjectLock> {
         let hash = normalized_hash(hash)?;
-        let dir = dir_at(
-            &dir_at(&self.root, "locks".as_ref(), true)?,
-            "sha1".as_ref(),
-            true,
+        let dir = lock_phase(
+            "locks/sha1 directory",
+            dir_at(
+                &lock_phase(
+                    "locks directory",
+                    dir_at(&self.root, "locks".as_ref(), true),
+                )?,
+                "sha1".as_ref(),
+                true,
+            ),
         )?;
         let name = format!("{hash}.lock");
-        let file = File::from(cv(rfs::openat(
+        // Match the oracle's exclusive-create / open-existing split. A single
+        // O_CREAT open failed with ENOENT during native macOS contention even
+        // though the peer-created leaf was immediately observable. Only EXIST
+        // selects the existing-file path: all other errors remain errors.
+        let flags = OFlags::RDWR | OFlags::NOFOLLOW | OFlags::NONBLOCK | OFlags::CLOEXEC;
+        let created = rfs::openat(
             &dir,
             name.as_str(),
-            OFlags::RDWR | OFlags::CREATE | OFlags::NOFOLLOW | OFlags::NONBLOCK | OFlags::CLOEXEC,
+            flags | OFlags::CREATE | OFlags::EXCL,
             Mode::from_raw_mode(0o666),
-        ))?);
-        if !file.metadata()?.is_file() {
+        );
+        let file = File::from(match created {
+            Ok(file) => file,
+            Err(rustix::io::Errno::EXIST) => lock_phase(
+                "open existing lock leaf",
+                cv(rfs::openat(&dir, name.as_str(), flags, Mode::empty())),
+            )?,
+            Err(error) => return lock_phase("exclusive-create lock leaf", Err(error.into())),
+        });
+        if !lock_phase("lock leaf metadata", file.metadata())?.is_file() {
             return Err(invalid("InvalidLockKind"));
         }
-        file.lock()?;
+        lock_phase("File.lock/flock", file.lock())?;
         Ok(ObjectLock { _file: file })
     }
     pub fn verify(&self, hash: &str, size: u64) -> io::Result<bool> {
@@ -178,21 +221,30 @@ impl Store {
         let hash = normalized_hash(hash)?;
         let _lock = self.lock_object(&hash)?;
         let (source_dir, source_name) = split_file(source.as_ref(), false)?;
-        let mut source = file_at(&source_dir, source_name)?;
-        if !matches(&mut source, &hash, size)? {
+        self.import_at_locked(&source_dir, source_name, &hash, size)
+    }
+    pub(super) fn import_at_locked(
+        &self,
+        source_dir: &File,
+        source_name: &std::ffi::OsStr,
+        hash: &str,
+        size: u64,
+    ) -> io::Result<Placement> {
+        let mut source = file_at(source_dir, source_name)?;
+        if !matches(&mut source, hash, size)? {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
                 "ArtifactVerificationFailed",
             ));
         }
-        let prefix = self.prefix(&hash, true)?;
-        if self.verify(&hash, size)? {
+        let prefix = self.prefix(hash, true)?;
+        if self.verify(hash, size)? {
             return Ok(Placement::HardLink);
         }
         // Repair publishes a distinct inode: never overwrite a shared object in place.
         let temp = format!(".jmcl-object-{}", unique());
         let placement = match rfs::linkat(
-            &source_dir,
+            source_dir,
             source_name,
             &prefix,
             temp.as_str(),
@@ -221,19 +273,14 @@ impl Store {
         };
         let publish = (|| {
             let mut linked = file_at(&prefix, temp.as_ref())?;
-            if !matches(&mut linked, &hash, size)? {
+            if !matches(&mut linked, hash, size)? {
                 return Err(io::Error::new(
                     io::ErrorKind::InvalidData,
                     "ArtifactVerificationFailed",
                 ));
             }
             readonly(&linked)?;
-            cv(rfs::renameat(
-                &prefix,
-                temp.as_str(),
-                &prefix,
-                hash.as_str(),
-            ))
+            cv(rfs::renameat(&prefix, temp.as_str(), &prefix, hash))
         })();
         if publish.is_err() {
             let _ = rfs::unlinkat(&prefix, temp.as_str(), AtFlags::empty());
@@ -249,39 +296,37 @@ impl Store {
     ) -> io::Result<Placement> {
         let hash = normalized_hash(hash)?;
         let _lock = self.lock_object(&hash)?;
-        let prefix = self.prefix(&hash, false)?;
+        let (dest_dir, dest_name) = split_file(destination.as_ref(), true)?;
+        self.materialize_at_locked(&dest_dir, dest_name, &hash, size)
+    }
+    pub(super) fn materialize_at_locked(
+        &self,
+        dest_dir: &File,
+        dest_name: &std::ffi::OsStr,
+        hash: &str,
+        size: u64,
+    ) -> io::Result<Placement> {
+        let prefix = self.prefix(hash, false)?;
         let mut source = file_at(&prefix, hash.as_ref())?;
-        if !matches(&mut source, &hash, size)? {
+        if !matches(&mut source, hash, size)? {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
                 "ArtifactVerificationFailed",
             ));
         }
         readonly(&source)?;
-        let (dest_dir, dest_name) = split_file(destination.as_ref(), true)?;
         let temp = format!("{}.jmcl-link-{}", dest_name.to_string_lossy(), unique());
-        match rfs::linkat(
-            &prefix,
-            hash.as_str(),
-            &dest_dir,
-            temp.as_str(),
-            AtFlags::empty(),
-        ) {
+        match rfs::linkat(&prefix, hash, dest_dir, temp.as_str(), AtFlags::empty()) {
             Ok(()) => {
                 let finish = (|| {
-                    if let Ok(existing) = file_at(&dest_dir, dest_name)
+                    if let Ok(existing) = file_at(dest_dir, dest_name)
                         && same(&existing.metadata()?, &source.metadata()?)
                     {
                         return Ok(());
                     }
-                    cv(rfs::renameat(
-                        &dest_dir,
-                        temp.as_str(),
-                        &dest_dir,
-                        dest_name,
-                    ))
+                    cv(rfs::renameat(dest_dir, temp.as_str(), dest_dir, dest_name))
                 })();
-                let _ = rfs::unlinkat(&dest_dir, temp.as_str(), AtFlags::empty());
+                let _ = rfs::unlinkat(dest_dir, temp.as_str(), AtFlags::empty());
                 finish?;
                 Ok(Placement::HardLink)
             }
@@ -289,7 +334,7 @@ impl Store {
                 // Match Zig's documented non-atomic copy fallback, without following
                 // final-component symlinks or truncating a shared inode.
                 let mut output = match rfs::openat(
-                    &dest_dir,
+                    dest_dir,
                     dest_name,
                     OFlags::WRONLY
                         | OFlags::CREATE
@@ -300,13 +345,13 @@ impl Store {
                 ) {
                     Ok(fd) => File::from(fd),
                     Err(rustix::io::Errno::EXIST) => {
-                        let existing = file_at(&dest_dir, dest_name)?;
-                        if matches(&mut existing.try_clone()?, &hash, size)? {
+                        let existing = file_at(dest_dir, dest_name)?;
+                        if matches(&mut existing.try_clone()?, hash, size)? {
                             return Ok(Placement::Copy);
                         }
-                        cv(rfs::unlinkat(&dest_dir, dest_name, AtFlags::empty()))?;
+                        cv(rfs::unlinkat(dest_dir, dest_name, AtFlags::empty()))?;
                         File::from(cv(rfs::openat(
-                            &dest_dir,
+                            dest_dir,
                             dest_name,
                             OFlags::WRONLY
                                 | OFlags::CREATE
@@ -429,6 +474,322 @@ fn eligible(stat: &Metadata, options: GcOptions, s: &mut GcSummary) -> io::Resul
         return Ok(false);
     }
     Ok(true)
+}
+
+/// An opened install directory; descendants are always resolved relative to it.
+pub struct ArtifactRoot {
+    dir: File,
+}
+impl ArtifactRoot {
+    pub(crate) fn from_directory(dir: File) -> io::Result<Self> {
+        if !dir.metadata()?.is_dir() {
+            return Err(invalid("InvalidObjectKind"));
+        }
+        Ok(Self { dir })
+    }
+
+    pub fn absolute_path(&self) -> io::Result<PathBuf> {
+        Self::directory_path(&self.dir)
+    }
+    pub fn absolute_directory(&self, relative: &str) -> io::Result<PathBuf> {
+        let (parent, name) = self.parent(relative, false)?;
+        Self::directory_path(&dir_at(&parent, name.as_ref(), false)?)
+    }
+    fn directory_path(dir: &File) -> io::Result<PathBuf> {
+        #[cfg(any(target_os = "linux", target_os = "android"))]
+        {
+            use std::os::fd::AsRawFd;
+            std::fs::read_link(format!("/proc/self/fd/{}", dir.as_raw_fd()))
+        }
+        #[cfg(target_vendor = "apple")]
+        {
+            Ok(PathBuf::from(std::ffi::OsStr::from_bytes(
+                cv(rfs::getpath(dir))?.as_bytes(),
+            )))
+        }
+        #[cfg(not(any(target_os = "linux", target_os = "android", target_vendor = "apple")))]
+        {
+            let _ = dir;
+            Err(io::Error::new(
+                io::ErrorKind::Unsupported,
+                "OperationUnsupported",
+            ))
+        }
+    }
+    pub fn open(path: impl AsRef<Path>) -> io::Result<Self> {
+        Ok(Self {
+            dir: walk(path.as_ref(), true)?,
+        })
+    }
+    pub(super) fn parent(&self, relative: &str, create: bool) -> io::Result<(File, String)> {
+        let mut parts = relative_parts(relative)?;
+        let name = parts.pop().unwrap().to_owned();
+        let mut dir = self.dir.try_clone()?;
+        for part in parts {
+            dir = dir_at(&dir, part.as_ref(), create)?;
+        }
+        Ok((dir, name))
+    }
+    pub fn open_file(&self, relative: &str) -> io::Result<File> {
+        let (dir, name) = self.parent(relative, false)?;
+        file_at(&dir, name.as_ref())
+    }
+    /// Create an exclusive directory beneath this anchored root.
+    pub fn create_directory(&self, relative: &str) -> io::Result<Self> {
+        let (parent, name) = self.parent(relative, true)?;
+        cv(rfs::mkdirat(
+            &parent,
+            name.as_str(),
+            Mode::from_raw_mode(0o755),
+        ))?;
+        Ok(Self {
+            dir: dir_at(&parent, name.as_ref(), false)?,
+        })
+    }
+    pub fn ensure_directory(&self, relative: &str) -> io::Result<()> {
+        let (parent, name) = self.parent(relative, true)?;
+        dir_at(&parent, name.as_ref(), true)?;
+        Ok(())
+    }
+    fn native_parent(&self, relative: &[u8]) -> io::Result<(File, std::ffi::OsString)> {
+        let mut parts = native_parts(relative)?;
+        let name = std::ffi::OsStr::from_bytes(parts.pop().unwrap()).to_owned();
+        let mut dir = self.dir.try_clone()?;
+        for part in parts {
+            dir = dir_at(&dir, std::ffi::OsStr::from_bytes(part), true)?;
+        }
+        Ok((dir, name))
+    }
+    pub(crate) fn ensure_native_directory(&self, relative: &[u8]) -> io::Result<()> {
+        let (parent, name) = self.native_parent(relative)?;
+        dir_at(&parent, &name, true)?;
+        Ok(())
+    }
+    pub(crate) fn create_native_file(&self, relative: &[u8]) -> io::Result<File> {
+        let (parent, name) = self.native_parent(relative)?;
+        Ok(File::from(cv(rfs::openat(
+            &parent,
+            &name,
+            OFlags::RDWR | OFlags::CREATE | OFlags::EXCL | OFlags::NOFOLLOW | OFlags::CLOEXEC,
+            Mode::from_raw_mode(0o644),
+        ))?))
+    }
+    pub fn create_file(&self, relative: &str) -> io::Result<File> {
+        let (parent, name) = self.parent(relative, true)?;
+        Ok(File::from(cv(rfs::openat(
+            &parent,
+            name.as_str(),
+            OFlags::RDWR | OFlags::CREATE | OFlags::EXCL | OFlags::NOFOLLOW | OFlags::CLOEXEC,
+            Mode::from_raw_mode(0o644),
+        ))?))
+    }
+    /// Replace mutable bytes with a private inode; never truncate a CAS hardlink.
+    pub fn atomic_replace(&self, relative: &str, bytes: &[u8]) -> io::Result<()> {
+        let (parent, name) = self.parent(relative, true)?;
+        let temp = format!("{}.jmcl-replace-{}", name, unique());
+        let result = (|| {
+            let mut output = File::from(cv(rfs::openat(
+                &parent,
+                temp.as_str(),
+                OFlags::WRONLY | OFlags::CREATE | OFlags::EXCL | OFlags::NOFOLLOW | OFlags::CLOEXEC,
+                Mode::from_raw_mode(0o644),
+            ))?);
+            output.write_all(bytes)?;
+            output.sync_all()?;
+            cv(rfs::renameat(
+                &parent,
+                temp.as_str(),
+                &parent,
+                name.as_str(),
+            ))
+        })();
+        let _ = rfs::unlinkat(&parent, temp.as_str(), AtFlags::empty());
+        result
+    }
+    pub fn atomic_replace_bytes(&self, relative: &[u8], bytes: &[u8]) -> io::Result<()> {
+        let (parent, name) = self.native_parent(relative)?;
+        let temp = format!(".jmcl-replace-{}", unique());
+        let result = (|| {
+            let mut output = File::from(cv(rfs::openat(
+                &parent,
+                temp.as_str(),
+                OFlags::WRONLY | OFlags::CREATE | OFlags::EXCL | OFlags::NOFOLLOW | OFlags::CLOEXEC,
+                Mode::from_raw_mode(0o644),
+            ))?);
+            output.write_all(bytes)?;
+            output.sync_all()?;
+            cv(rfs::renameat(&parent, temp.as_str(), &parent, &name))
+        })();
+        let _ = rfs::unlinkat(&parent, temp.as_str(), AtFlags::empty());
+        result
+    }
+    pub fn remove_tree(&self, relative: &str) -> io::Result<()> {
+        fn remove(parent: &File, name: &std::ffi::OsStr) -> io::Result<()> {
+            let stat = cv(rfs::statat(parent, name, AtFlags::SYMLINK_NOFOLLOW))?;
+            if rfs::FileType::from_raw_mode(stat.st_mode) != rfs::FileType::Directory {
+                return cv(rfs::unlinkat(parent, name, AtFlags::empty()));
+            }
+            let dir = dir_at(parent, name, false)?;
+            for item in names(&dir)? {
+                remove(&dir, std::ffi::OsStr::from_bytes(&item))?;
+            }
+            cv(rfs::unlinkat(parent, name, AtFlags::REMOVEDIR))
+        }
+        let (parent, name) = self.parent(relative, false)?;
+        remove(&parent, name.as_ref())
+    }
+    pub fn remove_file(&self, relative: &str) -> io::Result<()> {
+        let (parent, name) = self.parent(relative, false)?;
+        cv(rfs::unlinkat(&parent, name.as_str(), AtFlags::empty()))
+    }
+    pub fn remove_directory(&self, relative: &str) -> io::Result<()> {
+        let (parent, name) = self.parent(relative, false)?;
+        cv(rfs::unlinkat(&parent, name.as_str(), AtFlags::REMOVEDIR))
+    }
+    /// Project an immutable verified source, never truncating an existing inode.
+    pub fn project(
+        &self,
+        source_path: &str,
+        destination: &str,
+        hash: &str,
+        size: u64,
+    ) -> io::Result<()> {
+        let (source_dir, source_name) = self.parent(source_path, false)?;
+        let mut source = file_at(&source_dir, source_name.as_ref())?;
+        if !matches(&mut source, hash, size)? {
+            return Err(invalid("CacheFileInvalid"));
+        }
+        let (dest, name) = self.parent(destination, true)?;
+        let exists = match file_at(&dest, name.as_ref()) {
+            Ok(_) => true,
+            Err(e) if e.kind() == io::ErrorKind::NotFound => false,
+            Err(e) => return Err(e),
+        };
+        let temp = format!("{}.jmcl-projection-{}", name, unique());
+        let result = (|| {
+            if !exists {
+                match rfs::linkat(
+                    &source_dir,
+                    source_name.as_str(),
+                    &dest,
+                    temp.as_str(),
+                    AtFlags::empty(),
+                ) {
+                    Ok(()) => {
+                        let linked = file_at(&dest, temp.as_ref())?;
+                        if !same(&linked.metadata()?, &source.metadata()?) {
+                            return Err(invalid("CacheFileInvalid"));
+                        }
+                        return cv(rfs::renameat(&dest, temp.as_str(), &dest, name.as_str()));
+                    }
+                    Err(rustix::io::Errno::XDEV | rustix::io::Errno::OPNOTSUPP) => {}
+                    Err(e) => return Err(e.into()),
+                }
+            }
+            let mut output = File::from(cv(rfs::openat(
+                &dest,
+                temp.as_str(),
+                OFlags::WRONLY | OFlags::CREATE | OFlags::EXCL | OFlags::NOFOLLOW | OFlags::CLOEXEC,
+                Mode::from_raw_mode(0o644),
+            ))?);
+            source.seek(SeekFrom::Start(0))?;
+            if io::copy(&mut source.take(size), &mut output)? != size {
+                return Err(invalid("UnexpectedEndOfFile"));
+            }
+            output.sync_all()?;
+            cv(rfs::renameat(&dest, temp.as_str(), &dest, name.as_str()))
+        })();
+        let _ = rfs::unlinkat(&dest, temp.as_str(), AtFlags::empty());
+        result
+    }
+    pub fn verify(&self, relative: &str, hash: &str, size: u64) -> io::Result<bool> {
+        match self.open_file(relative) {
+            Ok(mut f) => matches(&mut f, hash, size),
+            Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(false),
+            Err(e) => Err(e),
+        }
+    }
+}
+pub struct StagedObject<'a> {
+    file: File,
+    dir: File,
+    name: String,
+    hash: String,
+    size: u64,
+    published: bool,
+    _lock: std::marker::PhantomData<&'a ObjectLock>,
+}
+impl StagedObject<'_> {
+    pub fn file_mut(&mut self) -> &mut File {
+        &mut self.file
+    }
+    pub fn publish(mut self, sync: bool) -> io::Result<()> {
+        if !matches(&mut self.file, &self.hash, self.size)? {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "ArtifactVerificationFailed",
+            ));
+        }
+        if sync {
+            self.file.sync_all()?;
+        }
+        readonly(&self.file)?;
+        cv(rfs::renameat(
+            &self.dir,
+            self.name.as_str(),
+            &self.dir,
+            self.hash.as_str(),
+        ))?;
+        self.published = true;
+        Ok(())
+    }
+}
+impl Drop for StagedObject<'_> {
+    fn drop(&mut self) {
+        if !self.published {
+            let _ = rfs::unlinkat(&self.dir, self.name.as_str(), AtFlags::empty());
+        }
+    }
+}
+impl Store {
+    pub(super) fn remove_object_locked(&self, hash: &str) -> io::Result<()> {
+        let result = (|| {
+            let dir = self.prefix(hash, false)?;
+            cv(rfs::unlinkat(&dir, hash, AtFlags::empty()))
+        })();
+        match result {
+            Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(()),
+            other => other,
+        }
+    }
+    pub(super) fn stage_locked<'a>(
+        &self,
+        hash: &str,
+        size: u64,
+        _guard: &'a ObjectLock,
+    ) -> io::Result<StagedObject<'a>> {
+        let dir = self.prefix(hash, true)?;
+        let name = format!(".jmcl-download-{}", unique());
+        let file = File::from(cv(rfs::openat(
+            &dir,
+            name.as_str(),
+            OFlags::RDWR | OFlags::CREATE | OFlags::EXCL | OFlags::NOFOLLOW | OFlags::CLOEXEC,
+            Mode::from_raw_mode(0o644),
+        ))?);
+        Ok(StagedObject {
+            file,
+            dir,
+            name,
+            hash: hash.into(),
+            size,
+            published: false,
+            _lock: std::marker::PhantomData,
+        })
+    }
+}
+
+pub(crate) fn path_from_bytes(bytes: &[u8]) -> io::Result<std::ffi::OsString> {
+    Ok(std::ffi::OsStr::from_bytes(bytes).to_owned())
 }
 
 #[cfg(test)]
@@ -621,6 +982,89 @@ mod tests {
         assert!(file.try_lock().is_err());
         drop(_guard);
         file.try_lock().unwrap();
+    }
+    #[test]
+    fn existing_lock_leaf_is_preserved_and_aliases_are_rejected() {
+        let (temp, store, _, hash) = fixture();
+        let leaf = temp
+            .path()
+            .join(format!(".jmclcore/locks/sha1/{hash}.lock"));
+        std::fs::write(&leaf, b"existing lock bytes").unwrap();
+        let before = leaf.metadata().unwrap();
+        let guard = store.lock_object(&hash).unwrap();
+        assert!(same(&before, &leaf.metadata().unwrap()));
+        assert_eq!(std::fs::read(&leaf).unwrap(), b"existing lock bytes");
+        drop(guard);
+        std::fs::remove_file(&leaf).unwrap();
+        let target = temp.path().join("external-lock");
+        std::fs::write(&target, b"untouched").unwrap();
+        symlink(&target, &leaf).unwrap();
+        assert!(store.lock_object(&hash).is_err());
+        assert_eq!(std::fs::read(&target).unwrap(), b"untouched");
+        std::fs::remove_file(&leaf).unwrap();
+        std::fs::create_dir(&leaf).unwrap();
+        assert!(store.lock_object(&hash).is_err());
+        assert!(leaf.is_dir());
+    }
+    #[test]
+    fn concurrent_digest_transactions_create_nested_destinations() {
+        use std::sync::{Barrier, atomic::AtomicUsize};
+        // The content resolver can produce two different paths for one digest.
+        // Keep their preflight and lock acquisition concurrent, and diagnose
+        // each actual filesystem phase rather than serializing the fixture.
+        for round in 0..32 {
+            let temp = tempfile::tempdir().unwrap();
+            let store = Store::open(temp.path().join("cas")).unwrap();
+            let root = ArtifactRoot::open(temp.path().join("game")).unwrap();
+            let hash = hash(b"content");
+            let ready = Barrier::new(2);
+            let downloads = AtomicUsize::new(0);
+            std::thread::scope(|scope| {
+                for name in ["mods/a.jar", "mods/dependency.jar"] {
+                    let (store, root, hash, ready, downloads, temp) =
+                        (&store, &root, &hash, &ready, &downloads, &temp);
+                    scope.spawn(move || {
+                        assert!(!root.verify(name, hash, 7).expect("destination preflight"));
+                        ready.wait();
+                        let tx = store.transaction(hash).unwrap_or_else(|error| {
+                            eprintln!(
+                                "round {round}, {name}, cache root {:?}, lock path {:?}",
+                                store.root.metadata(),
+                                std::fs::symlink_metadata(
+                                    temp.path().join(format!("cas/locks/sha1/{hash}.lock"))
+                                )
+                            );
+                            panic!("digest lock: {error:?}");
+                        });
+                        if !tx.verify(7).expect("locked cache verification") {
+                            tx.remove_invalid(7).expect("remove invalid cache entry");
+                            let mut staged = tx.stage(7).expect("create staging object");
+                            staged
+                                .file_mut()
+                                .write_all(b"content")
+                                .expect("write staged bytes");
+                            staged.publish(false).expect("publish staged object");
+                            downloads.fetch_add(1, Ordering::SeqCst);
+                        }
+                        assert_eq!(
+                            tx.materialize_at(root, name, 7).unwrap_or_else(|e| panic!(
+                                "round {round}, {name}: materialize: {e:?}"
+                            )),
+                            Placement::HardLink
+                        );
+                    });
+                }
+            });
+            assert_eq!(downloads.load(Ordering::SeqCst), 1);
+            let a = root.open_file("mods/a.jar").unwrap().metadata().unwrap();
+            let b = root
+                .open_file("mods/dependency.jar")
+                .unwrap()
+                .metadata()
+                .unwrap();
+            assert!(same(&a, &b));
+            assert_eq!(a.nlink(), 3);
+        }
     }
     #[test]
     fn fallback_errors_are_bounded() {
