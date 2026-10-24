@@ -74,3 +74,11 @@ Initial verification on Linux x86_64 with Zig 0.16.0, based on Core
 reported 319 passing tests and one skipped test (320 total). The focused adapter
 tests also compile for `x86_64-windows`; compilation is not a Windows execution
 result. Native Windows execution remains necessary.
+
+The initial native Windows CI probe passed numeric loopback POST and stalled
+response cancellation, but the IPv4-only `localhost` fixture returned a timeout.
+Zig's localhost lookup supplies both IPv6 and IPv4 addresses, so the fixture now
+listens on both `::1` and `127.0.0.1` at the same port, with cancellable cleanup
+for the unused/losing connection. The two-second timeout is unchanged. This
+isolates successful hostname HTTP handling from failed-address fallback timing;
+the initial ordinary timeout did not reproduce a process crash or RPC EOF.

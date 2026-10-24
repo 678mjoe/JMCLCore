@@ -235,7 +235,7 @@ const LoopbackHttpFixture = struct {
     listener: *std.Io.net.Server,
     stall: bool = false,
 
-    fn serve(fixture: *LoopbackHttpFixture) !void {
+    fn serve(fixture: *LoopbackHttpFixture) anyerror!void {
         var stream = try fixture.listener.accept(fixture.io);
         defer stream.close(fixture.io);
         var read_buffer: [4096]u8 = undefined;
@@ -258,6 +258,22 @@ fn checkLoopbackHttp(host: []const u8) !void {
     var fixture: LoopbackHttpFixture = .{ .io = io, .listener = &listener };
     var serving = try io.concurrent(LoopbackHttpFixture.serve, .{&fixture});
     defer _ = serving.cancel(io) catch {};
+    // localhost can resolve to both ::1 and 127.0.0.1. Serve both loopback
+    // families instead of testing platform-specific failed-address fallback.
+    // Keep the original short client deadline: do not hide connection stalls.
+    var listener_v6: ?std.Io.net.Server = null;
+    defer if (listener_v6) |*server| server.deinit(io);
+    var fixture_v6: LoopbackHttpFixture = undefined;
+    var serving_v6: ?std.Io.Future(anyerror!void) = null;
+    defer if (serving_v6) |*future| {
+        _ = future.cancel(io) catch {};
+    };
+    if (std.mem.eql(u8, host, "localhost")) {
+        const address_v6 = try std.Io.net.IpAddress.parse("::1", listener.socket.address.getPort());
+        listener_v6 = try address_v6.listen(io, .{ .reuse_address = true });
+        fixture_v6 = .{ .io = io, .listener = &listener_v6.? };
+        serving_v6 = try io.concurrent(LoopbackHttpFixture.serve, .{&fixture_v6});
+    }
     const url = try std.fmt.allocPrint(allocator, "http://{s}:{d}/synthetic", .{ host, listener.socket.address.getPort() });
     defer allocator.free(url);
     var adapter: StdHttpTransport = .{ .io = io, .environ_map = null };
@@ -267,7 +283,10 @@ fn checkLoopbackHttp(host: []const u8) !void {
         .timeout_ms = 2000,
     });
     defer response.deinit(allocator);
-    try serving.await(io);
+    // The resolver may connect both families and close the losing stream.
+    // Response assertions establish the winning request; defer cancels/reaps
+    // an unused listener or a losing connection without waiting for input.
+    if (serving_v6 == null) try serving.await(io);
     try std.testing.expectEqual(std.http.Status.ok, response.status);
     try std.testing.expectEqualStrings("{\"fixture\":true}", try response.body());
 }
