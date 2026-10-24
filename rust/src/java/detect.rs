@@ -249,6 +249,8 @@ pub fn run_bounded(
         use std::os::windows::process::CommandExt;
         cmd.creation_flags(0x08000000);
     }
+    #[cfg(target_os = "macos")]
+    super::direct_exec::configure(&mut cmd, executable, args, env).map_err(|e| io_name(&e))?;
     let mut child = cmd.spawn().map_err(|e| io_name(&e))?;
     let mut out = child.stdout.take().ok_or("Unexpected")?;
     let mut err = child.stderr.take().ok_or("Unexpected")?;
