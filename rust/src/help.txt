@@ -1,0 +1,16 @@
+JMCL Core
+
+Usage:
+  jmcl-core version [--json]  Show core and protocol version
+  jmcl-core version list      Fetch and list Minecraft versions
+  jmcl-core version show ID   Fetch detailed version metadata
+  jmcl-core install plan ID   Generate an immutable install plan
+  jmcl-core install execute ID Download and verify static files
+  jmcl-core install prepare ID Prepare natives and legacy assets
+  jmcl-core store gc          Reclaim unlinked cached artifacts
+  jmcl-core instance <command>  Manage isolated instances
+  jmcl-core java detect         Detect local Java runtimes
+  jmcl-core java select ID      Select a compatible Java runtime
+  jmcl-core launch execute ID   Launch Minecraft
+  jmcl-core rpc               Start a JSON Lines RPC session
+  jmcl-core help              Show this help

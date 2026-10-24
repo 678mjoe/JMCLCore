@@ -1,3 +1,19 @@
+# JMCLCore：实验性 Rust 重写分支
+
+本仓库的长期分支 `rust-rewrite` 独立推进 Rust 重写，`main` 继续保留 Zig 实现。
+该实验分支目前**还不能替代原 Core**；阶段性 PR 仅合入 `rust-rewrite`，成熟并获明确批准之前不合入 `main`。
+硬链接优先的不可变文件管理、protocol v1、CLI 行为和现有磁盘格式均属于兼容约束。
+
+- [Rust 构建方式与当前限制](rust/README.md)
+- [重写路线图](docs/rewrite/README.md)与[逐方法证据清单](rust/compat/coverage.json)
+- [技术设计文章](docs/blog/README.md)
+
+原 Zig 源码、历史与 LGPL-3.0-or-later 许可证声明保留为兼容参照。
+在兼容验收完成之前，Rust 二进制仍使用 `jmcl-core-rust` 名称；这里的开发不表示
+已经正式发布，也不会自动替换原项目的主线。
+
+## 保留的 Zig 参照文档
+
 # JMCL Core
 
 [English](README.md) | 简体中文
