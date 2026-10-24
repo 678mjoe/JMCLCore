@@ -174,19 +174,25 @@ impl Store {
             ),
         )?;
         let name = format!("{hash}.lock");
-        let file = File::from(lock_phase(
-            "open lock leaf",
-            cv(rfs::openat(
-                &dir,
-                name.as_str(),
-                OFlags::RDWR
-                    | OFlags::CREATE
-                    | OFlags::NOFOLLOW
-                    | OFlags::NONBLOCK
-                    | OFlags::CLOEXEC,
-                Mode::from_raw_mode(0o666),
-            )),
-        )?);
+        // Match the oracle's exclusive-create / open-existing split. A single
+        // O_CREAT open failed with ENOENT during native macOS contention even
+        // though the peer-created leaf was immediately observable. Only EXIST
+        // selects the existing-file path: all other errors remain errors.
+        let flags = OFlags::RDWR | OFlags::NOFOLLOW | OFlags::NONBLOCK | OFlags::CLOEXEC;
+        let created = rfs::openat(
+            &dir,
+            name.as_str(),
+            flags | OFlags::CREATE | OFlags::EXCL,
+            Mode::from_raw_mode(0o666),
+        );
+        let file = File::from(match created {
+            Ok(file) => file,
+            Err(rustix::io::Errno::EXIST) => lock_phase(
+                "open existing lock leaf",
+                cv(rfs::openat(&dir, name.as_str(), flags, Mode::empty())),
+            )?,
+            Err(error) => return lock_phase("exclusive-create lock leaf", Err(error.into())),
+        });
         if !lock_phase("lock leaf metadata", file.metadata())?.is_file() {
             return Err(invalid("InvalidLockKind"));
         }
@@ -976,6 +982,29 @@ mod tests {
         assert!(file.try_lock().is_err());
         drop(_guard);
         file.try_lock().unwrap();
+    }
+    #[test]
+    fn existing_lock_leaf_is_preserved_and_aliases_are_rejected() {
+        let (temp, store, _, hash) = fixture();
+        let leaf = temp
+            .path()
+            .join(format!(".jmclcore/locks/sha1/{hash}.lock"));
+        std::fs::write(&leaf, b"existing lock bytes").unwrap();
+        let before = leaf.metadata().unwrap();
+        let guard = store.lock_object(&hash).unwrap();
+        assert!(same(&before, &leaf.metadata().unwrap()));
+        assert_eq!(std::fs::read(&leaf).unwrap(), b"existing lock bytes");
+        drop(guard);
+        std::fs::remove_file(&leaf).unwrap();
+        let target = temp.path().join("external-lock");
+        std::fs::write(&target, b"untouched").unwrap();
+        symlink(&target, &leaf).unwrap();
+        assert!(store.lock_object(&hash).is_err());
+        assert_eq!(std::fs::read(&target).unwrap(), b"untouched");
+        std::fs::remove_file(&leaf).unwrap();
+        std::fs::create_dir(&leaf).unwrap();
+        assert!(store.lock_object(&hash).is_err());
+        assert!(leaf.is_dir());
     }
     #[test]
     fn concurrent_digest_transactions_create_nested_destinations() {
