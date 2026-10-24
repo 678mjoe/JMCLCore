@@ -25,6 +25,8 @@ zig build
 zig build test
 ```
 
+当前小范围可靠性修复计划见 [ROADMAP.md](ROADMAP.md)。
+
 ## CLI
 
 ```sh
@@ -104,7 +106,7 @@ RPC 模式从标准输入逐行读取 JSON 请求，并将 JSON 事件逐行写�
 
 实例默认使用记录在 `instance.json` 中的下载源。向 `instance install` 传递 `--source bmclapi` 可临时覆盖一次镜像源。使用 BMCLAPI 规划时，如果镜像元数据不可用，程序会自动通过 Mojang 重试；静态文件仍优先使用 BMCLAPI，并以官方源作为回退。
 
-经过校验的不可变文件只会在 `./.jmclcore/objects` 下存储一次，并通过硬链接物化到 `.minecraft` 中。使用 `--store-directory PATH` 可选择其他存储位置。跨文件系统放置文件时会自动回退到原子复制。
+经过校验的不可变文件只会在 `./.jmclcore/objects` 下存储一次，并通过硬链接物化到 `.minecraft` 中。使用 `--store-directory PATH` 可选择其他存储位置。跨文件系统放置文件时会自动回退到复制；此路径不是原子替换，后续安装会重新校验。详见[存储边界](docs/content-addressed-storage.md#atomic-materialization)。
 
 托管 Java 运行时会从 Mojang 运行时目录下载到制品存储的 `runtimes/` 目录下；对于 Mojang 未提供的平台（例如 macOS arm64 上的 Java 8）会回退到 Azul Zulu。启动和安装命令接受 `--java-policy auto|local|managed`（RPC `java_policy`）来控制本地与托管运行时的优先级，并支持 `--java-override`（RPC `java_override`）强制指定 Java 可执行文件。
 

@@ -5706,3 +5706,40 @@ test "world datapack mutations gate on world existence and the session lock" {
     defer list.deinit();
     try std.testing.expectEqual(@as(usize, 0), list.entries.len);
 }
+
+test "restoreWorldBackup refuses a locked target and succeeds after unlock" {
+    const io = std.testing.io;
+    var temporary = std.testing.tmpDir(.{});
+    defer temporary.cleanup();
+    var path_buffer: [std.fs.max_path_bytes]u8 = undefined;
+    const tmp_len = try temporary.dir.realPath(io, &path_buffer);
+    const game_path = try std.fmt.allocPrint(std.testing.allocator, "{s}/game", .{path_buffer[0..tmp_len]});
+    defer std.testing.allocator.free(game_path);
+    var game_dir = try temporary.dir.createDirPathOpen(io, "game", .{});
+    defer game_dir.close(io);
+    var alpha = try game_dir.createDirPathOpen(io, "saves/Alpha", .{});
+    try alpha.writeFile(io, .{ .sub_path = "level.dat", .data = "backup-data" });
+    alpha.close(io);
+    const service = Service.init(std.testing.allocator, io, null);
+    const backup = try service.backupWorld(game_path, "Alpha", null);
+    defer std.testing.allocator.free(backup);
+    try game_dir.writeFile(io, .{ .sub_path = "saves/Alpha/level.dat", .data = "live-data" });
+    {
+        const lock_file = try game_dir.createFile(io, "saves/Alpha/" ++ worlds.session_lock_name, .{});
+        defer lock_file.close(io);
+        try lock_file.lock(io, .exclusive);
+        const attempted = service.restoreWorldBackup(game_path, backup, null, true);
+        defer if (attempted) |name| std.testing.allocator.free(name) else |_| {};
+        try std.testing.expectError(error.WorldLocked, attempted);
+        const level = try game_dir.readFileAlloc(io, "saves/Alpha/level.dat", std.testing.allocator, .limited(64));
+        defer std.testing.allocator.free(level);
+        try std.testing.expectEqualStrings("live-data", level);
+    }
+    // Releasing the OS lock (leaving the file behind) permits the same backup.
+    const restored = try service.restoreWorldBackup(game_path, backup, null, true);
+    defer std.testing.allocator.free(restored);
+    try std.testing.expectEqualStrings("Alpha", restored);
+    const level = try game_dir.readFileAlloc(io, "saves/Alpha/level.dat", std.testing.allocator, .limited(64));
+    defer std.testing.allocator.free(level);
+    try std.testing.expectEqualStrings("backup-data", level);
+}

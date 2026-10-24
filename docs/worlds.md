@@ -3,8 +3,8 @@
 JMCL Core manages save/world directories for client instances and managed
 servers. Worlds are **mutable, instance-private state**: they never enter the
 content-addressed artifact store, are never hard-linked, and are never shared
-between instances. All operations are plain filesystem moves and copies with
-crash-safe staging.
+between instances. Operations use plain filesystem moves, copies, and staging
+to limit partial writes; a multi-step mutation is not a crash-atomic transaction.
 
 ## Storage model
 
@@ -49,8 +49,12 @@ never blocks on it; downgrade risk messaging is a GUI concern.
 
 ## Mutations
 
-All mutations refuse to run while `session.lock` exists (`WORLD_LOCKED`) and
-while the target name is taken (`WORLD_EXISTS`).
+Mutations probe the live `session.lock` before modifying an existing world
+and reject a held lock (`WORLD_LOCKED`); a stale unlocked file is allowed.
+The probe is not a lock held throughout the operation and cannot exclude a
+game started externally after the check. Callers must still coordinate
+launches and mutations. Existing target names are rejected (`WORLD_EXISTS`)
+unless the operation explicitly supports replacement.
 
 - **rename**: rewrites `Data.LevelName` inside `level.dat` (full NBT
   parse/serialize with a parse-then-compare round-trip check, atomic file
@@ -89,7 +93,11 @@ caller `name` overrides it, and without a prefix the zip file stem is used.
 Extraction stages into `.jmcl-copy-<random>` and renames into place; an
 existing target fails with `WORLD_EXISTS` unless `replace:true`, which swaps
 the old directory to `.jmcl-trash-<random>` first (full replacement: files
-added since the backup do not survive).
+added since the backup do not survive). Before replacement, import and restore
+probe the existing world's live session lock and reject a held lock with
+`WORLD_LOCKED`. Archive staging does not make the complete multi-step swap a
+transaction: after process interruption, inspect the world and any staging or
+trash directories before retrying; do not assume automatic rollback.
 
 `worlds.backup` is managed export into the `backups/` directory next to
 `saves/` (i.e. `<game dir>/backups/`), named
