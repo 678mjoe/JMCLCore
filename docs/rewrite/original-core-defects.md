@@ -20,6 +20,7 @@
 | [ZIG-004](#zig-004) | 动态 f64 转 u64 上界触发进程 abort | 未修 | 安全返回现有参数错误；不能称为退出行为一致 |
 | [ZIG-005](#zig-005) | Windows 竞争中的 GC 锁返回错误而非等待 | 未修 | 保留互斥并等待；原版等待语义差异仍单列 |
 | [ZIG-006](#zig-006) | Java 归档解包的 staging 写入边界不足 | 已有隔离证据 | 安全例外已批准；实现与验证尚未完成 |
+| [ZIG-007](#zig-007) | Windows 禁用内容换版在只读硬链接重命名时失败 | 原生观察确认特定案例 | Rust 保持禁用状态并完成换版；差分须显式选择窄例外 |
 
 <a id="zig-001"></a>
 ## ZIG-001 — 超长行后的有效请求被清除
@@ -89,9 +90,20 @@
 - **Rust 状态：** 实现与验收仍待完成；不能因原则获批就把 `runtime.install`、下载后启动或归档防护标记为已验证。现有本地/已安装 Java 的执行证据不覆盖此路径。
 - **以后修 Zig：** 审核解包期间每次写入和路径组件解析的目录边界，保留正常内部链接；通过安全的内部链接、拒绝案例和清理行为回归验证。应单独记录工具链依赖，不悄然改变正常归档/协议契约。
 
+<a id="zig-007"></a>
+## ZIG-007 — Windows 禁用内容换版未完成
+
+**分类：原生观察确认的缺陷；具体系统调用原因仍是源码支持的推断。**
+
+- **已观察条件：** 固定基线的注入元数据 service oracle 在 Windows `mods / modrinth / disabled` 合成案例中，先发布 `mods/new.jar` 的只读 CAS 硬链接并输出 file/progress，然后返回 `CONTENT_SET_VERSION_FAILED`。旧 `one.jar.disabled` 和 Ver1 registry 保留，新文件却未变成禁用文件。Rust 同一案例完成 `new.jar.disabled` 与 Ver2 registry，保持只读内容。这里注入的仅是元数据 fetch，不是改写 rename 或 registry；不能称为未经注入的线上请求。
+- **证据与原因边界：** `content_install_wire::injected_version_switch_wire_and_disk` 的原生上下文诊断同时记录双方 wire、磁盘与只读属性。基线 `src/service.zig:3548–3565` 在下载之后、保存 registry 之前重命名禁用文件。固定 Zig 0.16.0 `lib/std/Io/Threaded.zig:7385–7415` 先以 `GENERIC_WRITE | DELETE` 打开只读源，之后才设置 rename 的 `IGNORE_READONLY_ATTRIBUTE`；该打开步骤失败是原因推断，尚无直接 NT 调用跟踪证明。Rust 的对应句柄不要求文件数据写权限。
+- **批准的纠正：** 成功完成合法禁用内容换版，不因兼容此缺陷而增加数据写权限、清除共享 inode 的 readonly 属性、复制替代硬链接或保留意外启用的新文件。旧禁用文件移除、新 registry 更新和新禁用文件必须同时通过测试。
+- **精确门禁：** 仅 Windows 且显式设置 `JMCL_ALLOW_ZIG007_READONLY_RENAME=1` 时，测试接受预先列明的四类内容 × 两个 provider 的 disabled 合成案例。它逐字节断言 Zig 的两条既定 file/progress 事件、固定错误和精确残留磁盘状态，同时逐字节断言 Rust 的成功响应与更新 registry；还验证新文件、CAS 对象和旁路共享链接的字节、真实文件身份及 readonly。任何别的错误、事件、文件或 registry 改变都失败。如果原版在某个组合成功，仍要求双方严格相等，不强制制造预期失败。不设置开关仍为严格差分；启用例外不表示完全兼容。
+- **覆盖边界：** 原生已观察的是上述 mods/Modrinth 案例；其余七个组合是共享 `setInstanceContentVersion` 路径的明确预测，必须各自满足同一精确证据才能计为例外，不能预先称为已观察通过。Linux 仍运行真实 oracle 严格差分，并用明确合成的失败状态验证匹配器与负对照；这不是 Windows 验收替代品。错误码、额外事件、registry、额外文件、Rust 失败/错误字节、私有复制和可写文件均有拒绝对照。
+
 ## 源码确认的独立风险：带凭据请求的跨源重定向
 
-此项与上面六条已收集运行观察的条目分开记录；**没有执行网络实验，也没有证据表明真实密钥已经泄露**。
+此项与上面七条已收集运行观察的条目分开记录；**没有执行网络实验，也没有证据表明真实密钥已经泄露**。
 
 - 固定基线 [`src/service.zig` 的 `fetchBodyWithHeader`](https://github.com/678mjoe/JMCLCore/blob/5a4310debbcee26b3d2391bab2339f79cd6ec52e/src/service.zig#L4147) 允许三次重定向，并将 `x-api-key` 放入 `extra_headers`。固定 Zig 0.16.0 `lib/std/http/Client.zig:821–829` 的规则保留跨域 `extra_headers`，只移除 `privileged_headers`。
 - [`src/install/https_fallback.zig:41–54`](https://github.com/678mjoe/JMCLCore/blob/5a4310debbcee26b3d2391bab2339f79cd6ec52e/src/install/https_fallback.zig#L41-L54) 的重定向循环也将同一 `extra_header` 传给后续 URL。这支持“凭据头可能被转发到不同源”的源码风险判断，但不等同于已观察到泄露。

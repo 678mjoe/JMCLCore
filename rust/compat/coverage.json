@@ -93,7 +93,7 @@
       },
       "known_gaps": [
         "Finite fixture corpus does not establish all upstream schemas, platform errors or live network behavior.",
-        "Oversized request recovery global oracle divergence remains pending owner decision."
+        "Approved ZIG-001 correction preserves the next buffered request; literal oracle output still differs."
       ],
       "compatible": false,
       "approved_deviations": []
@@ -125,7 +125,7 @@
       },
       "known_gaps": [
         "Finite fixture corpus does not establish all upstream schemas, platform errors or live network behavior.",
-        "Oversized request recovery global oracle divergence remains pending owner decision."
+        "Approved ZIG-001 correction preserves the next buffered request; literal oracle output still differs."
       ],
       "compatible": false,
       "approved_deviations": []
@@ -157,7 +157,7 @@
       },
       "known_gaps": [
         "Finite fixture corpus does not establish all upstream schemas, platform errors or live network behavior.",
-        "Oversized request recovery global oracle divergence remains pending owner decision."
+        "Approved ZIG-001 correction preserves the next buffered request; literal oracle output still differs."
       ],
       "compatible": false,
       "approved_deviations": []
@@ -189,7 +189,7 @@
       },
       "known_gaps": [
         "Finite fixture corpus does not establish all upstream schemas, platform errors or live network behavior.",
-        "Oversized request recovery global oracle divergence remains pending owner decision."
+        "Approved ZIG-001 correction preserves the next buffered request; literal oracle output still differs."
       ],
       "compatible": false,
       "approved_deviations": []
@@ -293,8 +293,7 @@
       },
       "known_gaps": [
         "Finite corpus is not exhaustive compatibility; real upstream/network behavior not established.",
-        "Global oversized-input divergence remains pending owner decision.",
-        "Not implemented.",
+        "Approved ZIG-001 correction preserves the next buffered request; literal oracle output still differs.",
         "Pinned Windows Zig GC reports one error instead of blocking under an existing held digest lock; exact error/retention/post-release pair allowlisted only in experimental CI. Strict replacement remains blocked."
       ],
       "compatible": false,
@@ -330,7 +329,7 @@
       },
       "known_gaps": [
         "Finite fixture corpus does not establish all upstream schemas, platform errors or live network behavior.",
-        "Oversized request recovery global oracle divergence remains pending owner decision."
+        "Approved ZIG-001 correction preserves the next buffered request; literal oracle output still differs."
       ],
       "compatible": false,
       "approved_deviations": []
@@ -384,7 +383,8 @@
       "platform_evidence": {},
       "known_gaps": [
         "Synthetic provider and transport fixtures; live HTTPS/redirect/error behavior not established.",
-        "Native combined execution pending."
+        "Native combined execution pending.",
+        "ZIG-007: Windows disabled readonly-link version switching has an exact opt-in correction gate; oracle error and corrected Rust disk/wire states remain separately asserted, not literal parity."
       ],
       "compatible": false,
       "approved_deviations": []
@@ -416,7 +416,7 @@
       },
       "known_gaps": [
         "Finite fixture corpus does not establish all upstream schemas, platform errors or live network behavior.",
-        "Oversized request recovery global oracle divergence remains pending owner decision."
+        "Approved ZIG-001 correction preserves the next buffered request; literal oracle output still differs."
       ],
       "compatible": false,
       "approved_deviations": []
@@ -448,7 +448,7 @@
       },
       "known_gaps": [
         "Finite fixture corpus does not establish all upstream schemas, platform errors or live network behavior.",
-        "Oversized request recovery global oracle divergence remains pending owner decision."
+        "Approved ZIG-001 correction preserves the next buffered request; literal oracle output still differs."
       ],
       "compatible": false,
       "approved_deviations": []
@@ -480,7 +480,7 @@
       },
       "known_gaps": [
         "Finite fixture corpus does not establish all upstream schemas, platform errors or live network behavior.",
-        "Oversized request recovery global oracle divergence remains pending owner decision."
+        "Approved ZIG-001 correction preserves the next buffered request; literal oracle output still differs."
       ],
       "compatible": false,
       "approved_deviations": []
@@ -512,7 +512,7 @@
       },
       "known_gaps": [
         "Finite corpus is not exhaustive compatibility; real upstream/network behavior not established.",
-        "Global oversized-input divergence remains pending owner decision."
+        "Approved ZIG-001 correction preserves the next buffered request; literal oracle output still differs."
       ],
       "compatible": false,
       "approved_deviations": []
@@ -544,7 +544,7 @@
       },
       "known_gaps": [
         "Finite fixture corpus does not establish all upstream schemas, platform errors or live network behavior.",
-        "Oversized request recovery global oracle divergence remains pending owner decision."
+        "Approved ZIG-001 correction preserves the next buffered request; literal oracle output still differs."
       ],
       "compatible": false,
       "approved_deviations": []
@@ -598,7 +598,8 @@
       "platform_evidence": {},
       "known_gaps": [
         "Synthetic provider and transport fixtures; live HTTPS/redirect/error behavior not established.",
-        "Native combined execution pending."
+        "Native combined execution pending.",
+        "ZIG-007: Windows disabled readonly-link version switching has an exact opt-in correction gate; oracle error and corrected Rust disk/wire states remain separately asserted, not literal parity."
       ],
       "compatible": false,
       "approved_deviations": []
@@ -630,7 +631,7 @@
       },
       "known_gaps": [
         "Finite fixture corpus does not establish all upstream schemas, platform errors or live network behavior.",
-        "Oversized request recovery global oracle divergence remains pending owner decision."
+        "Approved ZIG-001 correction preserves the next buffered request; literal oracle output still differs."
       ],
       "compatible": false,
       "approved_deviations": []
@@ -662,7 +663,7 @@
       },
       "known_gaps": [
         "Finite fixture corpus does not establish all upstream schemas, platform errors or live network behavior.",
-        "Oversized request recovery global oracle divergence remains pending owner decision."
+        "Approved ZIG-001 correction preserves the next buffered request; literal oracle output still differs."
       ],
       "compatible": false,
       "approved_deviations": []
@@ -694,7 +695,7 @@
       },
       "known_gaps": [
         "Finite fixture corpus does not establish all upstream schemas, platform errors or live network behavior.",
-        "Oversized request recovery global oracle divergence remains pending owner decision."
+        "Approved ZIG-001 correction preserves the next buffered request; literal oracle output still differs."
       ],
       "compatible": false,
       "approved_deviations": []
@@ -726,7 +727,7 @@
       },
       "known_gaps": [
         "Finite corpus is not exhaustive compatibility; real upstream/network behavior not established.",
-        "Global oversized-input divergence remains pending owner decision."
+        "Approved ZIG-001 correction preserves the next buffered request; literal oracle output still differs."
       ],
       "compatible": false,
       "approved_deviations": []
@@ -758,7 +759,7 @@
       },
       "known_gaps": [
         "Finite fixture corpus does not establish all upstream schemas, platform errors or live network behavior.",
-        "Oversized request recovery global oracle divergence remains pending owner decision."
+        "Approved ZIG-001 correction preserves the next buffered request; literal oracle output still differs."
       ],
       "compatible": false,
       "approved_deviations": []
@@ -812,7 +813,8 @@
       "platform_evidence": {},
       "known_gaps": [
         "Synthetic provider and transport fixtures; live HTTPS/redirect/error behavior not established.",
-        "Native combined execution pending."
+        "Native combined execution pending.",
+        "ZIG-007: Windows disabled readonly-link version switching has an exact opt-in correction gate; oracle error and corrected Rust disk/wire states remain separately asserted, not literal parity."
       ],
       "compatible": false,
       "approved_deviations": []
@@ -844,7 +846,7 @@
       },
       "known_gaps": [
         "Finite fixture corpus does not establish all upstream schemas, platform errors or live network behavior.",
-        "Oversized request recovery global oracle divergence remains pending owner decision."
+        "Approved ZIG-001 correction preserves the next buffered request; literal oracle output still differs."
       ],
       "compatible": false,
       "approved_deviations": []
@@ -876,7 +878,7 @@
       },
       "known_gaps": [
         "Finite fixture corpus does not establish all upstream schemas, platform errors or live network behavior.",
-        "Oversized request recovery global oracle divergence remains pending owner decision."
+        "Approved ZIG-001 correction preserves the next buffered request; literal oracle output still differs."
       ],
       "compatible": false,
       "approved_deviations": []
@@ -908,7 +910,7 @@
       },
       "known_gaps": [
         "Finite fixture corpus does not establish all upstream schemas, platform errors or live network behavior.",
-        "Oversized request recovery global oracle divergence remains pending owner decision."
+        "Approved ZIG-001 correction preserves the next buffered request; literal oracle output still differs."
       ],
       "compatible": false,
       "approved_deviations": []
@@ -940,7 +942,7 @@
       },
       "known_gaps": [
         "Finite corpus is not exhaustive compatibility; real upstream/network behavior not established.",
-        "Global oversized-input divergence remains pending owner decision."
+        "Approved ZIG-001 correction preserves the next buffered request; literal oracle output still differs."
       ],
       "compatible": false,
       "approved_deviations": []
@@ -972,7 +974,7 @@
       },
       "known_gaps": [
         "Finite fixture corpus does not establish all upstream schemas, platform errors or live network behavior.",
-        "Oversized request recovery global oracle divergence remains pending owner decision."
+        "Approved ZIG-001 correction preserves the next buffered request; literal oracle output still differs."
       ],
       "compatible": false,
       "approved_deviations": []
@@ -1026,7 +1028,8 @@
       "platform_evidence": {},
       "known_gaps": [
         "Synthetic provider and transport fixtures; live HTTPS/redirect/error behavior not established.",
-        "Native combined execution pending."
+        "Native combined execution pending.",
+        "ZIG-007: Windows disabled readonly-link version switching has an exact opt-in correction gate; oracle error and corrected Rust disk/wire states remain separately asserted, not literal parity."
       ],
       "compatible": false,
       "approved_deviations": []
@@ -1058,7 +1061,7 @@
       },
       "known_gaps": [
         "Finite fixture corpus does not establish all upstream schemas, platform errors or live network behavior.",
-        "Oversized request recovery global oracle divergence remains pending owner decision."
+        "Approved ZIG-001 correction preserves the next buffered request; literal oracle output still differs."
       ],
       "compatible": false,
       "approved_deviations": []
@@ -1090,7 +1093,7 @@
       },
       "known_gaps": [
         "Finite fixture corpus does not establish all upstream schemas, platform errors or live network behavior.",
-        "Oversized request recovery global oracle divergence remains pending owner decision."
+        "Approved ZIG-001 correction preserves the next buffered request; literal oracle output still differs."
       ],
       "compatible": false,
       "approved_deviations": []
@@ -1122,7 +1125,7 @@
       },
       "known_gaps": [
         "Finite fixture corpus does not establish all upstream schemas, platform errors or live network behavior.",
-        "Oversized request recovery global oracle divergence remains pending owner decision."
+        "Approved ZIG-001 correction preserves the next buffered request; literal oracle output still differs."
       ],
       "compatible": false,
       "approved_deviations": []
@@ -1154,7 +1157,7 @@
       },
       "known_gaps": [
         "Finite corpus is not exhaustive compatibility; real upstream/network behavior not established.",
-        "Global oversized-input divergence remains pending owner decision."
+        "Approved ZIG-001 correction preserves the next buffered request; literal oracle output still differs."
       ],
       "compatible": false,
       "approved_deviations": []
@@ -1186,7 +1189,7 @@
       },
       "known_gaps": [
         "Finite corpus is not exhaustive compatibility; real upstream/network behavior not established.",
-        "Global oversized-input divergence remains pending owner decision.",
+        "Approved ZIG-001 correction preserves the next buffered request; literal oracle output still differs.",
         "Live provider API/TLS failures and native platform filesystem acceptance pending."
       ],
       "compatible": false,
@@ -1383,8 +1386,8 @@
       },
       "known_gaps": [
         "Finite corpus is not exhaustive compatibility; real upstream/network behavior not established.",
-        "Global oversized-input divergence remains pending owner decision.",
-        "Synthetic Linux only; original RPC Linux platform gate preserved. Non-Linux server-world readonly CLI parity not yet complete.",
+        "Approved ZIG-001 correction preserves the next buffered request; literal oracle output still differs.",
+        "Original server RPC Linux platform gate is preserved. Portable non-lifecycle server-world CLI is implemented with a finite oracle corpus; native combined acceptance remains separate.",
         "Real Minecraft server deployment not executed."
       ],
       "compatible": false,
@@ -1417,8 +1420,8 @@
       },
       "known_gaps": [
         "Finite corpus is not exhaustive compatibility; real upstream/network behavior not established.",
-        "Global oversized-input divergence remains pending owner decision.",
-        "Synthetic Linux only; original RPC Linux platform gate preserved. Non-Linux server-world readonly CLI parity not yet complete.",
+        "Approved ZIG-001 correction preserves the next buffered request; literal oracle output still differs.",
+        "Original server RPC Linux platform gate is preserved. Portable non-lifecycle server-world CLI is implemented with a finite oracle corpus; native combined acceptance remains separate.",
         "Real Minecraft server deployment not executed."
       ],
       "compatible": false,
@@ -1451,8 +1454,8 @@
       },
       "known_gaps": [
         "Finite corpus is not exhaustive compatibility; real upstream/network behavior not established.",
-        "Global oversized-input divergence remains pending owner decision.",
-        "Synthetic Linux only; original RPC Linux platform gate preserved. Non-Linux server-world readonly CLI parity not yet complete.",
+        "Approved ZIG-001 correction preserves the next buffered request; literal oracle output still differs.",
+        "Original server RPC Linux platform gate is preserved. Portable non-lifecycle server-world CLI is implemented with a finite oracle corpus; native combined acceptance remains separate.",
         "Real Minecraft server deployment not executed."
       ],
       "compatible": false,
@@ -1512,8 +1515,8 @@
       },
       "known_gaps": [
         "Finite corpus is not exhaustive compatibility; real upstream/network behavior not established.",
-        "Global oversized-input divergence remains pending owner decision.",
-        "Synthetic Linux only; original RPC Linux platform gate preserved. Non-Linux server-world readonly CLI parity not yet complete.",
+        "Approved ZIG-001 correction preserves the next buffered request; literal oracle output still differs.",
+        "Original server RPC Linux platform gate is preserved. Portable non-lifecycle server-world CLI is implemented with a finite oracle corpus; native combined acceptance remains separate.",
         "Real Minecraft server deployment not executed."
       ],
       "compatible": false,
@@ -1546,8 +1549,8 @@
       },
       "known_gaps": [
         "Finite corpus is not exhaustive compatibility; real upstream/network behavior not established.",
-        "Global oversized-input divergence remains pending owner decision.",
-        "Synthetic Linux only; original RPC Linux platform gate preserved. Non-Linux server-world readonly CLI parity not yet complete.",
+        "Approved ZIG-001 correction preserves the next buffered request; literal oracle output still differs.",
+        "Original server RPC Linux platform gate is preserved. Portable non-lifecycle server-world CLI is implemented with a finite oracle corpus; native combined acceptance remains separate.",
         "Real Minecraft server deployment not executed."
       ],
       "compatible": false,
@@ -1580,8 +1583,8 @@
       },
       "known_gaps": [
         "Finite corpus is not exhaustive compatibility; real upstream/network behavior not established.",
-        "Global oversized-input divergence remains pending owner decision.",
-        "Synthetic Linux only; original RPC Linux platform gate preserved. Non-Linux server-world readonly CLI parity not yet complete.",
+        "Approved ZIG-001 correction preserves the next buffered request; literal oracle output still differs.",
+        "Original server RPC Linux platform gate is preserved. Portable non-lifecycle server-world CLI is implemented with a finite oracle corpus; native combined acceptance remains separate.",
         "Real Minecraft server deployment not executed."
       ],
       "compatible": false,
@@ -1614,8 +1617,8 @@
       },
       "known_gaps": [
         "Finite corpus is not exhaustive compatibility; real upstream/network behavior not established.",
-        "Global oversized-input divergence remains pending owner decision.",
-        "Synthetic Linux only; original RPC Linux platform gate preserved. Non-Linux server-world readonly CLI parity not yet complete.",
+        "Approved ZIG-001 correction preserves the next buffered request; literal oracle output still differs.",
+        "Original server RPC Linux platform gate is preserved. Portable non-lifecycle server-world CLI is implemented with a finite oracle corpus; native combined acceptance remains separate.",
         "Real Minecraft server deployment not executed."
       ],
       "compatible": false,
@@ -1648,8 +1651,8 @@
       },
       "known_gaps": [
         "Finite corpus is not exhaustive compatibility; real upstream/network behavior not established.",
-        "Global oversized-input divergence remains pending owner decision.",
-        "Synthetic Linux only; original RPC Linux platform gate preserved. Non-Linux server-world readonly CLI parity not yet complete.",
+        "Approved ZIG-001 correction preserves the next buffered request; literal oracle output still differs.",
+        "Original server RPC Linux platform gate is preserved. Portable non-lifecycle server-world CLI is implemented with a finite oracle corpus; native combined acceptance remains separate.",
         "Real Minecraft server deployment not executed."
       ],
       "compatible": false,
@@ -1682,8 +1685,8 @@
       },
       "known_gaps": [
         "Finite corpus is not exhaustive compatibility; real upstream/network behavior not established.",
-        "Global oversized-input divergence remains pending owner decision.",
-        "Synthetic Linux only; original RPC Linux platform gate preserved. Non-Linux server-world readonly CLI parity not yet complete.",
+        "Approved ZIG-001 correction preserves the next buffered request; literal oracle output still differs.",
+        "Original server RPC Linux platform gate is preserved. Portable non-lifecycle server-world CLI is implemented with a finite oracle corpus; native combined acceptance remains separate.",
         "Real Minecraft server deployment not executed."
       ],
       "compatible": false,
@@ -1764,8 +1767,8 @@
       },
       "known_gaps": [
         "Finite corpus is not exhaustive compatibility; real upstream/network behavior not established.",
-        "Global oversized-input divergence remains pending owner decision.",
-        "Synthetic Linux only; original RPC Linux platform gate preserved. Non-Linux server-world readonly CLI parity not yet complete.",
+        "Approved ZIG-001 correction preserves the next buffered request; literal oracle output still differs.",
+        "Original server RPC Linux platform gate is preserved. Portable non-lifecycle server-world CLI is implemented with a finite oracle corpus; native combined acceptance remains separate.",
         "Real Minecraft server deployment not executed."
       ],
       "compatible": false,
@@ -1798,8 +1801,8 @@
       },
       "known_gaps": [
         "Finite corpus is not exhaustive compatibility; real upstream/network behavior not established.",
-        "Global oversized-input divergence remains pending owner decision.",
-        "Synthetic Linux only; original RPC Linux platform gate preserved. Non-Linux server-world readonly CLI parity not yet complete.",
+        "Approved ZIG-001 correction preserves the next buffered request; literal oracle output still differs.",
+        "Original server RPC Linux platform gate is preserved. Portable non-lifecycle server-world CLI is implemented with a finite oracle corpus; native combined acceptance remains separate.",
         "Real Minecraft server deployment not executed."
       ],
       "compatible": false,
@@ -2210,8 +2213,8 @@
       },
       "known_gaps": [
         "Finite fixture corpus does not establish all upstream schemas, platform errors or live network behavior.",
-        "Oversized request recovery global oracle divergence remains pending owner decision.",
-        "ZIP CRC mismatch acceptance differs from Zig; policy review pending.",
+        "Approved ZIG-001 correction preserves the next buffered request; literal oracle output still differs.",
+        "CRC-only metadata mismatch acceptance follows the original stored/deflate reader under path and resource guards; malformed archive and platform coverage remain finite.",
         "Export/backup timestamp CLI corpus incomplete."
       ],
       "compatible": false,
@@ -2244,8 +2247,8 @@
       },
       "known_gaps": [
         "Finite fixture corpus does not establish all upstream schemas, platform errors or live network behavior.",
-        "Oversized request recovery global oracle divergence remains pending owner decision.",
-        "ZIP CRC mismatch acceptance differs from Zig; policy review pending.",
+        "Approved ZIG-001 correction preserves the next buffered request; literal oracle output still differs.",
+        "CRC-only metadata mismatch acceptance follows the original stored/deflate reader under path and resource guards; malformed archive and platform coverage remain finite.",
         "Export/backup timestamp CLI corpus incomplete."
       ],
       "compatible": false,
@@ -2278,8 +2281,8 @@
       },
       "known_gaps": [
         "Finite fixture corpus does not establish all upstream schemas, platform errors or live network behavior.",
-        "Oversized request recovery global oracle divergence remains pending owner decision.",
-        "ZIP CRC mismatch acceptance differs from Zig; policy review pending.",
+        "Approved ZIG-001 correction preserves the next buffered request; literal oracle output still differs.",
+        "CRC-only metadata mismatch acceptance follows the original stored/deflate reader under path and resource guards; malformed archive and platform coverage remain finite.",
         "Export/backup timestamp CLI corpus incomplete."
       ],
       "compatible": false,
@@ -2312,8 +2315,8 @@
       },
       "known_gaps": [
         "Finite fixture corpus does not establish all upstream schemas, platform errors or live network behavior.",
-        "Oversized request recovery global oracle divergence remains pending owner decision.",
-        "ZIP CRC mismatch acceptance differs from Zig; policy review pending.",
+        "Approved ZIG-001 correction preserves the next buffered request; literal oracle output still differs.",
+        "CRC-only metadata mismatch acceptance follows the original stored/deflate reader under path and resource guards; malformed archive and platform coverage remain finite.",
         "Export/backup timestamp CLI corpus incomplete."
       ],
       "compatible": false,
@@ -2346,8 +2349,8 @@
       },
       "known_gaps": [
         "Finite fixture corpus does not establish all upstream schemas, platform errors or live network behavior.",
-        "Oversized request recovery global oracle divergence remains pending owner decision.",
-        "ZIP CRC mismatch acceptance differs from Zig; policy review pending.",
+        "Approved ZIG-001 correction preserves the next buffered request; literal oracle output still differs.",
+        "CRC-only metadata mismatch acceptance follows the original stored/deflate reader under path and resource guards; malformed archive and platform coverage remain finite.",
         "Export/backup timestamp CLI corpus incomplete."
       ],
       "compatible": false,
@@ -2380,8 +2383,8 @@
       },
       "known_gaps": [
         "Finite fixture corpus does not establish all upstream schemas, platform errors or live network behavior.",
-        "Oversized request recovery global oracle divergence remains pending owner decision.",
-        "ZIP CRC mismatch acceptance differs from Zig; policy review pending.",
+        "Approved ZIG-001 correction preserves the next buffered request; literal oracle output still differs.",
+        "CRC-only metadata mismatch acceptance follows the original stored/deflate reader under path and resource guards; malformed archive and platform coverage remain finite.",
         "Export/backup timestamp CLI corpus incomplete."
       ],
       "compatible": false,
@@ -2414,8 +2417,8 @@
       },
       "known_gaps": [
         "Finite fixture corpus does not establish all upstream schemas, platform errors or live network behavior.",
-        "Oversized request recovery global oracle divergence remains pending owner decision.",
-        "ZIP CRC mismatch acceptance differs from Zig; policy review pending.",
+        "Approved ZIG-001 correction preserves the next buffered request; literal oracle output still differs.",
+        "CRC-only metadata mismatch acceptance follows the original stored/deflate reader under path and resource guards; malformed archive and platform coverage remain finite.",
         "Export/backup timestamp CLI corpus incomplete."
       ],
       "compatible": false,
@@ -2448,8 +2451,8 @@
       },
       "known_gaps": [
         "Finite fixture corpus does not establish all upstream schemas, platform errors or live network behavior.",
-        "Oversized request recovery global oracle divergence remains pending owner decision.",
-        "ZIP CRC mismatch acceptance differs from Zig; policy review pending.",
+        "Approved ZIG-001 correction preserves the next buffered request; literal oracle output still differs.",
+        "CRC-only metadata mismatch acceptance follows the original stored/deflate reader under path and resource guards; malformed archive and platform coverage remain finite.",
         "Export/backup timestamp CLI corpus incomplete."
       ],
       "compatible": false,
@@ -2482,8 +2485,8 @@
       },
       "known_gaps": [
         "Finite fixture corpus does not establish all upstream schemas, platform errors or live network behavior.",
-        "Oversized request recovery global oracle divergence remains pending owner decision.",
-        "ZIP CRC mismatch acceptance differs from Zig; policy review pending.",
+        "Approved ZIG-001 correction preserves the next buffered request; literal oracle output still differs.",
+        "CRC-only metadata mismatch acceptance follows the original stored/deflate reader under path and resource guards; malformed archive and platform coverage remain finite.",
         "Export/backup timestamp CLI corpus incomplete."
       ],
       "compatible": false,
@@ -2516,8 +2519,8 @@
       },
       "known_gaps": [
         "Finite fixture corpus does not establish all upstream schemas, platform errors or live network behavior.",
-        "Oversized request recovery global oracle divergence remains pending owner decision.",
-        "ZIP CRC mismatch acceptance differs from Zig; policy review pending.",
+        "Approved ZIG-001 correction preserves the next buffered request; literal oracle output still differs.",
+        "CRC-only metadata mismatch acceptance follows the original stored/deflate reader under path and resource guards; malformed archive and platform coverage remain finite.",
         "Export/backup timestamp CLI corpus incomplete."
       ],
       "compatible": false,
@@ -2550,8 +2553,8 @@
       },
       "known_gaps": [
         "Finite fixture corpus does not establish all upstream schemas, platform errors or live network behavior.",
-        "Oversized request recovery global oracle divergence remains pending owner decision.",
-        "ZIP CRC mismatch acceptance differs from Zig; policy review pending.",
+        "Approved ZIG-001 correction preserves the next buffered request; literal oracle output still differs.",
+        "CRC-only metadata mismatch acceptance follows the original stored/deflate reader under path and resource guards; malformed archive and platform coverage remain finite.",
         "Export/backup timestamp CLI corpus incomplete."
       ],
       "compatible": false,
@@ -2584,8 +2587,8 @@
       },
       "known_gaps": [
         "Finite corpus is not exhaustive compatibility; real upstream/network behavior not established.",
-        "Global oversized-input divergence remains pending owner decision.",
-        "Synthetic Linux only; original RPC Linux platform gate preserved. Non-Linux server-world readonly CLI parity not yet complete.",
+        "Approved ZIG-001 correction preserves the next buffered request; literal oracle output still differs.",
+        "Original server RPC Linux platform gate is preserved. Portable non-lifecycle server-world CLI is implemented with a finite oracle corpus; native combined acceptance remains separate.",
         "Real Minecraft server deployment not executed."
       ],
       "compatible": false,
@@ -2618,8 +2621,8 @@
       },
       "known_gaps": [
         "Finite corpus is not exhaustive compatibility; real upstream/network behavior not established.",
-        "Global oversized-input divergence remains pending owner decision.",
-        "Synthetic Linux only; original RPC Linux platform gate preserved. Non-Linux server-world readonly CLI parity not yet complete.",
+        "Approved ZIG-001 correction preserves the next buffered request; literal oracle output still differs.",
+        "Original server RPC Linux platform gate is preserved. Portable non-lifecycle server-world CLI is implemented with a finite oracle corpus; native combined acceptance remains separate.",
         "Real Minecraft server deployment not executed."
       ],
       "compatible": false,
@@ -2652,8 +2655,8 @@
       },
       "known_gaps": [
         "Finite corpus is not exhaustive compatibility; real upstream/network behavior not established.",
-        "Global oversized-input divergence remains pending owner decision.",
-        "Synthetic Linux only; original RPC Linux platform gate preserved. Non-Linux server-world readonly CLI parity not yet complete.",
+        "Approved ZIG-001 correction preserves the next buffered request; literal oracle output still differs.",
+        "Original server RPC Linux platform gate is preserved. Portable non-lifecycle server-world CLI is implemented with a finite oracle corpus; native combined acceptance remains separate.",
         "Real Minecraft server deployment not executed."
       ],
       "compatible": false,
@@ -2686,8 +2689,8 @@
       },
       "known_gaps": [
         "Finite corpus is not exhaustive compatibility; real upstream/network behavior not established.",
-        "Global oversized-input divergence remains pending owner decision.",
-        "Synthetic Linux only; original RPC Linux platform gate preserved. Non-Linux server-world readonly CLI parity not yet complete.",
+        "Approved ZIG-001 correction preserves the next buffered request; literal oracle output still differs.",
+        "Original server RPC Linux platform gate is preserved. Portable non-lifecycle server-world CLI is implemented with a finite oracle corpus; native combined acceptance remains separate.",
         "Real Minecraft server deployment not executed."
       ],
       "compatible": false,
@@ -2720,8 +2723,8 @@
       },
       "known_gaps": [
         "Finite corpus is not exhaustive compatibility; real upstream/network behavior not established.",
-        "Global oversized-input divergence remains pending owner decision.",
-        "Synthetic Linux only; original RPC Linux platform gate preserved. Non-Linux server-world readonly CLI parity not yet complete.",
+        "Approved ZIG-001 correction preserves the next buffered request; literal oracle output still differs.",
+        "Original server RPC Linux platform gate is preserved. Portable non-lifecycle server-world CLI is implemented with a finite oracle corpus; native combined acceptance remains separate.",
         "Real Minecraft server deployment not executed."
       ],
       "compatible": false,
@@ -2754,8 +2757,8 @@
       },
       "known_gaps": [
         "Finite corpus is not exhaustive compatibility; real upstream/network behavior not established.",
-        "Global oversized-input divergence remains pending owner decision.",
-        "Synthetic Linux only; original RPC Linux platform gate preserved. Non-Linux server-world readonly CLI parity not yet complete.",
+        "Approved ZIG-001 correction preserves the next buffered request; literal oracle output still differs.",
+        "Original server RPC Linux platform gate is preserved. Portable non-lifecycle server-world CLI is implemented with a finite oracle corpus; native combined acceptance remains separate.",
         "Real Minecraft server deployment not executed."
       ],
       "compatible": false,
@@ -2788,8 +2791,8 @@
       },
       "known_gaps": [
         "Finite corpus is not exhaustive compatibility; real upstream/network behavior not established.",
-        "Global oversized-input divergence remains pending owner decision.",
-        "Synthetic Linux only; original RPC Linux platform gate preserved. Non-Linux server-world readonly CLI parity not yet complete.",
+        "Approved ZIG-001 correction preserves the next buffered request; literal oracle output still differs.",
+        "Original server RPC Linux platform gate is preserved. Portable non-lifecycle server-world CLI is implemented with a finite oracle corpus; native combined acceptance remains separate.",
         "Real Minecraft server deployment not executed."
       ],
       "compatible": false,
@@ -2822,8 +2825,8 @@
       },
       "known_gaps": [
         "Finite corpus is not exhaustive compatibility; real upstream/network behavior not established.",
-        "Global oversized-input divergence remains pending owner decision.",
-        "Synthetic Linux only; original RPC Linux platform gate preserved. Non-Linux server-world readonly CLI parity not yet complete.",
+        "Approved ZIG-001 correction preserves the next buffered request; literal oracle output still differs.",
+        "Original server RPC Linux platform gate is preserved. Portable non-lifecycle server-world CLI is implemented with a finite oracle corpus; native combined acceptance remains separate.",
         "Real Minecraft server deployment not executed."
       ],
       "compatible": false,
@@ -2856,7 +2859,7 @@
       },
       "known_gaps": [
         "Finite fixture corpus does not establish all upstream schemas, platform errors or live network behavior.",
-        "Oversized request recovery global oracle divergence remains pending owner decision."
+        "Approved ZIG-001 correction preserves the next buffered request; literal oracle output still differs."
       ],
       "compatible": false,
       "approved_deviations": []
@@ -2888,7 +2891,7 @@
       },
       "known_gaps": [
         "Finite fixture corpus does not establish all upstream schemas, platform errors or live network behavior.",
-        "Oversized request recovery global oracle divergence remains pending owner decision."
+        "Approved ZIG-001 correction preserves the next buffered request; literal oracle output still differs."
       ],
       "compatible": false,
       "approved_deviations": []
@@ -2920,9 +2923,9 @@
       },
       "known_gaps": [
         "Finite corpus is not exhaustive compatibility; real upstream/network behavior not established.",
-        "Global oversized-input divergence remains pending owner decision.",
-        "launch.execute orchestration and instance launch not yet exposed by this slice.",
-        "Bounded inherited-pipe completion differs from pinned oracle; explicit known-gap test, not a parity pass.",
+        "Approved ZIG-001 correction preserves the next buffered request; literal oracle output still differs.",
+        "launch.execute and instance launch CLI are implemented for local or already-installed Java; automatic runtime acquisition remains unavailable.",
+        "Approved ZIG-002 bounded inherited-pipe completion differs from the pinned oracle; late descendant output is not guaranteed and literal parity is not claimed.",
         "Platform/Command internals are outside audited secret-allocation ownership."
       ],
       "compatible": false,
@@ -3109,7 +3112,7 @@
       },
       "known_gaps": [
         "Finite fixture corpus does not establish all upstream schemas, platform errors or live network behavior.",
-        "Oversized request recovery global oracle divergence remains pending owner decision."
+        "Approved ZIG-001 correction preserves the next buffered request; literal oracle output still differs."
       ],
       "compatible": false,
       "approved_deviations": []
@@ -3157,7 +3160,7 @@
       },
       "known_gaps": [
         "Finite fixture corpus does not establish all upstream schemas, platform errors or live network behavior.",
-        "Oversized request recovery global oracle divergence remains pending owner decision."
+        "Approved ZIG-001 correction preserves the next buffered request; literal oracle output still differs."
       ],
       "compatible": false,
       "approved_deviations": []

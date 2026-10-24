@@ -346,11 +346,151 @@ fn invoke(
         out
     }
 }
+fn assert_shared_readonly(object: &Path, destination: &Path) {
+    for path in [object, destination] {
+        assert_eq!(std::fs::read(path).unwrap(), b"content");
+        assert!(std::fs::metadata(path).unwrap().permissions().readonly());
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        let a = std::fs::metadata(object).unwrap();
+        let b = std::fs::metadata(destination).unwrap();
+        assert_eq!((a.dev(), a.ino()), (b.dev(), b.ino()));
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::io::AsRawHandle;
+        use windows_sys::Win32::Storage::FileSystem::{
+            BY_HANDLE_FILE_INFORMATION, GetFileInformationByHandle,
+        };
+        let identity = |path: &Path| {
+            let f = std::fs::File::open(path).unwrap();
+            let mut i = BY_HANDLE_FILE_INFORMATION::default();
+            assert_ne!(
+                unsafe { GetFileInformationByHandle(f.as_raw_handle(), &mut i) },
+                0
+            );
+            (i.dwVolumeSerialNumber, i.nFileIndexHigh, i.nFileIndexLow)
+        };
+        assert_eq!(identity(object), identity(destination));
+    }
+}
+
+#[test]
+fn zig007_shared_readonly_invariant_rejects_private_and_writable_copies() {
+    let t = tempfile::tempdir().unwrap();
+    let object = t.path().join("object");
+    let copy = t.path().join("copy");
+    std::fs::write(&object, b"content").unwrap();
+    std::fs::write(&copy, b"content").unwrap();
+    assert!(std::panic::catch_unwind(|| assert_shared_readonly(&object, &copy)).is_err());
+    for path in [&object, &copy] {
+        let mut permissions = std::fs::metadata(path).unwrap().permissions();
+        permissions.set_readonly(true);
+        std::fs::set_permissions(path, permissions).unwrap();
+    }
+    assert!(std::panic::catch_unwind(|| assert_shared_readonly(&object, &copy)).is_err());
+    let sibling = t.path().join("sibling");
+    std::fs::hard_link(&object, &sibling).unwrap();
+    assert_shared_readonly(&object, &sibling);
+}
+
+// Exact fixture-specific correction gate, not an error/string normalizer.
+fn check_zig007(
+    family: &str,
+    provider: &str,
+    hash: &str,
+    before: &[(String, Vec<u8>)],
+    zig: &(Vec<u8>, Vec<(String, Vec<u8>)>),
+    rust: &(Vec<u8>, Vec<(String, Vec<u8>)>),
+) {
+    assert!(matches!(
+        family,
+        "mods" | "resourcepacks" | "shaderpacks" | "datapacks"
+    ));
+    assert!(matches!(provider, "modrinth" | "curseforge"));
+    let ext = if family == "mods" { "jar" } else { "zip" };
+    let prefix = if family == "datapacks" {
+        "saves/World/"
+    } else {
+        ""
+    };
+    let path = format!("{family}/new.{ext}");
+    let mut events = Vec::new();
+    for event in [
+        json!({"protocol":1,"id":"switch","event":"file","source":"official","file":{"path":path,"status":"cached","placement":"hard_link","size":7,"attempts":0}}),
+        json!({"protocol":1,"id":"switch","event":"progress","source":"official","progress":{"files_completed":1,"files_total":1,"bytes_verified":7,"bytes_processed":7,"bytes_total":7,"bytes_transferred":0}}),
+    ] {
+        serde_json::to_writer(&mut events, &event).unwrap();
+        events.push(b'\n');
+    }
+    let mut expected_zig = events.clone();
+    serde_json::to_writer(&mut expected_zig, &json!({"protocol":1,"id":"switch","event":"error","error":{"code":"CONTENT_SET_VERSION_FAILED","message":if family=="datapacks"{"Failed to change the datapack version"}else{"Failed to change the content version"}}})).unwrap();
+    expected_zig.push(b'\n');
+    assert_eq!(
+        zig.0, expected_zig,
+        "ZIG-007 unexpected oracle wire: {family}/{provider}"
+    );
+    let old_version = if provider == "modrinth" { "Ver1" } else { "1" };
+    let new_version = if provider == "modrinth" { "Ver2" } else { "2" };
+    let mut result = json!({"stage":format!("{family}.set-version")});
+    if family == "datapacks" {
+        result["world"] = json!("World");
+    }
+    for (key, value) in json!({"changed":true,"file":path,"sha1":hash,"size":7,"old_version_id":old_version,"new_version_id":new_version}).as_object().unwrap() {
+        result[key] = value.clone();
+    }
+    serde_json::to_writer(
+        &mut events,
+        &json!({"protocol":1,"id":"switch","event":"result","result":result}),
+    )
+    .unwrap();
+    events.push(b'\n');
+    assert_eq!(
+        rust.0, events,
+        "ZIG-007 Rust correction wire: {family}/{provider}"
+    );
+    let mut expected_zig_disk = before.to_vec();
+    expected_zig_disk.push((format!("{prefix}{path}"), b"content".to_vec()));
+    expected_zig_disk.sort();
+    assert_eq!(
+        zig.1, expected_zig_disk,
+        "ZIG-007 oracle must preserve old registry and old disabled link"
+    );
+    let mut expected_rust_disk = before.to_vec();
+    let old = format!("{prefix}{family}/one.{ext}.disabled");
+    assert_eq!(
+        expected_rust_disk.iter().filter(|(p, _)| *p == old).count(),
+        1
+    );
+    expected_rust_disk.retain(|(p, _)| *p != old);
+    let registry = expected_rust_disk
+        .iter_mut()
+        .find(|(p, _)| p == &format!("{prefix}.jmcl/content.json"))
+        .unwrap();
+    let mut value: serde_json::Value = serde_json::from_slice(&registry.1).unwrap();
+    assert_eq!(value["entries"].as_array().unwrap().len(), 1);
+    assert_eq!(value["entries"][0]["enabled"], false);
+    assert_eq!(value["entries"][0]["source"]["version_id"], old_version);
+    value["entries"][0]["file"] = json!(path);
+    value["entries"][0]["source"]["version_id"] = json!(new_version);
+    registry.1 = serde_json::to_vec(&value).unwrap();
+    registry.1.push(b'\n');
+    expected_rust_disk.push((format!("{prefix}{path}.disabled"), b"content".to_vec()));
+    expected_rust_disk.sort();
+    assert_eq!(
+        rust.1, expected_rust_disk,
+        "ZIG-007 corrected registry/disabled disk state"
+    );
+}
+
 #[test]
 #[ignore = "requires explicitly injected pinned JMCL_CONTENT_SERVICE_ORACLE"]
 fn injected_version_switch_wire_and_disk() {
     let zig = std::env::var_os("JMCL_CONTENT_SERVICE_ORACLE").unwrap();
     let mut count = 0;
+    let mut corrections = 0;
     for family in ["mods", "resourcepacks", "shaderpacks", "datapacks"] {
         for provider in ["modrinth", "curseforge"] {
             for mode in ["enabled", "disabled", "same", "missing", "incompatible"] {
@@ -396,6 +536,7 @@ fn injected_version_switch_wire_and_disk() {
                     p["api_key"] = json!("synthetic-key")
                 }
                 let mut results = vec![];
+                let mut before_states = vec![];
                 let mut readonly_states = vec![];
                 for is_zig in [true, false] {
                     let target = if family == "datapacks" {
@@ -425,6 +566,12 @@ fn injected_version_switch_wire_and_disk() {
                             )
                             .unwrap();
                     }
+                    let sibling = t.path().join("shared-sibling");
+                    Store::open(&cache)
+                        .unwrap()
+                        .materialize(&hash, 7, &sibling)
+                        .unwrap();
+                    before_states.push(snapshot(&game));
                     let mut params = p.clone();
                     params["version_id"] = json!(if mode == "same" {
                         if provider == "modrinth" { "Ver1" } else { "1" }
@@ -436,6 +583,33 @@ fn injected_version_switch_wire_and_disk() {
                     };
                     let req = json!({"protocol":1,"id":"switch","method":format!("{family}.set-version"),"params":params});
                     let o = invoke(&zig, &fixture_path, &f, &req, is_zig);
+                    if is_zig
+                        && cfg!(windows)
+                        && mode == "disabled"
+                        && std::env::var("JMCL_ALLOW_ZIG007_READONLY_RENAME").as_deref() == Ok("1")
+                        && String::from_utf8_lossy(&o).contains("\"event\":\"error\"")
+                    {
+                        let object = cache.join(jmcl_core_rust::store::object_path(&hash).unwrap());
+                        assert_shared_readonly(&object, &sibling);
+                        assert_shared_readonly(
+                            &object,
+                            &target.join(format!("{family}/new.{ext}")),
+                        );
+                        assert_shared_readonly(
+                            &object,
+                            &target.join(format!("{family}/one.{ext}.disabled")),
+                        );
+                    }
+                    if !is_zig && mode == "disabled" {
+                        assert_shared_readonly(
+                            &cache.join(jmcl_core_rust::store::object_path(&hash).unwrap()),
+                            &sibling,
+                        );
+                        assert_shared_readonly(
+                            &cache.join(jmcl_core_rust::store::object_path(&hash).unwrap()),
+                            &target.join(format!("{family}/new.{ext}.disabled")),
+                        );
+                    }
                     let disk = snapshot(&game);
                     readonly_states.push(
                         disk.iter()
@@ -450,6 +624,99 @@ fn injected_version_switch_wire_and_disk() {
                     );
                     results.push((o, disk));
                     std::fs::remove_dir_all(&game).unwrap();
+                }
+                assert_eq!(before_states[0], before_states[1]);
+                if cfg!(windows)
+                    && mode == "disabled"
+                    && std::env::var("JMCL_ALLOW_ZIG007_READONLY_RENAME").as_deref() == Ok("1")
+                    && results[0] != results[1]
+                {
+                    check_zig007(
+                        family,
+                        provider,
+                        &hash,
+                        &before_states[0],
+                        &results[0],
+                        &results[1],
+                    );
+                    corrections += 1;
+                    eprintln!(
+                        "ZIG-007 exact approved correction: {family}/{provider}/disabled (not parity)"
+                    );
+                    continue;
+                }
+                #[cfg(not(windows))]
+                if mode == "disabled" {
+                    // Validate the opt-in matcher on this host with an explicitly
+                    // synthetic Zig failure, while keeping the real oracle strict.
+                    let mut wire = results[1]
+                        .0
+                        .split_inclusive(|b| *b == b'\n')
+                        .take(2)
+                        .flatten()
+                        .copied()
+                        .collect::<Vec<_>>();
+                    serde_json::to_writer(&mut wire, &json!({"protocol":1,"id":"switch","event":"error","error":{"code":"CONTENT_SET_VERSION_FAILED","message":if family=="datapacks"{"Failed to change the datapack version"}else{"Failed to change the content version"}}})).unwrap();
+                    wire.push(b'\n');
+                    let prefix = if family == "datapacks" {
+                        "saves/World/"
+                    } else {
+                        ""
+                    };
+                    let mut disk = before_states[0].clone();
+                    disk.push((format!("{prefix}{family}/new.{ext}"), b"content".to_vec()));
+                    disk.sort();
+                    let synthetic = (wire, disk);
+                    check_zig007(
+                        family,
+                        provider,
+                        &hash,
+                        &before_states[0],
+                        &synthetic,
+                        &results[1],
+                    );
+                    if family == "mods" && provider == "modrinth" {
+                        for mutation in 0..6 {
+                            let mut z = synthetic.clone();
+                            let mut r = results[1].clone();
+                            match mutation {
+                                0 => {
+                                    z.0 = String::from_utf8(z.0)
+                                        .unwrap()
+                                        .replace("CONTENT_SET_VERSION_FAILED", "UNEXPECTED")
+                                        .into_bytes()
+                                }
+                                1 => z.0.extend_from_slice(b"{}\n"),
+                                2 => {
+                                    z.1.iter_mut()
+                                        .find(|(p, _)| p.ends_with("content.json"))
+                                        .unwrap()
+                                        .1
+                                        .push(b' ')
+                                }
+                                3 => z.1.push(("unexpected.jar".into(), b"content".to_vec())),
+                                4 => r.0 = z.0.clone(),
+                                _ => {
+                                    r.1.iter_mut()
+                                        .find(|(p, _)| p.ends_with("new.jar.disabled"))
+                                        .unwrap()
+                                        .1 = b"changed".to_vec()
+                                }
+                            }
+                            assert!(
+                                std::panic::catch_unwind(|| check_zig007(
+                                    family,
+                                    provider,
+                                    &hash,
+                                    &before_states[0],
+                                    &z,
+                                    &r
+                                ))
+                                .is_err(),
+                                "ZIG-007 mutation {mutation} was accepted"
+                            );
+                        }
+                    }
                 }
                 // Run both implementations before asserting success so a native
                 // failure identifies its side and preserves both disk outcomes.
@@ -477,7 +744,15 @@ fn injected_version_switch_wire_and_disk() {
             }
         }
     }
-    eprintln!("{count} injected content switch raw wire/disk cases matched");
+    eprintln!(
+        "{count} injected content switch raw wire/disk cases matched; {corrections} explicit ZIG-007 corrections (not parity)"
+    );
+    if cfg!(windows) && std::env::var("JMCL_ALLOW_ZIG007_READONLY_RENAME").as_deref() == Ok("1") {
+        assert_eq!(count + corrections, 40);
+        assert!(corrections <= 8);
+    } else {
+        assert_eq!((count, corrections), (40, 0));
+    }
 }
 #[test]
 #[ignore = "requires explicitly injected pinned JMCL_CONTENT_SERVICE_ORACLE"]

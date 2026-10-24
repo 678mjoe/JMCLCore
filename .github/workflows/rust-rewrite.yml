@@ -18,6 +18,7 @@ env:
   # Experimental exact allowlist only; strict replacement checks omit this.
   JMCL_ALLOW_KNOWN_ORACLE_GAPS: "1"
   JMCL_ALLOW_PROCESSOR_HASH_LIFETIME_GAP: "1"
+  JMCL_ALLOW_ZIG007_READONLY_RENAME: "1"
   CARGO_INCREMENTAL: "0"
   CARGO_PROFILE_DEV_DEBUG: "0"
   CARGO_PROFILE_TEST_DEBUG: "0"
