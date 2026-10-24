@@ -21,7 +21,8 @@ feature roadmap or a Rust migration design.
    read-only repository permission, and do not publish artifacts, use secrets,
    create releases, or run real accounts/games/servers. Platform skips inside
    tests must remain visible; a green job is not proof of skipped behavior.
-   In particular, the POSIX-poll RCON transport fixtures are skipped on Windows;
+   In particular, the POSIX-poll RCON and timed-UDP Query transport fixtures
+   are skipped on Windows (Zig 0.16 lacks the required transport primitives);
    server operations are Linux-only, while platform-independent parser and
    client-world tests still run.
 3. **State interruption guarantees accurately.** Correct the GUI contract and
@@ -34,6 +35,12 @@ feature roadmap or a Rust migration design.
    native CI before merging. Verify the merged main commit and its CI separately.
    Record actual results and any blocked checks in the PR; do not substitute
    source test counts or frontend Rust tests for an executed Core test suite.
+
+Native Windows execution exposed pre-existing client I/O failures in account
+metadata reads and legacy asset projection copying, plus Unix-only Java/path
+test fixtures. The bounded CI follow-through includes correcting those failing
+paths and fixtures rather than disabling cross-platform client coverage; the
+PR records the failing runs and the eventual verification outcome.
 
 The implementation PR and its CI results are the execution record. This plan
 alone does not mark any test, platform, or real-use acceptance as passed.

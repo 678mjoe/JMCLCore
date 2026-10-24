@@ -1,4 +1,6 @@
 const std = @import("std");
+const builtin = @import("builtin");
+const hard_link = @import("hard_link.zig");
 const artifact_store = @import("artifact_store.zig");
 const install_plan = @import("plan.zig");
 
@@ -329,13 +331,26 @@ fn copyOpenFileAtomic(
     defer atomic_file.deinit(io);
 
     var source_buffer: [64 * 1024]u8 = undefined;
-    var reader: std.Io.File.Reader = .initSize(source, io, &source_buffer, size);
     var destination_buffer: [64 * 1024]u8 = undefined;
     var writer: std.Io.File.Writer = .init(atomic_file.file, io, &destination_buffer);
-    _ = reader.interface.streamRemaining(&writer.interface) catch |err| switch (err) {
-        error.ReadFailed => return reader.err.?,
-        error.WriteFailed => return writer.err.?,
-    };
+    if (builtin.os.tag == .windows) {
+        // The source is an overlapped Windows handle. Explicit offsets avoid
+        // Zig 0.16's synchronous-reader path and remain independent of hashing.
+        var offset: u64 = 0;
+        while (offset < size) {
+            const wanted: usize = @intCast(@min(source_buffer.len, size - offset));
+            const count = try hard_link.readFileWindows(source, source_buffer[0..wanted], offset);
+            if (count == 0) return error.UnexpectedEndOfFile;
+            try writer.interface.writeAll(source_buffer[0..count]);
+            offset += count;
+        }
+    } else {
+        var reader: std.Io.File.Reader = .initSize(source, io, &source_buffer, size);
+        _ = reader.interface.streamRemaining(&writer.interface) catch |err| switch (err) {
+            error.ReadFailed => return reader.err.?,
+            error.WriteFailed => return writer.err.?,
+        };
+    }
     try writer.flush();
     try atomic_file.file.sync(io);
     if (replace) {
@@ -481,4 +496,22 @@ test "prepares native files and legacy asset projections" {
     defer second_result.deinit();
     try std.testing.expectEqual(@as(usize, 0), second_result.projections_created);
     try std.testing.expectEqual(@as(usize, 1), second_result.projections_cached);
+}
+
+test "atomic asset projection copies multiple buffers after hashing the source" {
+    const io = std.testing.io;
+    var temporary = std.testing.tmpDir(.{});
+    defer temporary.cleanup();
+    var data: [128 * 1024 + 17]u8 = undefined;
+    for (&data, 0..) |*byte, index| byte.* = @truncate(index);
+    try temporary.dir.writeFile(io, .{ .sub_path = "source", .data = &data });
+    try temporary.dir.writeFile(io, .{ .sub_path = "destination", .data = "old" });
+    const source = try temporary.dir.openFile(io, "source", .{});
+    defer source.close(io);
+    const expected_hash = try artifact_store.hashFile(source, io);
+    try copyOpenFileAtomic(source, io, temporary.dir, "destination", data.len, true);
+    const destination = try temporary.dir.openFile(io, "destination", .{});
+    defer destination.close(io);
+    try std.testing.expectEqual(@as(u64, data.len), (try destination.stat(io)).size);
+    try std.testing.expectEqualSlices(u8, &expected_hash, &(try artifact_store.hashFile(destination, io)));
 }

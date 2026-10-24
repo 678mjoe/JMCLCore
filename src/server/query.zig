@@ -1,5 +1,6 @@
 //! Bounded GameSpy4 Query client for an IPv4 loopback Minecraft server.
 const std = @import("std");
+const builtin = @import("builtin");
 
 pub const max_datagram_bytes: usize = 16 * 1024;
 pub const max_string_bytes: usize = 1024;
@@ -269,6 +270,8 @@ const FakeUdpServer = struct {
 };
 
 test "Query fake UDP server verifies handshake and full stat wire shape" {
+    // Managed server Query is Linux-only; Zig 0.16 Windows lacks timed UDP receive.
+    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
     const io = std.testing.io;
     var address = std.Io.net.IpAddress.parse("127.0.0.1", 0) catch unreachable;
     var socket = address.bind(io, .{ .mode = .dgram, .protocol = .udp }) catch return error.SkipZigTest;
@@ -284,6 +287,8 @@ test "Query fake UDP server verifies handshake and full stat wire shape" {
 }
 
 test "Query fake UDP server verifies basic stat request and reply" {
+    // Managed server Query is Linux-only; Zig 0.16 Windows lacks timed UDP receive.
+    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
     const io = std.testing.io;
     var address = std.Io.net.IpAddress.parse("127.0.0.1", 0) catch unreachable;
     var socket = address.bind(io, .{ .mode = .dgram, .protocol = .udp }) catch return error.SkipZigTest;
@@ -298,6 +303,8 @@ test "Query fake UDP server verifies basic stat request and reply" {
 }
 
 test "Query fake UDP server rejects wrong session" {
+    // Managed server Query is Linux-only; Zig 0.16 Windows lacks timed UDP receive.
+    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
     const io = std.testing.io;
     var address = std.Io.net.IpAddress.parse("127.0.0.1", 0) catch unreachable;
     var socket = address.bind(io, .{ .mode = .dgram, .protocol = .udp }) catch return error.SkipZigTest;

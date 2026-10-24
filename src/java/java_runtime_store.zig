@@ -464,11 +464,11 @@ test "java home discovery prefers the shallowest bin/java" {
     const dir = temporary.dir;
 
     try dir.createDirPath(io, "zulu-8.jre/Contents/Home/bin");
-    try dir.writeFile(io, .{ .sub_path = "zulu-8.jre/Contents/Home/bin/java", .data = "" });
+    try dir.writeFile(io, .{ .sub_path = (if (builtin.os.tag == .windows) "zulu-8.jre/Contents/Home/bin/java.exe" else "zulu-8.jre/Contents/Home/bin/java"), .data = "" });
     var discovery = try findJavaHome(std.testing.allocator, io, dir);
     defer discovery.deinit(std.testing.allocator);
     try std.testing.expectEqualStrings("zulu-8.jre/Contents/Home", discovery.java_home);
-    try std.testing.expectEqualStrings("zulu-8.jre/Contents/Home/bin/java", discovery.executable);
+    try std.testing.expectEqualStrings((if (builtin.os.tag == .windows) "zulu-8.jre/Contents/Home/bin/java.exe" else "zulu-8.jre/Contents/Home/bin/java"), discovery.executable);
 }
 
 test "java home discovery finds a root-level bin/java" {
@@ -478,10 +478,10 @@ test "java home discovery finds a root-level bin/java" {
     const dir = temporary.dir;
 
     try dir.createDirPath(io, "bin");
-    try dir.writeFile(io, .{ .sub_path = "bin/java", .data = "" });
+    try dir.writeFile(io, .{ .sub_path = (if (builtin.os.tag == .windows) "bin/java.exe" else "bin/java"), .data = "" });
     try dir.createDirPath(io, "legal/java.base");
     var discovery = try findJavaHome(std.testing.allocator, io, dir);
     defer discovery.deinit(std.testing.allocator);
     try std.testing.expectEqualStrings("", discovery.java_home);
-    try std.testing.expectEqualStrings("bin/java", discovery.executable);
+    try std.testing.expectEqualStrings((if (builtin.os.tag == .windows) "bin/java.exe" else "bin/java"), discovery.executable);
 }

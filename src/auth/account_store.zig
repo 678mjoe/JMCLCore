@@ -1,4 +1,6 @@
 const std = @import("std");
+const builtin = @import("builtin");
+const hard_link = @import("../install/hard_link.zig");
 
 pub const schema_version: u32 = 1;
 pub const default_root = "accounts";
@@ -101,10 +103,16 @@ pub fn load(allocator: std.mem.Allocator, io: std.Io, root: std.Io.Dir, id: []co
     defer allocator.free(bytes);
     var offset: usize = 0;
     while (offset < bytes.len) {
-        const destinations = [_][]u8{bytes[offset..]};
-        const read = file.readStreaming(io, &destinations) catch |err| switch (err) {
-            error.EndOfStream => return error.AccountManifestInvalid,
-            else => |other| return other,
+        // Windows files opened by Zig's threaded IO use overlapped handles;
+        // use the native positional helper rather than a streaming read.
+        const read = if (builtin.os.tag == .windows)
+            try hard_link.readFileWindows(file, bytes[offset..], offset)
+        else read: {
+            const destinations = [_][]u8{bytes[offset..]};
+            break :read file.readStreaming(io, &destinations) catch |err| switch (err) {
+                error.EndOfStream => return error.AccountManifestInvalid,
+                else => |other| return other,
+            };
         };
         if (read == 0) return error.AccountManifestInvalid;
         offset += read;
