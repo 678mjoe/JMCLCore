@@ -21,19 +21,43 @@ fn cv<T>(r: rustix::io::Result<T>) -> io::Result<T> {
 fn invalid(message: &'static str) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidInput, message)
 }
+// Unit-test diagnostics preserve the exact OS error and never retry. Production
+// builds neither emit filesystem details nor change protocol error names.
+fn lock_phase<T>(phase: &str, result: io::Result<T>) -> io::Result<T> {
+    #[cfg(test)]
+    if let Err(error) = &result {
+        eprintln!(
+            "CAS phase {phase}, thread {:?}: {error:?}",
+            std::thread::current().id()
+        );
+    }
+    #[cfg(not(test))]
+    let _ = phase;
+    result
+}
 fn dir_at(parent: &File, name: &std::ffi::OsStr, create: bool) -> io::Result<File> {
     if create {
         match rfs::mkdirat(parent, name, Mode::from_raw_mode(0o755)) {
             Ok(()) | Err(rustix::io::Errno::EXIST) => {}
-            Err(e) => return Err(e.into()),
+            Err(e) => {
+                #[cfg(test)]
+                eprintln!("CAS dir_at mkdir {name:?}: {e:?}");
+                return Err(e.into());
+            }
         }
     }
-    Ok(File::from(cv(rfs::openat(
-        parent,
-        name,
-        OFlags::RDONLY | OFlags::DIRECTORY | OFlags::NOFOLLOW | OFlags::CLOEXEC,
-        Mode::empty(),
-    ))?))
+    Ok(File::from(
+        cv(rfs::openat(
+            parent,
+            name,
+            OFlags::RDONLY | OFlags::DIRECTORY | OFlags::NOFOLLOW | OFlags::CLOEXEC,
+            Mode::empty(),
+        ))
+        .inspect_err(|_error| {
+            #[cfg(test)]
+            eprintln!("CAS dir_at open {name:?}, create={create}: {_error:?}");
+        })?,
+    ))
 }
 /// Resolve caller-configured ancestors, but reject a symlink at the final root.
 /// Subdirectories inside the store continue through `dir_at` with NOFOLLOW.
@@ -138,22 +162,35 @@ impl Store {
     }
     pub fn lock_object(&self, hash: &str) -> io::Result<ObjectLock> {
         let hash = normalized_hash(hash)?;
-        let dir = dir_at(
-            &dir_at(&self.root, "locks".as_ref(), true)?,
-            "sha1".as_ref(),
-            true,
+        let dir = lock_phase(
+            "locks/sha1 directory",
+            dir_at(
+                &lock_phase(
+                    "locks directory",
+                    dir_at(&self.root, "locks".as_ref(), true),
+                )?,
+                "sha1".as_ref(),
+                true,
+            ),
         )?;
         let name = format!("{hash}.lock");
-        let file = File::from(cv(rfs::openat(
-            &dir,
-            name.as_str(),
-            OFlags::RDWR | OFlags::CREATE | OFlags::NOFOLLOW | OFlags::NONBLOCK | OFlags::CLOEXEC,
-            Mode::from_raw_mode(0o666),
-        ))?);
-        if !file.metadata()?.is_file() {
+        let file = File::from(lock_phase(
+            "open lock leaf",
+            cv(rfs::openat(
+                &dir,
+                name.as_str(),
+                OFlags::RDWR
+                    | OFlags::CREATE
+                    | OFlags::NOFOLLOW
+                    | OFlags::NONBLOCK
+                    | OFlags::CLOEXEC,
+                Mode::from_raw_mode(0o666),
+            )),
+        )?);
+        if !lock_phase("lock leaf metadata", file.metadata())?.is_file() {
             return Err(invalid("InvalidLockKind"));
         }
-        file.lock()?;
+        lock_phase("File.lock/flock", file.lock())?;
         Ok(ObjectLock { _file: file })
     }
     pub fn verify(&self, hash: &str, size: u64) -> io::Result<bool> {
@@ -955,12 +992,21 @@ mod tests {
             let downloads = AtomicUsize::new(0);
             std::thread::scope(|scope| {
                 for name in ["mods/a.jar", "mods/dependency.jar"] {
-                    let (store, root, hash, ready, downloads) =
-                        (&store, &root, &hash, &ready, &downloads);
+                    let (store, root, hash, ready, downloads, temp) =
+                        (&store, &root, &hash, &ready, &downloads, &temp);
                     scope.spawn(move || {
                         assert!(!root.verify(name, hash, 7).expect("destination preflight"));
                         ready.wait();
-                        let tx = store.transaction(hash).expect("digest lock");
+                        let tx = store.transaction(hash).unwrap_or_else(|error| {
+                            eprintln!(
+                                "round {round}, {name}, cache root {:?}, lock path {:?}",
+                                store.root.metadata(),
+                                std::fs::symlink_metadata(
+                                    temp.path().join(format!("cas/locks/sha1/{hash}.lock"))
+                                )
+                            );
+                            panic!("digest lock: {error:?}");
+                        });
                         if !tx.verify(7).expect("locked cache verification") {
                             tx.remove_invalid(7).expect("remove invalid cache entry");
                             let mut staged = tx.stage(7).expect("create staging object");
