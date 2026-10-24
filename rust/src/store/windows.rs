@@ -339,7 +339,24 @@ pub(crate) fn named_op(
     rename: bool,
 ) -> io::Result<()> {
     let wide = leaf(name)?;
-    // Both structures have the same ABI layout; allocate u64 words for alignment.
+    // The shared storage must obey both native ABI layouts, including trailing
+    // structure padding for short leaf names (not just FileNameLength bytes).
+    const {
+        assert!(size_of::<nt::FILE_LINK_INFORMATION>() == size_of::<nt::FILE_RENAME_INFORMATION>());
+        assert!(
+            offset_of!(nt::FILE_LINK_INFORMATION, FileName)
+                == offset_of!(nt::FILE_RENAME_INFORMATION, FileName)
+        );
+        assert!(
+            offset_of!(nt::FILE_LINK_INFORMATION, RootDirectory)
+                == offset_of!(nt::FILE_RENAME_INFORMATION, RootDirectory)
+        );
+        assert!(
+            offset_of!(nt::FILE_LINK_INFORMATION, FileNameLength)
+                == offset_of!(nt::FILE_RENAME_INFORMATION, FileNameLength)
+        );
+    }
+    // Allocate u64 words for alignment.
     let offset = offset_of!(nt::FILE_LINK_INFORMATION, FileName);
     let bytes = (offset + wide.len() * 2).max(size_of::<nt::FILE_LINK_INFORMATION>());
     let mut buffer = vec![0u64; bytes.div_ceil(8)];
@@ -362,7 +379,7 @@ pub(crate) fn named_op(
             source.as_raw_handle(),
             &mut ios,
             p.cast(),
-            (offset + wide.len() * 2) as u32,
+            bytes as u32,
             if rename {
                 nt::FileRenameInformationEx
             } else {
@@ -900,7 +917,12 @@ mod tests {
             .arg(&actual)
             .output()
             .unwrap();
-        assert!(out.status.success());
+        assert!(
+            out.status.success(),
+            "junction creation failed: {:?}; {}",
+            out.status,
+            String::from_utf8_lossy(&out.stderr)
+        );
         assert!(Store::open(&link).is_err());
         let store = Store::open(link.join("nested")).unwrap();
         assert_eq!(
@@ -932,14 +954,19 @@ mod tests {
         let outside = temp.path().join("outside");
         std::fs::create_dir(&outside).unwrap();
         std::fs::write(outside.join("keep"), b"keep").unwrap();
-        let junction = temp.path().join("instance/junction");
+        let junction = temp.path().join("instance").join("junction");
         let out = std::process::Command::new("cmd")
             .args(["/C", "mklink", "/J"])
             .arg(&junction)
             .arg(&outside)
             .output()
             .unwrap();
-        assert!(out.status.success());
+        assert!(
+            out.status.success(),
+            "junction creation failed: {:?}; {}",
+            out.status,
+            String::from_utf8_lossy(&out.stderr)
+        );
         let found = entries(&dir).unwrap();
         assert!(found.iter().any(|(n, a)| n == "manifest.json"
             && a & (FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_REPARSE_POINT) == 0));
