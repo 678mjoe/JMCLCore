@@ -1,6 +1,9 @@
 use jmcl_core_rust::{VERSION, protocol};
 use std::io::{self, Write};
 fn run(args: &[String], stdout: &mut impl Write, stderr: &mut impl Write) -> io::Result<u8> {
+    if let Some(result) = jmcl_core_rust::install::cli::cli(args, stdout, stderr) {
+        return result;
+    }
     if let Some(result) = jmcl_core_rust::version::cli(args, stdout, stderr) {
         return result;
     }
@@ -29,8 +32,13 @@ fn run(args: &[String], stdout: &mut impl Write, stderr: &mut impl Write) -> io:
             writeln!(stderr, "usage: jmcl-core rpc")?;
             Ok(2)
         }
+        Some("store") => jmcl_core_rust::store::cli(&args[1..], stdout, stderr),
+        Some("server") => jmcl_core_rust::servers::cli(&args[1..], stdout, stderr),
         Some("java") => jmcl_core_rust::java::cli(&args[1..], stdout, stderr),
         Some("instance") => {
+            if args.get(1).is_some_and(|a| a == "modpack") {
+                return jmcl_core_rust::modpack::cli::run(&args[2..], stdout, stderr);
+            }
             if args.get(1).is_some_and(|a| a == "worlds")
                 && let Some(result) = jmcl_core_rust::worlds::cli(&args[2..], stdout, stderr)
             {
@@ -60,6 +68,10 @@ fn run(args: &[String], stdout: &mut impl Write, stderr: &mut impl Write) -> io:
 }
 fn main() {
     let args: Vec<_> = std::env::args().skip(1).collect();
+    #[cfg(target_os = "linux")]
+    if let Some(code) = jmcl_core_rust::servers::lifecycle::dispatch_hidden(&args) {
+        std::process::exit(code);
+    }
     let mut stdout = io::stdout().lock();
     let mut stderr = io::stderr().lock();
     let code = match run(&args, &mut stdout, &mut stderr) {

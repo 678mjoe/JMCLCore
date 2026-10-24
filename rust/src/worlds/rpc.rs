@@ -191,7 +191,7 @@ pub fn handle(
 fn get_world(d: &str, w: &str, v: Option<&str>) -> Result<Value> {
     super::get(d, w, v)
 }
-fn map(e: Error, code: &str, message: &str) -> RpcError {
+pub(super) fn map(e: Error, code: &str, message: &str) -> RpcError {
     let (c, m) = match e {
         Error::InvalidName => ("INVALID_PARAMS", "world name is invalid"),
         Error::WorldNotFound => ("WORLD_NOT_FOUND", "No world matches the given name"),

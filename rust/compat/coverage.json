@@ -189,44 +189,97 @@
     {
       "method": "install.execute",
       "source_inventory": true,
-      "implementation": "not_started",
-      "success_cases": [],
-      "invalid_cases": [],
-      "error_cases": [],
-      "event_cases": [],
-      "disk_cases": [],
-      "platform_evidence": {},
+      "implementation": "partial_slice",
+      "success_cases": [
+        "install_rpc_differential: official/BMCL cached terminal/event/receipt corpus",
+        "install_differential and prepare_differential: pinned typed oracle fixtures"
+      ],
+      "invalid_cases": [
+        "install_rpc_differential: 202 parameter cases and 24 CLI cases"
+      ],
+      "error_cases": [
+        "verified transfer size/hash/status failures, writer failure, native header first-error ordering"
+      ],
+      "event_cases": [
+        "synchronous bounded event/ack stream and raw event ordering"
+      ],
+      "disk_cases": [
+        "real shared hardlinks, private mutable files, exact receipts, rollback and GC exclusion"
+      ],
+      "platform_evidence": {
+        "linux": "executed combined 14d97dd; 143 unit + 87 integration tests, zero ignored",
+        "macos_arm64": "pending native CI",
+        "macos_x86_64": "pending native CI",
+        "windows": "pending native CI"
+      },
       "known_gaps": [
-        "Not implemented."
+        "Modern Forge/NeoForge processor engine explicitly unsupported before filesystem mutation.",
+        "Live network transport/redirect/error parity and native-platform acceptance pending.",
+        "Finite fixtures are not full compatibility proof."
       ],
       "compatible": false
     },
     {
       "method": "install.prepare",
       "source_inventory": true,
-      "implementation": "not_started",
-      "success_cases": [],
-      "invalid_cases": [],
-      "error_cases": [],
-      "event_cases": [],
-      "disk_cases": [],
-      "platform_evidence": {},
+      "implementation": "partial_slice",
+      "success_cases": [
+        "install_rpc_differential: official/BMCL cached terminal/event/receipt corpus",
+        "install_differential and prepare_differential: pinned typed oracle fixtures"
+      ],
+      "invalid_cases": [
+        "install_rpc_differential: 202 parameter cases and 24 CLI cases"
+      ],
+      "error_cases": [
+        "verified transfer size/hash/status failures, writer failure, native header first-error ordering"
+      ],
+      "event_cases": [
+        "synchronous bounded event/ack stream and raw event ordering"
+      ],
+      "disk_cases": [
+        "real shared hardlinks, private mutable files, exact receipts, rollback and GC exclusion"
+      ],
+      "platform_evidence": {
+        "linux": "executed combined 14d97dd; 143 unit + 87 integration tests, zero ignored",
+        "macos_arm64": "pending native CI",
+        "macos_x86_64": "pending native CI",
+        "windows": "pending native CI"
+      },
       "known_gaps": [
-        "Not implemented."
+        "Modern Forge/NeoForge processor engine explicitly unsupported before filesystem mutation.",
+        "Live network transport/redirect/error parity and native-platform acceptance pending.",
+        "Finite fixtures are not full compatibility proof."
       ],
       "compatible": false
     },
     {
       "method": "store.gc",
       "source_inventory": true,
-      "implementation": "not_started",
-      "success_cases": [],
-      "invalid_cases": [],
-      "error_cases": [],
-      "event_cases": [],
-      "disk_cases": [],
-      "platform_evidence": {},
+      "implementation": "implemented_slice",
+      "success_cases": [
+        "store.py (raw RPC/CLI) + store_differential (native locking/GC)"
+      ],
+      "invalid_cases": [
+        "store.py (raw RPC/CLI) + store_differential (native locking/GC)"
+      ],
+      "error_cases": [
+        "store.py (raw RPC/CLI) + store_differential (native locking/GC)"
+      ],
+      "event_cases": [
+        "store.py (raw RPC/CLI) + store_differential (native locking/GC)"
+      ],
+      "disk_cases": [
+        "store.py (raw RPC/CLI) + store_differential (native locking/GC)"
+      ],
+      "platform_evidence": {
+        "linux": "Executed finite corpus; exact milestone evidence recorded separately",
+        "macos_arm64": "pending combined native CI",
+        "macos_x86_64": "pending combined native CI",
+        "windows": "pending combined native CI"
+      },
       "known_gaps": [
+        "Finite corpus is not exhaustive compatibility; real upstream/network behavior not established.",
+        "Global oversized-input divergence remains pending owner decision.",
         "Not implemented.",
         "Pinned Windows Zig GC reports one error instead of blocking under an existing held digest lock; exact error/retention/post-release pair allowlisted only in experimental CI. Strict replacement remains blocked."
       ],
@@ -389,15 +442,31 @@
     {
       "method": "mods.adopt",
       "source_inventory": true,
-      "implementation": "not_started",
-      "success_cases": [],
-      "invalid_cases": [],
-      "error_cases": [],
-      "event_cases": [],
-      "disk_cases": [],
-      "platform_evidence": {},
+      "implementation": "implemented_slice",
+      "success_cases": [
+        "content_adopt: raw RPC/CLI, registry disk, same inode, readonly/idempotent tests"
+      ],
+      "invalid_cases": [
+        "content_adopt: raw RPC/CLI, registry disk, same inode, readonly/idempotent tests"
+      ],
+      "error_cases": [
+        "content_adopt: raw RPC/CLI, registry disk, same inode, readonly/idempotent tests"
+      ],
+      "event_cases": [
+        "content_adopt: raw RPC/CLI, registry disk, same inode, readonly/idempotent tests"
+      ],
+      "disk_cases": [
+        "content_adopt: raw RPC/CLI, registry disk, same inode, readonly/idempotent tests"
+      ],
+      "platform_evidence": {
+        "linux": "Executed finite corpus; exact milestone evidence recorded separately",
+        "macos_arm64": "pending combined native CI",
+        "macos_x86_64": "pending combined native CI",
+        "windows": "pending combined native CI"
+      },
       "known_gaps": [
-        "Not implemented."
+        "Finite corpus is not exhaustive compatibility; real upstream/network behavior not established.",
+        "Global oversized-input divergence remains pending owner decision."
       ],
       "compatible": false
     },
@@ -558,15 +627,31 @@
     {
       "method": "resourcepacks.adopt",
       "source_inventory": true,
-      "implementation": "not_started",
-      "success_cases": [],
-      "invalid_cases": [],
-      "error_cases": [],
-      "event_cases": [],
-      "disk_cases": [],
-      "platform_evidence": {},
+      "implementation": "implemented_slice",
+      "success_cases": [
+        "content_adopt: raw RPC/CLI, registry disk, same inode, readonly/idempotent tests"
+      ],
+      "invalid_cases": [
+        "content_adopt: raw RPC/CLI, registry disk, same inode, readonly/idempotent tests"
+      ],
+      "error_cases": [
+        "content_adopt: raw RPC/CLI, registry disk, same inode, readonly/idempotent tests"
+      ],
+      "event_cases": [
+        "content_adopt: raw RPC/CLI, registry disk, same inode, readonly/idempotent tests"
+      ],
+      "disk_cases": [
+        "content_adopt: raw RPC/CLI, registry disk, same inode, readonly/idempotent tests"
+      ],
+      "platform_evidence": {
+        "linux": "Executed finite corpus; exact milestone evidence recorded separately",
+        "macos_arm64": "pending combined native CI",
+        "macos_x86_64": "pending combined native CI",
+        "windows": "pending combined native CI"
+      },
       "known_gaps": [
-        "Not implemented."
+        "Finite corpus is not exhaustive compatibility; real upstream/network behavior not established.",
+        "Global oversized-input divergence remains pending owner decision."
       ],
       "compatible": false
     },
@@ -727,15 +812,31 @@
     {
       "method": "shaderpacks.adopt",
       "source_inventory": true,
-      "implementation": "not_started",
-      "success_cases": [],
-      "invalid_cases": [],
-      "error_cases": [],
-      "event_cases": [],
-      "disk_cases": [],
-      "platform_evidence": {},
+      "implementation": "implemented_slice",
+      "success_cases": [
+        "content_adopt: raw RPC/CLI, registry disk, same inode, readonly/idempotent tests"
+      ],
+      "invalid_cases": [
+        "content_adopt: raw RPC/CLI, registry disk, same inode, readonly/idempotent tests"
+      ],
+      "error_cases": [
+        "content_adopt: raw RPC/CLI, registry disk, same inode, readonly/idempotent tests"
+      ],
+      "event_cases": [
+        "content_adopt: raw RPC/CLI, registry disk, same inode, readonly/idempotent tests"
+      ],
+      "disk_cases": [
+        "content_adopt: raw RPC/CLI, registry disk, same inode, readonly/idempotent tests"
+      ],
+      "platform_evidence": {
+        "linux": "Executed finite corpus; exact milestone evidence recorded separately",
+        "macos_arm64": "pending combined native CI",
+        "macos_x86_64": "pending combined native CI",
+        "windows": "pending combined native CI"
+      },
       "known_gaps": [
-        "Not implemented."
+        "Finite corpus is not exhaustive compatibility; real upstream/network behavior not established.",
+        "Global oversized-input divergence remains pending owner decision."
       ],
       "compatible": false
     },
@@ -896,30 +997,63 @@
     {
       "method": "datapacks.adopt",
       "source_inventory": true,
-      "implementation": "not_started",
-      "success_cases": [],
-      "invalid_cases": [],
-      "error_cases": [],
-      "event_cases": [],
-      "disk_cases": [],
-      "platform_evidence": {},
+      "implementation": "implemented_slice",
+      "success_cases": [
+        "content_adopt: raw RPC/CLI, registry disk, same inode, readonly/idempotent tests"
+      ],
+      "invalid_cases": [
+        "content_adopt: raw RPC/CLI, registry disk, same inode, readonly/idempotent tests"
+      ],
+      "error_cases": [
+        "content_adopt: raw RPC/CLI, registry disk, same inode, readonly/idempotent tests"
+      ],
+      "event_cases": [
+        "content_adopt: raw RPC/CLI, registry disk, same inode, readonly/idempotent tests"
+      ],
+      "disk_cases": [
+        "content_adopt: raw RPC/CLI, registry disk, same inode, readonly/idempotent tests"
+      ],
+      "platform_evidence": {
+        "linux": "Executed finite corpus; exact milestone evidence recorded separately",
+        "macos_arm64": "pending combined native CI",
+        "macos_x86_64": "pending combined native CI",
+        "windows": "pending combined native CI"
+      },
       "known_gaps": [
-        "Not implemented."
+        "Finite corpus is not exhaustive compatibility; real upstream/network behavior not established.",
+        "Global oversized-input divergence remains pending owner decision."
       ],
       "compatible": false
     },
     {
       "method": "modpack.install",
       "source_inventory": true,
-      "implementation": "not_started",
-      "success_cases": [],
-      "invalid_cases": [],
-      "error_cases": [],
-      "event_cases": [],
-      "disk_cases": [],
-      "platform_evidence": {},
+      "implementation": "implemented_slice",
+      "success_cases": [
+        "modpack_differential, modpack_install, modpack_wire (raw RPC/CLI and disk snapshots)"
+      ],
+      "invalid_cases": [
+        "modpack_differential, modpack_install, modpack_wire (raw RPC/CLI and disk snapshots)"
+      ],
+      "error_cases": [
+        "modpack_differential, modpack_install, modpack_wire (raw RPC/CLI and disk snapshots)"
+      ],
+      "event_cases": [
+        "modpack_differential, modpack_install, modpack_wire (raw RPC/CLI and disk snapshots)"
+      ],
+      "disk_cases": [
+        "modpack_differential, modpack_install, modpack_wire (raw RPC/CLI and disk snapshots)"
+      ],
+      "platform_evidence": {
+        "linux": "Executed finite corpus; exact milestone evidence recorded separately",
+        "macos_arm64": "pending combined native CI",
+        "macos_x86_64": "pending combined native CI",
+        "windows": "pending combined native CI"
+      },
       "known_gaps": [
-        "Not implemented."
+        "Finite corpus is not exhaustive compatibility; real upstream/network behavior not established.",
+        "Global oversized-input divergence remains pending owner decision.",
+        "Live provider API/TLS failures and native platform filesystem acceptance pending."
       ],
       "compatible": false
     },
@@ -1074,45 +1208,99 @@
     {
       "method": "server.list",
       "source_inventory": true,
-      "implementation": "not_started",
-      "success_cases": [],
-      "invalid_cases": [],
-      "error_cases": [],
-      "event_cases": [],
-      "disk_cases": [],
-      "platform_evidence": {},
+      "implementation": "implemented_slice",
+      "success_cases": [
+        "server_oracle.py: 494 finite cases (RPC parsed JSON; CLI bytes/status; generated backup timestamps normalized); server_lifecycle native synthetic tests"
+      ],
+      "invalid_cases": [
+        "server_oracle.py: 494 finite cases (RPC parsed JSON; CLI bytes/status; generated backup timestamps normalized); server_lifecycle native synthetic tests"
+      ],
+      "error_cases": [
+        "server_oracle.py: 494 finite cases (RPC parsed JSON; CLI bytes/status; generated backup timestamps normalized); server_lifecycle native synthetic tests"
+      ],
+      "event_cases": [
+        "server_oracle.py: 494 finite cases (RPC parsed JSON; CLI bytes/status; generated backup timestamps normalized); server_lifecycle native synthetic tests"
+      ],
+      "disk_cases": [
+        "server_oracle.py: 494 finite cases (RPC parsed JSON; CLI bytes/status; generated backup timestamps normalized); server_lifecycle native synthetic tests"
+      ],
+      "platform_evidence": {
+        "linux": "Executed finite corpus; exact milestone evidence recorded separately",
+        "macos_arm64": "pending combined native CI",
+        "macos_x86_64": "pending combined native CI",
+        "windows": "pending combined native CI"
+      },
       "known_gaps": [
-        "Not implemented."
+        "Finite corpus is not exhaustive compatibility; real upstream/network behavior not established.",
+        "Global oversized-input divergence remains pending owner decision.",
+        "Synthetic Linux only; original RPC Linux platform gate preserved. Non-Linux server-world readonly CLI parity not yet complete.",
+        "Real Minecraft server deployment not executed."
       ],
       "compatible": false
     },
     {
       "method": "server.get",
       "source_inventory": true,
-      "implementation": "not_started",
-      "success_cases": [],
-      "invalid_cases": [],
-      "error_cases": [],
-      "event_cases": [],
-      "disk_cases": [],
-      "platform_evidence": {},
+      "implementation": "implemented_slice",
+      "success_cases": [
+        "server_oracle.py: 494 finite cases (RPC parsed JSON; CLI bytes/status; generated backup timestamps normalized); server_lifecycle native synthetic tests"
+      ],
+      "invalid_cases": [
+        "server_oracle.py: 494 finite cases (RPC parsed JSON; CLI bytes/status; generated backup timestamps normalized); server_lifecycle native synthetic tests"
+      ],
+      "error_cases": [
+        "server_oracle.py: 494 finite cases (RPC parsed JSON; CLI bytes/status; generated backup timestamps normalized); server_lifecycle native synthetic tests"
+      ],
+      "event_cases": [
+        "server_oracle.py: 494 finite cases (RPC parsed JSON; CLI bytes/status; generated backup timestamps normalized); server_lifecycle native synthetic tests"
+      ],
+      "disk_cases": [
+        "server_oracle.py: 494 finite cases (RPC parsed JSON; CLI bytes/status; generated backup timestamps normalized); server_lifecycle native synthetic tests"
+      ],
+      "platform_evidence": {
+        "linux": "Executed finite corpus; exact milestone evidence recorded separately",
+        "macos_arm64": "pending combined native CI",
+        "macos_x86_64": "pending combined native CI",
+        "windows": "pending combined native CI"
+      },
       "known_gaps": [
-        "Not implemented."
+        "Finite corpus is not exhaustive compatibility; real upstream/network behavior not established.",
+        "Global oversized-input divergence remains pending owner decision.",
+        "Synthetic Linux only; original RPC Linux platform gate preserved. Non-Linux server-world readonly CLI parity not yet complete.",
+        "Real Minecraft server deployment not executed."
       ],
       "compatible": false
     },
     {
       "method": "server.delete",
       "source_inventory": true,
-      "implementation": "not_started",
-      "success_cases": [],
-      "invalid_cases": [],
-      "error_cases": [],
-      "event_cases": [],
-      "disk_cases": [],
-      "platform_evidence": {},
+      "implementation": "implemented_slice",
+      "success_cases": [
+        "server_oracle.py: 494 finite cases (RPC parsed JSON; CLI bytes/status; generated backup timestamps normalized); server_lifecycle native synthetic tests"
+      ],
+      "invalid_cases": [
+        "server_oracle.py: 494 finite cases (RPC parsed JSON; CLI bytes/status; generated backup timestamps normalized); server_lifecycle native synthetic tests"
+      ],
+      "error_cases": [
+        "server_oracle.py: 494 finite cases (RPC parsed JSON; CLI bytes/status; generated backup timestamps normalized); server_lifecycle native synthetic tests"
+      ],
+      "event_cases": [
+        "server_oracle.py: 494 finite cases (RPC parsed JSON; CLI bytes/status; generated backup timestamps normalized); server_lifecycle native synthetic tests"
+      ],
+      "disk_cases": [
+        "server_oracle.py: 494 finite cases (RPC parsed JSON; CLI bytes/status; generated backup timestamps normalized); server_lifecycle native synthetic tests"
+      ],
+      "platform_evidence": {
+        "linux": "Executed finite corpus; exact milestone evidence recorded separately",
+        "macos_arm64": "pending combined native CI",
+        "macos_x86_64": "pending combined native CI",
+        "windows": "pending combined native CI"
+      },
       "known_gaps": [
-        "Not implemented."
+        "Finite corpus is not exhaustive compatibility; real upstream/network behavior not established.",
+        "Global oversized-input divergence remains pending owner decision.",
+        "Synthetic Linux only; original RPC Linux platform gate preserved. Non-Linux server-world readonly CLI parity not yet complete.",
+        "Real Minecraft server deployment not executed."
       ],
       "compatible": false
     },
@@ -1134,90 +1322,198 @@
     {
       "method": "server.start",
       "source_inventory": true,
-      "implementation": "not_started",
-      "success_cases": [],
-      "invalid_cases": [],
-      "error_cases": [],
-      "event_cases": [],
-      "disk_cases": [],
-      "platform_evidence": {},
+      "implementation": "implemented_slice",
+      "success_cases": [
+        "server_oracle.py: 494 finite cases (RPC parsed JSON; CLI bytes/status; generated backup timestamps normalized); server_lifecycle native synthetic tests"
+      ],
+      "invalid_cases": [
+        "server_oracle.py: 494 finite cases (RPC parsed JSON; CLI bytes/status; generated backup timestamps normalized); server_lifecycle native synthetic tests"
+      ],
+      "error_cases": [
+        "server_oracle.py: 494 finite cases (RPC parsed JSON; CLI bytes/status; generated backup timestamps normalized); server_lifecycle native synthetic tests"
+      ],
+      "event_cases": [
+        "server_oracle.py: 494 finite cases (RPC parsed JSON; CLI bytes/status; generated backup timestamps normalized); server_lifecycle native synthetic tests"
+      ],
+      "disk_cases": [
+        "server_oracle.py: 494 finite cases (RPC parsed JSON; CLI bytes/status; generated backup timestamps normalized); server_lifecycle native synthetic tests"
+      ],
+      "platform_evidence": {
+        "linux": "Executed finite corpus; exact milestone evidence recorded separately",
+        "macos_arm64": "pending combined native CI",
+        "macos_x86_64": "pending combined native CI",
+        "windows": "pending combined native CI"
+      },
       "known_gaps": [
-        "Not implemented."
+        "Finite corpus is not exhaustive compatibility; real upstream/network behavior not established.",
+        "Global oversized-input divergence remains pending owner decision.",
+        "Synthetic Linux only; original RPC Linux platform gate preserved. Non-Linux server-world readonly CLI parity not yet complete.",
+        "Real Minecraft server deployment not executed."
       ],
       "compatible": false
     },
     {
       "method": "server.stop",
       "source_inventory": true,
-      "implementation": "not_started",
-      "success_cases": [],
-      "invalid_cases": [],
-      "error_cases": [],
-      "event_cases": [],
-      "disk_cases": [],
-      "platform_evidence": {},
+      "implementation": "implemented_slice",
+      "success_cases": [
+        "server_oracle.py: 494 finite cases (RPC parsed JSON; CLI bytes/status; generated backup timestamps normalized); server_lifecycle native synthetic tests"
+      ],
+      "invalid_cases": [
+        "server_oracle.py: 494 finite cases (RPC parsed JSON; CLI bytes/status; generated backup timestamps normalized); server_lifecycle native synthetic tests"
+      ],
+      "error_cases": [
+        "server_oracle.py: 494 finite cases (RPC parsed JSON; CLI bytes/status; generated backup timestamps normalized); server_lifecycle native synthetic tests"
+      ],
+      "event_cases": [
+        "server_oracle.py: 494 finite cases (RPC parsed JSON; CLI bytes/status; generated backup timestamps normalized); server_lifecycle native synthetic tests"
+      ],
+      "disk_cases": [
+        "server_oracle.py: 494 finite cases (RPC parsed JSON; CLI bytes/status; generated backup timestamps normalized); server_lifecycle native synthetic tests"
+      ],
+      "platform_evidence": {
+        "linux": "Executed finite corpus; exact milestone evidence recorded separately",
+        "macos_arm64": "pending combined native CI",
+        "macos_x86_64": "pending combined native CI",
+        "windows": "pending combined native CI"
+      },
       "known_gaps": [
-        "Not implemented."
+        "Finite corpus is not exhaustive compatibility; real upstream/network behavior not established.",
+        "Global oversized-input divergence remains pending owner decision.",
+        "Synthetic Linux only; original RPC Linux platform gate preserved. Non-Linux server-world readonly CLI parity not yet complete.",
+        "Real Minecraft server deployment not executed."
       ],
       "compatible": false
     },
     {
       "method": "server.restart",
       "source_inventory": true,
-      "implementation": "not_started",
-      "success_cases": [],
-      "invalid_cases": [],
-      "error_cases": [],
-      "event_cases": [],
-      "disk_cases": [],
-      "platform_evidence": {},
+      "implementation": "implemented_slice",
+      "success_cases": [
+        "server_oracle.py: 494 finite cases (RPC parsed JSON; CLI bytes/status; generated backup timestamps normalized); server_lifecycle native synthetic tests"
+      ],
+      "invalid_cases": [
+        "server_oracle.py: 494 finite cases (RPC parsed JSON; CLI bytes/status; generated backup timestamps normalized); server_lifecycle native synthetic tests"
+      ],
+      "error_cases": [
+        "server_oracle.py: 494 finite cases (RPC parsed JSON; CLI bytes/status; generated backup timestamps normalized); server_lifecycle native synthetic tests"
+      ],
+      "event_cases": [
+        "server_oracle.py: 494 finite cases (RPC parsed JSON; CLI bytes/status; generated backup timestamps normalized); server_lifecycle native synthetic tests"
+      ],
+      "disk_cases": [
+        "server_oracle.py: 494 finite cases (RPC parsed JSON; CLI bytes/status; generated backup timestamps normalized); server_lifecycle native synthetic tests"
+      ],
+      "platform_evidence": {
+        "linux": "Executed finite corpus; exact milestone evidence recorded separately",
+        "macos_arm64": "pending combined native CI",
+        "macos_x86_64": "pending combined native CI",
+        "windows": "pending combined native CI"
+      },
       "known_gaps": [
-        "Not implemented."
+        "Finite corpus is not exhaustive compatibility; real upstream/network behavior not established.",
+        "Global oversized-input divergence remains pending owner decision.",
+        "Synthetic Linux only; original RPC Linux platform gate preserved. Non-Linux server-world readonly CLI parity not yet complete.",
+        "Real Minecraft server deployment not executed."
       ],
       "compatible": false
     },
     {
       "method": "server.status",
       "source_inventory": true,
-      "implementation": "not_started",
-      "success_cases": [],
-      "invalid_cases": [],
-      "error_cases": [],
-      "event_cases": [],
-      "disk_cases": [],
-      "platform_evidence": {},
+      "implementation": "implemented_slice",
+      "success_cases": [
+        "server_oracle.py: 494 finite cases (RPC parsed JSON; CLI bytes/status; generated backup timestamps normalized); server_lifecycle native synthetic tests"
+      ],
+      "invalid_cases": [
+        "server_oracle.py: 494 finite cases (RPC parsed JSON; CLI bytes/status; generated backup timestamps normalized); server_lifecycle native synthetic tests"
+      ],
+      "error_cases": [
+        "server_oracle.py: 494 finite cases (RPC parsed JSON; CLI bytes/status; generated backup timestamps normalized); server_lifecycle native synthetic tests"
+      ],
+      "event_cases": [
+        "server_oracle.py: 494 finite cases (RPC parsed JSON; CLI bytes/status; generated backup timestamps normalized); server_lifecycle native synthetic tests"
+      ],
+      "disk_cases": [
+        "server_oracle.py: 494 finite cases (RPC parsed JSON; CLI bytes/status; generated backup timestamps normalized); server_lifecycle native synthetic tests"
+      ],
+      "platform_evidence": {
+        "linux": "Executed finite corpus; exact milestone evidence recorded separately",
+        "macos_arm64": "pending combined native CI",
+        "macos_x86_64": "pending combined native CI",
+        "windows": "pending combined native CI"
+      },
       "known_gaps": [
-        "Not implemented."
+        "Finite corpus is not exhaustive compatibility; real upstream/network behavior not established.",
+        "Global oversized-input divergence remains pending owner decision.",
+        "Synthetic Linux only; original RPC Linux platform gate preserved. Non-Linux server-world readonly CLI parity not yet complete.",
+        "Real Minecraft server deployment not executed."
       ],
       "compatible": false
     },
     {
       "method": "server.logs",
       "source_inventory": true,
-      "implementation": "not_started",
-      "success_cases": [],
-      "invalid_cases": [],
-      "error_cases": [],
-      "event_cases": [],
-      "disk_cases": [],
-      "platform_evidence": {},
+      "implementation": "implemented_slice",
+      "success_cases": [
+        "server_oracle.py: 494 finite cases (RPC parsed JSON; CLI bytes/status; generated backup timestamps normalized); server_lifecycle native synthetic tests"
+      ],
+      "invalid_cases": [
+        "server_oracle.py: 494 finite cases (RPC parsed JSON; CLI bytes/status; generated backup timestamps normalized); server_lifecycle native synthetic tests"
+      ],
+      "error_cases": [
+        "server_oracle.py: 494 finite cases (RPC parsed JSON; CLI bytes/status; generated backup timestamps normalized); server_lifecycle native synthetic tests"
+      ],
+      "event_cases": [
+        "server_oracle.py: 494 finite cases (RPC parsed JSON; CLI bytes/status; generated backup timestamps normalized); server_lifecycle native synthetic tests"
+      ],
+      "disk_cases": [
+        "server_oracle.py: 494 finite cases (RPC parsed JSON; CLI bytes/status; generated backup timestamps normalized); server_lifecycle native synthetic tests"
+      ],
+      "platform_evidence": {
+        "linux": "Executed finite corpus; exact milestone evidence recorded separately",
+        "macos_arm64": "pending combined native CI",
+        "macos_x86_64": "pending combined native CI",
+        "windows": "pending combined native CI"
+      },
       "known_gaps": [
-        "Not implemented."
+        "Finite corpus is not exhaustive compatibility; real upstream/network behavior not established.",
+        "Global oversized-input divergence remains pending owner decision.",
+        "Synthetic Linux only; original RPC Linux platform gate preserved. Non-Linux server-world readonly CLI parity not yet complete.",
+        "Real Minecraft server deployment not executed."
       ],
       "compatible": false
     },
     {
       "method": "server.command",
       "source_inventory": true,
-      "implementation": "not_started",
-      "success_cases": [],
-      "invalid_cases": [],
-      "error_cases": [],
-      "event_cases": [],
-      "disk_cases": [],
-      "platform_evidence": {},
+      "implementation": "implemented_slice",
+      "success_cases": [
+        "server_oracle.py: 494 finite cases (RPC parsed JSON; CLI bytes/status; generated backup timestamps normalized); server_lifecycle native synthetic tests"
+      ],
+      "invalid_cases": [
+        "server_oracle.py: 494 finite cases (RPC parsed JSON; CLI bytes/status; generated backup timestamps normalized); server_lifecycle native synthetic tests"
+      ],
+      "error_cases": [
+        "server_oracle.py: 494 finite cases (RPC parsed JSON; CLI bytes/status; generated backup timestamps normalized); server_lifecycle native synthetic tests"
+      ],
+      "event_cases": [
+        "server_oracle.py: 494 finite cases (RPC parsed JSON; CLI bytes/status; generated backup timestamps normalized); server_lifecycle native synthetic tests"
+      ],
+      "disk_cases": [
+        "server_oracle.py: 494 finite cases (RPC parsed JSON; CLI bytes/status; generated backup timestamps normalized); server_lifecycle native synthetic tests"
+      ],
+      "platform_evidence": {
+        "linux": "Executed finite corpus; exact milestone evidence recorded separately",
+        "macos_arm64": "pending combined native CI",
+        "macos_x86_64": "pending combined native CI",
+        "windows": "pending combined native CI"
+      },
       "known_gaps": [
-        "Not implemented."
+        "Finite corpus is not exhaustive compatibility; real upstream/network behavior not established.",
+        "Global oversized-input divergence remains pending owner decision.",
+        "Synthetic Linux only; original RPC Linux platform gate preserved. Non-Linux server-world readonly CLI parity not yet complete.",
+        "Real Minecraft server deployment not executed."
       ],
       "compatible": false
     },
@@ -1254,30 +1550,66 @@
     {
       "method": "server.properties.get",
       "source_inventory": true,
-      "implementation": "not_started",
-      "success_cases": [],
-      "invalid_cases": [],
-      "error_cases": [],
-      "event_cases": [],
-      "disk_cases": [],
-      "platform_evidence": {},
+      "implementation": "implemented_slice",
+      "success_cases": [
+        "server_oracle.py: 494 finite cases (RPC parsed JSON; CLI bytes/status; generated backup timestamps normalized); server_lifecycle native synthetic tests"
+      ],
+      "invalid_cases": [
+        "server_oracle.py: 494 finite cases (RPC parsed JSON; CLI bytes/status; generated backup timestamps normalized); server_lifecycle native synthetic tests"
+      ],
+      "error_cases": [
+        "server_oracle.py: 494 finite cases (RPC parsed JSON; CLI bytes/status; generated backup timestamps normalized); server_lifecycle native synthetic tests"
+      ],
+      "event_cases": [
+        "server_oracle.py: 494 finite cases (RPC parsed JSON; CLI bytes/status; generated backup timestamps normalized); server_lifecycle native synthetic tests"
+      ],
+      "disk_cases": [
+        "server_oracle.py: 494 finite cases (RPC parsed JSON; CLI bytes/status; generated backup timestamps normalized); server_lifecycle native synthetic tests"
+      ],
+      "platform_evidence": {
+        "linux": "Executed finite corpus; exact milestone evidence recorded separately",
+        "macos_arm64": "pending combined native CI",
+        "macos_x86_64": "pending combined native CI",
+        "windows": "pending combined native CI"
+      },
       "known_gaps": [
-        "Not implemented."
+        "Finite corpus is not exhaustive compatibility; real upstream/network behavior not established.",
+        "Global oversized-input divergence remains pending owner decision.",
+        "Synthetic Linux only; original RPC Linux platform gate preserved. Non-Linux server-world readonly CLI parity not yet complete.",
+        "Real Minecraft server deployment not executed."
       ],
       "compatible": false
     },
     {
       "method": "server.properties.set",
       "source_inventory": true,
-      "implementation": "not_started",
-      "success_cases": [],
-      "invalid_cases": [],
-      "error_cases": [],
-      "event_cases": [],
-      "disk_cases": [],
-      "platform_evidence": {},
+      "implementation": "implemented_slice",
+      "success_cases": [
+        "server_oracle.py: 494 finite cases (RPC parsed JSON; CLI bytes/status; generated backup timestamps normalized); server_lifecycle native synthetic tests"
+      ],
+      "invalid_cases": [
+        "server_oracle.py: 494 finite cases (RPC parsed JSON; CLI bytes/status; generated backup timestamps normalized); server_lifecycle native synthetic tests"
+      ],
+      "error_cases": [
+        "server_oracle.py: 494 finite cases (RPC parsed JSON; CLI bytes/status; generated backup timestamps normalized); server_lifecycle native synthetic tests"
+      ],
+      "event_cases": [
+        "server_oracle.py: 494 finite cases (RPC parsed JSON; CLI bytes/status; generated backup timestamps normalized); server_lifecycle native synthetic tests"
+      ],
+      "disk_cases": [
+        "server_oracle.py: 494 finite cases (RPC parsed JSON; CLI bytes/status; generated backup timestamps normalized); server_lifecycle native synthetic tests"
+      ],
+      "platform_evidence": {
+        "linux": "Executed finite corpus; exact milestone evidence recorded separately",
+        "macos_arm64": "pending combined native CI",
+        "macos_x86_64": "pending combined native CI",
+        "windows": "pending combined native CI"
+      },
       "known_gaps": [
-        "Not implemented."
+        "Finite corpus is not exhaustive compatibility; real upstream/network behavior not established.",
+        "Global oversized-input divergence remains pending owner decision.",
+        "Synthetic Linux only; original RPC Linux platform gate preserved. Non-Linux server-world readonly CLI parity not yet complete.",
+        "Real Minecraft server deployment not executed."
       ],
       "compatible": false
     },
@@ -1857,120 +2189,264 @@
     {
       "method": "server.worlds.list",
       "source_inventory": true,
-      "implementation": "not_started",
-      "success_cases": [],
-      "invalid_cases": [],
-      "error_cases": [],
-      "event_cases": [],
-      "disk_cases": [],
-      "platform_evidence": {},
+      "implementation": "implemented_slice",
+      "success_cases": [
+        "server_oracle.py: 494 finite cases (RPC parsed JSON; CLI bytes/status; generated backup timestamps normalized); server_lifecycle native synthetic tests"
+      ],
+      "invalid_cases": [
+        "server_oracle.py: 494 finite cases (RPC parsed JSON; CLI bytes/status; generated backup timestamps normalized); server_lifecycle native synthetic tests"
+      ],
+      "error_cases": [
+        "server_oracle.py: 494 finite cases (RPC parsed JSON; CLI bytes/status; generated backup timestamps normalized); server_lifecycle native synthetic tests"
+      ],
+      "event_cases": [
+        "server_oracle.py: 494 finite cases (RPC parsed JSON; CLI bytes/status; generated backup timestamps normalized); server_lifecycle native synthetic tests"
+      ],
+      "disk_cases": [
+        "server_oracle.py: 494 finite cases (RPC parsed JSON; CLI bytes/status; generated backup timestamps normalized); server_lifecycle native synthetic tests"
+      ],
+      "platform_evidence": {
+        "linux": "Executed finite corpus; exact milestone evidence recorded separately",
+        "macos_arm64": "pending combined native CI",
+        "macos_x86_64": "pending combined native CI",
+        "windows": "pending combined native CI"
+      },
       "known_gaps": [
-        "Not implemented."
+        "Finite corpus is not exhaustive compatibility; real upstream/network behavior not established.",
+        "Global oversized-input divergence remains pending owner decision.",
+        "Synthetic Linux only; original RPC Linux platform gate preserved. Non-Linux server-world readonly CLI parity not yet complete.",
+        "Real Minecraft server deployment not executed."
       ],
       "compatible": false
     },
     {
       "method": "server.worlds.get",
       "source_inventory": true,
-      "implementation": "not_started",
-      "success_cases": [],
-      "invalid_cases": [],
-      "error_cases": [],
-      "event_cases": [],
-      "disk_cases": [],
-      "platform_evidence": {},
+      "implementation": "implemented_slice",
+      "success_cases": [
+        "server_oracle.py: 494 finite cases (RPC parsed JSON; CLI bytes/status; generated backup timestamps normalized); server_lifecycle native synthetic tests"
+      ],
+      "invalid_cases": [
+        "server_oracle.py: 494 finite cases (RPC parsed JSON; CLI bytes/status; generated backup timestamps normalized); server_lifecycle native synthetic tests"
+      ],
+      "error_cases": [
+        "server_oracle.py: 494 finite cases (RPC parsed JSON; CLI bytes/status; generated backup timestamps normalized); server_lifecycle native synthetic tests"
+      ],
+      "event_cases": [
+        "server_oracle.py: 494 finite cases (RPC parsed JSON; CLI bytes/status; generated backup timestamps normalized); server_lifecycle native synthetic tests"
+      ],
+      "disk_cases": [
+        "server_oracle.py: 494 finite cases (RPC parsed JSON; CLI bytes/status; generated backup timestamps normalized); server_lifecycle native synthetic tests"
+      ],
+      "platform_evidence": {
+        "linux": "Executed finite corpus; exact milestone evidence recorded separately",
+        "macos_arm64": "pending combined native CI",
+        "macos_x86_64": "pending combined native CI",
+        "windows": "pending combined native CI"
+      },
       "known_gaps": [
-        "Not implemented."
+        "Finite corpus is not exhaustive compatibility; real upstream/network behavior not established.",
+        "Global oversized-input divergence remains pending owner decision.",
+        "Synthetic Linux only; original RPC Linux platform gate preserved. Non-Linux server-world readonly CLI parity not yet complete.",
+        "Real Minecraft server deployment not executed."
       ],
       "compatible": false
     },
     {
       "method": "server.worlds.rename",
       "source_inventory": true,
-      "implementation": "not_started",
-      "success_cases": [],
-      "invalid_cases": [],
-      "error_cases": [],
-      "event_cases": [],
-      "disk_cases": [],
-      "platform_evidence": {},
+      "implementation": "implemented_slice",
+      "success_cases": [
+        "server_oracle.py: 494 finite cases (RPC parsed JSON; CLI bytes/status; generated backup timestamps normalized); server_lifecycle native synthetic tests"
+      ],
+      "invalid_cases": [
+        "server_oracle.py: 494 finite cases (RPC parsed JSON; CLI bytes/status; generated backup timestamps normalized); server_lifecycle native synthetic tests"
+      ],
+      "error_cases": [
+        "server_oracle.py: 494 finite cases (RPC parsed JSON; CLI bytes/status; generated backup timestamps normalized); server_lifecycle native synthetic tests"
+      ],
+      "event_cases": [
+        "server_oracle.py: 494 finite cases (RPC parsed JSON; CLI bytes/status; generated backup timestamps normalized); server_lifecycle native synthetic tests"
+      ],
+      "disk_cases": [
+        "server_oracle.py: 494 finite cases (RPC parsed JSON; CLI bytes/status; generated backup timestamps normalized); server_lifecycle native synthetic tests"
+      ],
+      "platform_evidence": {
+        "linux": "Executed finite corpus; exact milestone evidence recorded separately",
+        "macos_arm64": "pending combined native CI",
+        "macos_x86_64": "pending combined native CI",
+        "windows": "pending combined native CI"
+      },
       "known_gaps": [
-        "Not implemented."
+        "Finite corpus is not exhaustive compatibility; real upstream/network behavior not established.",
+        "Global oversized-input divergence remains pending owner decision.",
+        "Synthetic Linux only; original RPC Linux platform gate preserved. Non-Linux server-world readonly CLI parity not yet complete.",
+        "Real Minecraft server deployment not executed."
       ],
       "compatible": false
     },
     {
       "method": "server.worlds.delete",
       "source_inventory": true,
-      "implementation": "not_started",
-      "success_cases": [],
-      "invalid_cases": [],
-      "error_cases": [],
-      "event_cases": [],
-      "disk_cases": [],
-      "platform_evidence": {},
+      "implementation": "implemented_slice",
+      "success_cases": [
+        "server_oracle.py: 494 finite cases (RPC parsed JSON; CLI bytes/status; generated backup timestamps normalized); server_lifecycle native synthetic tests"
+      ],
+      "invalid_cases": [
+        "server_oracle.py: 494 finite cases (RPC parsed JSON; CLI bytes/status; generated backup timestamps normalized); server_lifecycle native synthetic tests"
+      ],
+      "error_cases": [
+        "server_oracle.py: 494 finite cases (RPC parsed JSON; CLI bytes/status; generated backup timestamps normalized); server_lifecycle native synthetic tests"
+      ],
+      "event_cases": [
+        "server_oracle.py: 494 finite cases (RPC parsed JSON; CLI bytes/status; generated backup timestamps normalized); server_lifecycle native synthetic tests"
+      ],
+      "disk_cases": [
+        "server_oracle.py: 494 finite cases (RPC parsed JSON; CLI bytes/status; generated backup timestamps normalized); server_lifecycle native synthetic tests"
+      ],
+      "platform_evidence": {
+        "linux": "Executed finite corpus; exact milestone evidence recorded separately",
+        "macos_arm64": "pending combined native CI",
+        "macos_x86_64": "pending combined native CI",
+        "windows": "pending combined native CI"
+      },
       "known_gaps": [
-        "Not implemented."
+        "Finite corpus is not exhaustive compatibility; real upstream/network behavior not established.",
+        "Global oversized-input divergence remains pending owner decision.",
+        "Synthetic Linux only; original RPC Linux platform gate preserved. Non-Linux server-world readonly CLI parity not yet complete.",
+        "Real Minecraft server deployment not executed."
       ],
       "compatible": false
     },
     {
       "method": "server.worlds.backup",
       "source_inventory": true,
-      "implementation": "not_started",
-      "success_cases": [],
-      "invalid_cases": [],
-      "error_cases": [],
-      "event_cases": [],
-      "disk_cases": [],
-      "platform_evidence": {},
+      "implementation": "implemented_slice",
+      "success_cases": [
+        "server_oracle.py: 494 finite cases (RPC parsed JSON; CLI bytes/status; generated backup timestamps normalized); server_lifecycle native synthetic tests"
+      ],
+      "invalid_cases": [
+        "server_oracle.py: 494 finite cases (RPC parsed JSON; CLI bytes/status; generated backup timestamps normalized); server_lifecycle native synthetic tests"
+      ],
+      "error_cases": [
+        "server_oracle.py: 494 finite cases (RPC parsed JSON; CLI bytes/status; generated backup timestamps normalized); server_lifecycle native synthetic tests"
+      ],
+      "event_cases": [
+        "server_oracle.py: 494 finite cases (RPC parsed JSON; CLI bytes/status; generated backup timestamps normalized); server_lifecycle native synthetic tests"
+      ],
+      "disk_cases": [
+        "server_oracle.py: 494 finite cases (RPC parsed JSON; CLI bytes/status; generated backup timestamps normalized); server_lifecycle native synthetic tests"
+      ],
+      "platform_evidence": {
+        "linux": "Executed finite corpus; exact milestone evidence recorded separately",
+        "macos_arm64": "pending combined native CI",
+        "macos_x86_64": "pending combined native CI",
+        "windows": "pending combined native CI"
+      },
       "known_gaps": [
-        "Not implemented."
+        "Finite corpus is not exhaustive compatibility; real upstream/network behavior not established.",
+        "Global oversized-input divergence remains pending owner decision.",
+        "Synthetic Linux only; original RPC Linux platform gate preserved. Non-Linux server-world readonly CLI parity not yet complete.",
+        "Real Minecraft server deployment not executed."
       ],
       "compatible": false
     },
     {
       "method": "server.worlds.backups",
       "source_inventory": true,
-      "implementation": "not_started",
-      "success_cases": [],
-      "invalid_cases": [],
-      "error_cases": [],
-      "event_cases": [],
-      "disk_cases": [],
-      "platform_evidence": {},
+      "implementation": "implemented_slice",
+      "success_cases": [
+        "server_oracle.py: 494 finite cases (RPC parsed JSON; CLI bytes/status; generated backup timestamps normalized); server_lifecycle native synthetic tests"
+      ],
+      "invalid_cases": [
+        "server_oracle.py: 494 finite cases (RPC parsed JSON; CLI bytes/status; generated backup timestamps normalized); server_lifecycle native synthetic tests"
+      ],
+      "error_cases": [
+        "server_oracle.py: 494 finite cases (RPC parsed JSON; CLI bytes/status; generated backup timestamps normalized); server_lifecycle native synthetic tests"
+      ],
+      "event_cases": [
+        "server_oracle.py: 494 finite cases (RPC parsed JSON; CLI bytes/status; generated backup timestamps normalized); server_lifecycle native synthetic tests"
+      ],
+      "disk_cases": [
+        "server_oracle.py: 494 finite cases (RPC parsed JSON; CLI bytes/status; generated backup timestamps normalized); server_lifecycle native synthetic tests"
+      ],
+      "platform_evidence": {
+        "linux": "Executed finite corpus; exact milestone evidence recorded separately",
+        "macos_arm64": "pending combined native CI",
+        "macos_x86_64": "pending combined native CI",
+        "windows": "pending combined native CI"
+      },
       "known_gaps": [
-        "Not implemented."
+        "Finite corpus is not exhaustive compatibility; real upstream/network behavior not established.",
+        "Global oversized-input divergence remains pending owner decision.",
+        "Synthetic Linux only; original RPC Linux platform gate preserved. Non-Linux server-world readonly CLI parity not yet complete.",
+        "Real Minecraft server deployment not executed."
       ],
       "compatible": false
     },
     {
       "method": "server.worlds.restore",
       "source_inventory": true,
-      "implementation": "not_started",
-      "success_cases": [],
-      "invalid_cases": [],
-      "error_cases": [],
-      "event_cases": [],
-      "disk_cases": [],
-      "platform_evidence": {},
+      "implementation": "implemented_slice",
+      "success_cases": [
+        "server_oracle.py: 494 finite cases (RPC parsed JSON; CLI bytes/status; generated backup timestamps normalized); server_lifecycle native synthetic tests"
+      ],
+      "invalid_cases": [
+        "server_oracle.py: 494 finite cases (RPC parsed JSON; CLI bytes/status; generated backup timestamps normalized); server_lifecycle native synthetic tests"
+      ],
+      "error_cases": [
+        "server_oracle.py: 494 finite cases (RPC parsed JSON; CLI bytes/status; generated backup timestamps normalized); server_lifecycle native synthetic tests"
+      ],
+      "event_cases": [
+        "server_oracle.py: 494 finite cases (RPC parsed JSON; CLI bytes/status; generated backup timestamps normalized); server_lifecycle native synthetic tests"
+      ],
+      "disk_cases": [
+        "server_oracle.py: 494 finite cases (RPC parsed JSON; CLI bytes/status; generated backup timestamps normalized); server_lifecycle native synthetic tests"
+      ],
+      "platform_evidence": {
+        "linux": "Executed finite corpus; exact milestone evidence recorded separately",
+        "macos_arm64": "pending combined native CI",
+        "macos_x86_64": "pending combined native CI",
+        "windows": "pending combined native CI"
+      },
       "known_gaps": [
-        "Not implemented."
+        "Finite corpus is not exhaustive compatibility; real upstream/network behavior not established.",
+        "Global oversized-input divergence remains pending owner decision.",
+        "Synthetic Linux only; original RPC Linux platform gate preserved. Non-Linux server-world readonly CLI parity not yet complete.",
+        "Real Minecraft server deployment not executed."
       ],
       "compatible": false
     },
     {
       "method": "server.worlds.backups.delete",
       "source_inventory": true,
-      "implementation": "not_started",
-      "success_cases": [],
-      "invalid_cases": [],
-      "error_cases": [],
-      "event_cases": [],
-      "disk_cases": [],
-      "platform_evidence": {},
+      "implementation": "implemented_slice",
+      "success_cases": [
+        "server_oracle.py: 494 finite cases (RPC parsed JSON; CLI bytes/status; generated backup timestamps normalized); server_lifecycle native synthetic tests"
+      ],
+      "invalid_cases": [
+        "server_oracle.py: 494 finite cases (RPC parsed JSON; CLI bytes/status; generated backup timestamps normalized); server_lifecycle native synthetic tests"
+      ],
+      "error_cases": [
+        "server_oracle.py: 494 finite cases (RPC parsed JSON; CLI bytes/status; generated backup timestamps normalized); server_lifecycle native synthetic tests"
+      ],
+      "event_cases": [
+        "server_oracle.py: 494 finite cases (RPC parsed JSON; CLI bytes/status; generated backup timestamps normalized); server_lifecycle native synthetic tests"
+      ],
+      "disk_cases": [
+        "server_oracle.py: 494 finite cases (RPC parsed JSON; CLI bytes/status; generated backup timestamps normalized); server_lifecycle native synthetic tests"
+      ],
+      "platform_evidence": {
+        "linux": "Executed finite corpus; exact milestone evidence recorded separately",
+        "macos_arm64": "pending combined native CI",
+        "macos_x86_64": "pending combined native CI",
+        "windows": "pending combined native CI"
+      },
       "known_gaps": [
-        "Not implemented."
+        "Finite corpus is not exhaustive compatibility; real upstream/network behavior not established.",
+        "Global oversized-input divergence remains pending owner decision.",
+        "Synthetic Linux only; original RPC Linux platform gate preserved. Non-Linux server-world readonly CLI parity not yet complete.",
+        "Real Minecraft server deployment not executed."
       ],
       "compatible": false
     },
@@ -2039,15 +2515,34 @@
     {
       "method": "launch.plan",
       "source_inventory": true,
-      "implementation": "not_started",
-      "success_cases": [],
-      "invalid_cases": [],
-      "error_cases": [],
-      "event_cases": [],
-      "disk_cases": [],
-      "platform_evidence": {},
+      "implementation": "implemented_slice",
+      "success_cases": [
+        "launch_rpc.py (raw redacted RPC); launch_plan_differential and native process/executor tests"
+      ],
+      "invalid_cases": [
+        "launch_rpc.py (raw redacted RPC); launch_plan_differential and native process/executor tests"
+      ],
+      "error_cases": [
+        "launch_rpc.py (raw redacted RPC); launch_plan_differential and native process/executor tests"
+      ],
+      "event_cases": [
+        "launch_rpc.py (raw redacted RPC); launch_plan_differential and native process/executor tests"
+      ],
+      "disk_cases": [
+        "launch_rpc.py (raw redacted RPC); launch_plan_differential and native process/executor tests"
+      ],
+      "platform_evidence": {
+        "linux": "Executed finite corpus; exact milestone evidence recorded separately",
+        "macos_arm64": "pending combined native CI",
+        "macos_x86_64": "pending combined native CI",
+        "windows": "pending combined native CI"
+      },
       "known_gaps": [
-        "Not implemented."
+        "Finite corpus is not exhaustive compatibility; real upstream/network behavior not established.",
+        "Global oversized-input divergence remains pending owner decision.",
+        "launch.execute orchestration and instance launch not yet exposed by this slice.",
+        "Bounded inherited-pipe completion differs from pinned oracle; explicit known-gap test, not a parity pass.",
+        "Platform/Command internals are outside audited secret-allocation ownership."
       ],
       "compatible": false
     },

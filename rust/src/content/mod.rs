@@ -4,8 +4,11 @@ use crate::protocol::RpcError;
 use serde::Serialize;
 use serde_json::{Map, Value, value::RawValue};
 use std::io;
+pub mod adopt;
 mod cli;
 mod fs;
+pub mod modrinth;
+pub mod remote;
 pub use cli::run as cli;
 pub mod registry;
 use registry::{Entry, Kind, Registry};
@@ -247,6 +250,9 @@ pub fn handle(
 ) -> Option<std::result::Result<Value, RpcError>> {
     let (family, op) = method.split_once('.')?;
     let kind = Kind::from_directory(family)?;
+    if op == "adopt" {
+        return Some(adopt::handle(kind, params));
+    }
     if !matches!(op, "list" | "remove" | "enable" | "disable") {
         return None;
     }

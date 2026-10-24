@@ -91,6 +91,33 @@ Native Windows and both macOS architectures must execute the combined milestone
 in CI. Prior individual crosschecks are not combined native acceptance; the
 reqwest/AWS-LC dependency additionally requires a C crosscompiler for Linux-to-
 Windows crosschecking. No TLS validation bypass is used.
+## Linux server lifecycle and world sets
+
+The server slice implements existing-manifest list/get/delete, properties,
+start/restart/stop/status/logs/command, and coupled server-world inspection,
+rename/delete, backup/restore and backup management. Synthetic subprocess tests
+exercise detached request lifetimes, PID + JVM identity checks, FIFO commands,
+log cursor/rotation rules, and graceful/TERM/KILL shutdown. Mutable world data is
+privately copied, never published as a CAS hard link.
+
+Run its independent finite compatibility matrix with an **isolated pinned Zig
+checkout and binary** (the script checks HEAD and prints both binary hashes):
+
+```sh
+python compat/server_oracle.py --zig /path/to/pinned/zig-out/bin/jmcl-core \
+  --rust target/debug/jmcl-core-rust --oracle-source /path/to/pinned/source
+cargo test --locked --test server_lifecycle
+```
+
+The matrix compares RPC JSON envelopes semantically and CLI output/exit codes
+exactly; only generated backup filename timestamps are normalized. These tests
+do not establish real Minecraft/SSH/long-running deployment readiness. Server
+create/install orchestration, RCON and Query remain separate work. Server-world
+CLI wiring is currently Linux-only; Zig has some non-Linux read-only CLI paths,
+so that asymmetry is an explicit remaining compatibility gap. All server RPCs
+retain the baseline Linux platform gate.
+
+Design notes: [request lifetime, process identity, and coupled worlds](../docs/blog/03-server-lifecycle-and-worldsets.md).
 ### Windows pinned-oracle lock contention
 
 Native CI confirmed that pinned Zig GC exits 1 with exactly one collection error

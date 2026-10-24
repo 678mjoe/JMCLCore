@@ -73,7 +73,7 @@ fn invalid(err: &mut impl Write) -> io::Result<u8> {
 fn text<'a>(v: &'a Value, key: &str) -> &'a str {
     v.get(key).and_then(Value::as_str).unwrap_or("-")
 }
-fn row(out: &mut impl Write, v: &Value) -> io::Result<()> {
+pub(super) fn row(out: &mut impl Write, v: &Value) -> io::Result<()> {
     writeln!(
         out,
         "{}\t{}\t{}\t{}\t{}\t{}\t{}",
@@ -90,7 +90,7 @@ fn row(out: &mut impl Write, v: &Value) -> io::Result<()> {
         text(v, "version_relation")
     )
 }
-fn detail(out: &mut impl Write, v: &Value, meta: bool) -> io::Result<()> {
+pub(super) fn detail(out: &mut impl Write, v: &Value, meta: bool) -> io::Result<()> {
     writeln!(out, "name: {}", text(v, "name"))?;
     if meta {
         writeln!(

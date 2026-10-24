@@ -334,3 +334,101 @@ pub fn restore(
     let name = import_to(&s, file, stem, name, replace)?;
     Ok(json!({"stage":"worlds.restore","world":world(&s,&name,version)?}))
 }
+
+/// Archive a coupled server world set without reopening an ambient pathname.
+#[cfg(target_os = "linux")]
+pub(super) fn export_set(
+    parent: &fs::Dir,
+    names: &[String],
+    destination: &fs::Dir,
+    leaf: &str,
+) -> Result<()> {
+    for name in names {
+        drop(guard(parent, name)?);
+    }
+    let tmp = unique(".jmcl-export-", leaf)?;
+    let result = (|| {
+        let file = destination.new_file(&tmp)?;
+        let mut zip = ZipWriter::new(file);
+        let mut files = 0;
+        for name in names {
+            let d = parent.child(name, false)?;
+            add_dir(&mut zip, &d, name, &mut files)?;
+        }
+        let file = zip.finish().map_err(ziperr)?;
+        file.sync_all()?;
+        if file.metadata()?.len() > u32::MAX as u64 {
+            return Err(Error::ArchiveTooLarge);
+        }
+        drop(file);
+        destination.rename(&tmp, destination, leaf)
+    })();
+    if result.is_err() {
+        let _ = destination.unlink(&tmp);
+    }
+    result
+}
+/// Preserve Zig's per-component publication/rollback semantics, not a claimed
+/// all-world transaction. The outer server stopped guard spans every component.
+#[cfg(target_os = "linux")]
+pub(super) fn import_set(parent: &fs::Dir, file: File, replace: bool) -> Result<()> {
+    let mut zip = archive(file)?;
+    let mut components = Vec::<String>::new();
+    for i in 0..zip.len() {
+        let entry = zip.by_index(i).map_err(ziperr)?;
+        let (top, _) = entry.name().split_once('/').ok_or(Error::ArchiveInvalid)?;
+        validate_name(top).map_err(|_| Error::ArchiveInvalid)?;
+        if !components.iter().any(|s| s == top) {
+            components.push(top.into());
+        }
+    }
+    let temp = unique(".jmcl-copy-", "import")?;
+    let staging = parent.new_child(&temp)?;
+    let result = (|| {
+        for i in 0..zip.len() {
+            let mut entry = zip.by_index(i).map_err(ziperr)?;
+            let name = entry.name().to_owned();
+            if name.ends_with('/') {
+                staging.mkdir_relative(&name)?;
+                continue;
+            }
+            if entry.size() > MAX_ARCHIVE as u64 {
+                return Err(Error::ArchiveInvalid);
+            }
+            let mut bytes = Vec::new();
+            (&mut entry)
+                .take(MAX_ARCHIVE as u64 + 1)
+                .read_to_end(&mut bytes)
+                .map_err(|_| Error::ArchiveInvalid)?;
+            if bytes.len() > MAX_ARCHIVE || bytes.len() as u64 != entry.size() {
+                return Err(Error::ArchiveInvalid);
+            }
+            staging.write_relative(&name, &bytes)?;
+        }
+        for component in components {
+            let trash = if parent.exists(&component) {
+                if !replace {
+                    return Err(Error::WorldExists);
+                }
+                let trash = unique(".jmcl-trash-", &component)?;
+                parent.rename(&component, parent, &trash)?;
+                Some(trash)
+            } else {
+                None
+            };
+            if let Err(e) = staging.rename(&component, parent, &component) {
+                if let Some(trash) = trash {
+                    let _ = parent.rename(&trash, parent, &component);
+                }
+                return Err(e);
+            }
+            if let Some(trash) = trash {
+                let _ = parent.remove_tree(trash);
+            }
+        }
+        Ok(())
+    })();
+    drop(staging);
+    let _ = parent.remove_tree(temp);
+    result
+}

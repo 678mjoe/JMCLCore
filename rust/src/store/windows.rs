@@ -4,7 +4,7 @@
 use super::*;
 use sha1::{Digest, Sha1};
 use std::fs::File;
-use std::io::{self, Read, Seek, SeekFrom};
+use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::mem::{offset_of, size_of};
 use std::os::windows::ffi::OsStrExt;
 use std::os::windows::io::{AsRawHandle, FromRawHandle};
@@ -586,15 +586,24 @@ impl Store {
         let hash = normalized_hash(hash)?;
         let _lock = self.lock_object(&hash)?;
         let (source_dir, source_name) = split(source.as_ref(), false)?;
-        let mut source = file_at(&source_dir, source_name)?;
-        if !matches(&mut source, &hash, size)? {
+        self.import_at_locked(&source_dir, source_name, &hash, size)
+    }
+    pub(super) fn import_at_locked(
+        &self,
+        source_dir: &File,
+        source_name: &std::ffi::OsStr,
+        hash: &str,
+        size: u64,
+    ) -> io::Result<Placement> {
+        let mut source = file_at(source_dir, source_name)?;
+        if !matches(&mut source, hash, size)? {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
                 "ArtifactVerificationFailed",
             ));
         }
-        let prefix = self.prefix(&hash, true)?;
-        if self.verify(&hash, size)? {
+        let prefix = self.prefix(hash, true)?;
+        if self.verify(hash, size)? {
             return Ok(Placement::HardLink);
         }
         let temp = format!(".jmcl-object-{}", unique());
@@ -612,7 +621,7 @@ impl Store {
         };
         let mut object = file_at(&prefix, temp.as_ref())?;
         let publish = (|| {
-            if !matches(&mut object, &hash, size)? {
+            if !matches(&mut object, hash, size)? {
                 return Err(io::Error::new(
                     io::ErrorKind::InvalidData,
                     "ArtifactVerificationFailed",
@@ -635,19 +644,28 @@ impl Store {
     ) -> io::Result<Placement> {
         let hash = normalized_hash(hash)?;
         let _lock = self.lock_object(&hash)?;
-        let prefix = self.prefix(&hash, false)?;
+        let (dest_dir, dest_name) = split(destination.as_ref(), true)?;
+        self.materialize_at_locked(&dest_dir, dest_name, &hash, size)
+    }
+    pub(super) fn materialize_at_locked(
+        &self,
+        dest: &File,
+        name: &std::ffi::OsStr,
+        hash: &str,
+        size: u64,
+    ) -> io::Result<Placement> {
+        let prefix = self.prefix(hash, false)?;
         let mut source = file_at(&prefix, hash.as_ref())?;
-        if !matches(&mut source, &hash, size)? {
+        if !matches(&mut source, hash, size)? {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
                 "ArtifactVerificationFailed",
             ));
         }
         readonly(&source)?;
-        let (dest, name) = split(destination.as_ref(), true)?;
-        match file_at(&dest, name) {
+        match file_at(dest, name) {
             Ok(mut existing) => {
-                if matches(&mut existing, &hash, size)? {
+                if matches(&mut existing, hash, size)? {
                     return Ok(if same(&source, &existing)? {
                         Placement::HardLink
                     } else {
@@ -659,10 +677,10 @@ impl Store {
             Err(e) if e.kind() == io::ErrorKind::NotFound => {}
             Err(e) => return Err(e),
         }
-        match named_op(&source, &dest, name, false) {
+        match named_op(&source, dest, name, false) {
             Ok(()) => Ok(Placement::HardLink),
             Err(e) if fallback(&e) => {
-                let mut output = create_file(&dest, name)?;
+                let mut output = create_file(dest, name)?;
                 copy(&mut source, &mut output)?;
                 readonly(&output)?;
                 Ok(Placement::Copy)
@@ -788,6 +806,285 @@ pub(crate) fn entry_exists(parent: &File, name: &std::ffi::OsStr) -> bool {
         return false;
     };
     open_nt_raw(Some(parent), &mut wide, None, nt::FILE_OPEN, false, false).is_ok()
+}
+
+pub struct ArtifactRoot {
+    dir: File,
+}
+impl ArtifactRoot {
+    /// Internal bridge for an already no-follow-opened, anchored directory.
+    pub(crate) fn from_directory(dir: File) -> io::Result<Self> {
+        if !dir.metadata()?.is_dir() {
+            return Err(invalid("InvalidDirectory"));
+        }
+        Ok(Self { dir })
+    }
+    pub fn absolute_path(&self) -> io::Result<PathBuf> {
+        Self::directory_path(&self.dir)
+    }
+    pub fn absolute_directory(&self, relative: &str) -> io::Result<PathBuf> {
+        let (parent, name) = self.parent(relative, false)?;
+        Self::directory_path(&child(&parent, name.as_ref(), true, false, false)?)
+    }
+    fn directory_path(dir: &File) -> io::Result<PathBuf> {
+        use std::os::windows::ffi::OsStringExt;
+        let mut buffer = vec![0u16; 32768];
+        let size = unsafe {
+            GetFinalPathNameByHandleW(
+                dir.as_raw_handle(),
+                buffer.as_mut_ptr(),
+                buffer.len() as u32,
+                0,
+            )
+        } as usize;
+        if size == 0 {
+            return Err(io::Error::last_os_error());
+        }
+        if size >= buffer.len() {
+            return Err(invalid("NameTooLong"));
+        }
+        Ok(PathBuf::from(std::ffi::OsString::from_wide(
+            &buffer[..size],
+        )))
+    }
+    pub fn open(path: impl AsRef<Path>) -> io::Result<Self> {
+        Self::from_directory(walk(path.as_ref(), true)?)
+    }
+    pub(super) fn parent(&self, relative: &str, create: bool) -> io::Result<(File, String)> {
+        let mut parts = relative_parts(relative)?;
+        let name = parts.pop().unwrap().to_owned();
+        let mut dir = self.dir.try_clone()?;
+        for part in parts {
+            dir = child(&dir, part.as_ref(), true, create, false)?;
+        }
+        Ok((dir, name))
+    }
+    pub fn open_file(&self, relative: &str) -> io::Result<File> {
+        let (dir, name) = self.parent(relative, false)?;
+        read_at(&dir, name.as_ref())
+    }
+    pub fn create_directory(&self, relative: &str) -> io::Result<Self> {
+        let (parent, name) = self.parent(relative, true)?;
+        Ok(Self {
+            dir: create_dir(&parent, name.as_ref())?,
+        })
+    }
+    pub fn ensure_directory(&self, relative: &str) -> io::Result<()> {
+        let (parent, name) = self.parent(relative, true)?;
+        child(&parent, name.as_ref(), true, true, false)?;
+        Ok(())
+    }
+    fn native_parent(&self, relative: &[u8]) -> io::Result<(File, std::ffi::OsString)> {
+        let mut parts = native_parts(relative)?;
+        let leaf = path_from_bytes(parts.pop().unwrap())?;
+        let mut dir = self.dir.try_clone()?;
+        for part in parts {
+            dir = child(&dir, &path_from_bytes(part)?, true, true, false)?;
+        }
+        Ok((dir, leaf))
+    }
+    pub(crate) fn ensure_native_directory(&self, relative: &[u8]) -> io::Result<()> {
+        let (parent, name) = self.native_parent(relative)?;
+        child(&parent, &name, true, true, false)?;
+        Ok(())
+    }
+    pub(crate) fn create_native_file(&self, relative: &[u8]) -> io::Result<File> {
+        let (parent, name) = self.native_parent(relative)?;
+        create_file(&parent, &name)
+    }
+    pub fn create_file(&self, relative: &str) -> io::Result<File> {
+        let (parent, name) = self.parent(relative, true)?;
+        create_file(&parent, name.as_ref())
+    }
+    pub fn atomic_replace(&self, relative: &str, bytes: &[u8]) -> io::Result<()> {
+        let (parent, name) = self.parent(relative, true)?;
+        let temp = format!("{}.jmcl-replace-{}", name, unique());
+        let mut output = create_file(&parent, temp.as_ref())?;
+        let result = (|| {
+            output.write_all(bytes)?;
+            output.sync_all()?;
+            named_op(&output, &parent, name.as_ref(), true)
+        })();
+        if result.is_err() {
+            let _ = unlink(&output);
+        }
+        result
+    }
+    pub fn atomic_replace_bytes(&self, relative: &[u8], bytes: &[u8]) -> io::Result<()> {
+        let (parent, name) = self.native_parent(relative)?;
+        let temp = format!(".jmcl-replace-{}", unique());
+        let mut output = create_file(&parent, temp.as_ref())?;
+        let result = (|| {
+            output.write_all(bytes)?;
+            output.sync_all()?;
+            named_op(&output, &parent, name.as_ref(), true)
+        })();
+        if result.is_err() {
+            let _ = unlink(&output);
+        }
+        result
+    }
+    pub fn remove_tree(&self, relative: &str) -> io::Result<()> {
+        let (parent, name) = self.parent(relative, false)?;
+        remove_tree(&parent, name.as_ref())
+    }
+    pub fn remove_file(&self, relative: &str) -> io::Result<()> {
+        let (parent, name) = self.parent(relative, false)?;
+        unlink(&file_at(&parent, name.as_ref())?)
+    }
+    pub fn remove_directory(&self, relative: &str) -> io::Result<()> {
+        let (parent, name) = self.parent(relative, false)?;
+        unlink(&child(&parent, name.as_ref(), true, false, true)?)
+    }
+    pub fn project(
+        &self,
+        source_path: &str,
+        destination: &str,
+        hash: &str,
+        size: u64,
+    ) -> io::Result<()> {
+        let (source_dir, source_name) = self.parent(source_path, false)?;
+        let mut source = file_at(&source_dir, source_name.as_ref())?;
+        if !matches(&mut source, hash, size)? {
+            return Err(invalid("CacheFileInvalid"));
+        }
+        let (dest, name) = self.parent(destination, true)?;
+        let exists = match file_at(&dest, name.as_ref()) {
+            Ok(_) => true,
+            Err(e) if e.kind() == io::ErrorKind::NotFound => false,
+            Err(e) => return Err(e),
+        };
+        if !exists {
+            match named_op(&source, &dest, name.as_ref(), false) {
+                Ok(()) => return Ok(()),
+                Err(e)
+                    if matches!(e.raw_os_error(), Some(17 | 50))
+                        || e.kind() == io::ErrorKind::AlreadyExists => {}
+                Err(e) => return Err(e),
+            }
+        }
+        let temp = format!("{}.jmcl-projection-{}", name, unique());
+        let mut output = create_file(&dest, temp.as_ref())?;
+        let result = (|| {
+            source.seek(SeekFrom::Start(0))?;
+            if io::copy(&mut source.take(size), &mut output)? != size {
+                return Err(invalid("UnexpectedEndOfFile"));
+            }
+            output.sync_all()?;
+            named_op(&output, &dest, name.as_ref(), true)
+        })();
+        if result.is_err() {
+            let _ = unlink(&output);
+        }
+        result
+    }
+    pub fn verify(&self, relative: &str, hash: &str, size: u64) -> io::Result<bool> {
+        match self.open_file(relative) {
+            Ok(mut f) => matches(&mut f, hash, size),
+            Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(false),
+            Err(e) => Err(e),
+        }
+    }
+}
+pub struct StagedObject<'a> {
+    file: File,
+    dir: File,
+    hash: String,
+    size: u64,
+    published: bool,
+    _lock: std::marker::PhantomData<&'a ObjectLock>,
+}
+impl StagedObject<'_> {
+    pub fn file_mut(&mut self) -> &mut File {
+        &mut self.file
+    }
+    pub fn publish(mut self, sync: bool) -> io::Result<()> {
+        if !matches(&mut self.file, &self.hash, self.size)? {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "ArtifactVerificationFailed",
+            ));
+        }
+        if sync {
+            self.file.sync_all()?;
+        }
+        readonly(&self.file)?;
+        named_op(&self.file, &self.dir, self.hash.as_ref(), true)?;
+        self.published = true;
+        Ok(())
+    }
+}
+impl Drop for StagedObject<'_> {
+    fn drop(&mut self) {
+        if !self.published {
+            let _ = unlink(&self.file);
+        }
+    }
+}
+impl Store {
+    pub(super) fn remove_object_locked(&self, hash: &str) -> io::Result<()> {
+        let result = (|| {
+            let dir = self.prefix(hash, false)?;
+            unlink(&file_at(&dir, hash.as_ref())?)
+        })();
+        match result {
+            Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(()),
+            other => other,
+        }
+    }
+    pub(super) fn stage_locked<'a>(
+        &self,
+        hash: &str,
+        size: u64,
+        _guard: &'a ObjectLock,
+    ) -> io::Result<StagedObject<'a>> {
+        let dir = self.prefix(hash, true)?;
+        let file = create_file(&dir, format!(".jmcl-download-{}", unique()).as_ref())?;
+        Ok(StagedObject {
+            file,
+            dir,
+            hash: hash.into(),
+            size,
+            published: false,
+            _lock: std::marker::PhantomData,
+        })
+    }
+}
+
+pub(crate) fn path_from_bytes(bytes: &[u8]) -> io::Result<std::ffi::OsString> {
+    use std::os::windows::ffi::OsStringExt;
+    let mut wide = Vec::new();
+    let mut i = 0;
+    while i < bytes.len() {
+        let (n, mut cp, min) = match bytes[i] {
+            0..=0x7f => (1, u32::from(bytes[i]), 0),
+            0xc2..=0xdf => (2, u32::from(bytes[i] & 0x1f), 0x80),
+            0xe0..=0xef => (3, u32::from(bytes[i] & 0x0f), 0x800),
+            0xf0..=0xf4 => (4, u32::from(bytes[i] & 7), 0x10000),
+            _ => return Err(invalid("BadPathName")),
+        };
+        if i + n > bytes.len() {
+            return Err(invalid("BadPathName"));
+        }
+        for &b in &bytes[i + 1..i + n] {
+            if b & 0xc0 != 0x80 {
+                return Err(invalid("BadPathName"));
+            }
+            cp = (cp << 6) | u32::from(b & 0x3f);
+        }
+        if cp < min || cp > 0x10ffff {
+            return Err(invalid("BadPathName"));
+        }
+        if cp <= 0xffff {
+            wide.push(cp as u16);
+        } else {
+            let v = cp - 0x10000;
+            wide.push((0xd800 + (v >> 10)) as u16);
+            wide.push((0xdc00 + (v & 0x3ff)) as u16);
+        }
+        i += n;
+    }
+    Ok(std::ffi::OsString::from_wide(&wide))
 }
 
 #[cfg(test)]
@@ -1033,5 +1330,28 @@ mod tests {
         for code in [2, 3, 32, 87, 112] {
             assert!(!fallback(&io::Error::from_raw_os_error(code)));
         }
+    }
+    #[test]
+    fn native_paths_preserve_wtf8_and_reject_invalid_sequences() {
+        use std::os::windows::ffi::OsStringExt;
+        let tmp = tempfile::tempdir().unwrap();
+        let root = ArtifactRoot::open(tmp.path()).unwrap();
+        root.create_native_file(b"\xed\xa0\x80.bin")
+            .unwrap()
+            .write_all(b"native")
+            .unwrap();
+        let name = std::ffi::OsString::from_wide(&[
+            0xd800,
+            b'.' as u16,
+            b'b' as u16,
+            b'i' as u16,
+            b'n' as u16,
+        ]);
+        assert_eq!(std::fs::read(tmp.path().join(name)).unwrap(), b"native");
+        assert_eq!(
+            root.create_native_file(b"\xff").unwrap_err().to_string(),
+            "BadPathName"
+        );
+        assert!(root.create_native_file(b"../bad").is_err());
     }
 }

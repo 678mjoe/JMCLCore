@@ -211,11 +211,10 @@ fn params_unique(raw: &RawValue) -> bool {
                 if let Some(Frame::Object { keys, next_key }) = stack.last_mut()
                     && *next_key
                 {
-                    let key: String = match serde_json::from_slice(&bytes[start..=i]) {
+                    let key = match crate::auth::json::Json(&raw.get()[start..=i]).string() {
                         Ok(k) => k,
                         Err(_) => return false,
                     };
-                    let key = Zeroizing::new(key);
                     if keys.iter().any(|existing| **existing == *key) {
                         return false;
                     }
@@ -249,6 +248,21 @@ pub fn handle_line(line: &[u8], out: &mut impl Write) -> io::Result<()> {
             "Unsupported protocol version",
         );
     }
+    if let Some(result) =
+        crate::install::rpc::handle(out, &request.id, &request.method, request.params)
+    {
+        return result;
+    }
+    if let Some(result) =
+        crate::modpack::rpc::handle(&request.method, request.params, &request.id, out)
+    {
+        return result;
+    }
+    if let Some(result) =
+        crate::launch::rpc::handle(out, &request.id, &request.method, request.params)
+    {
+        return result;
+    }
     if let Some(result) = crate::version::handle(&request.method, request.params)
         .or_else(|| crate::java::select::handle(&request.method, request.params))
     {
@@ -271,6 +285,8 @@ pub fn handle_line(line: &[u8], out: &mut impl Write) -> io::Result<()> {
         .or_else(|| crate::worlds::handle(&request.method, request.params))
         .or_else(|| crate::content::handle(&request.method, request.params))
         .or_else(|| crate::java::handle(&request.method, request.params))
+        .or_else(|| crate::store::handle(&request.method, request.params))
+        .or_else(|| crate::servers::handle(&request.method, request.params))
     {
         return match result {
             Ok(result) => json_line(
