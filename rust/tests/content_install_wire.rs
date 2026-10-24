@@ -396,6 +396,7 @@ fn injected_version_switch_wire_and_disk() {
                     p["api_key"] = json!("synthetic-key")
                 }
                 let mut results = vec![];
+                let mut readonly_states = vec![];
                 for is_zig in [true, false] {
                     let target = if family == "datapacks" {
                         game.join("saves/World")
@@ -435,15 +436,41 @@ fn injected_version_switch_wire_and_disk() {
                     };
                     let req = json!({"protocol":1,"id":"switch","method":format!("{family}.set-version"),"params":params});
                     let o = invoke(&zig, &fixture_path, &f, &req, is_zig);
-                    if matches!(mode, "enabled" | "disabled" | "same") {
-                        assert!(
-                            String::from_utf8_lossy(&o).contains("\"event\":\"result\""),
-                            "{}",
-                            String::from_utf8_lossy(&o)
-                        )
-                    }
-                    results.push((o, snapshot(&game)));
+                    let disk = snapshot(&game);
+                    readonly_states.push(
+                        disk.iter()
+                            .map(|(path, _)| {
+                                (
+                                    path.clone(),
+                                    std::fs::metadata(game.join(path))
+                                        .map(|metadata| metadata.permissions().readonly()),
+                                )
+                            })
+                            .collect::<Vec<_>>(),
+                    );
+                    results.push((o, disk));
                     std::fs::remove_dir_all(&game).unwrap();
+                }
+                // Run both implementations before asserting success so a native
+                // failure identifies its side and preserves both disk outcomes.
+                // These are synthetic fixture bytes, never user credentials.
+                if matches!(mode, "enabled" | "disabled" | "same") {
+                    for (index, (output, _)) in results.iter().enumerate() {
+                        assert!(
+                            String::from_utf8_lossy(output).contains("\"event\":\"result\""),
+                            "{family} {provider} {mode}: {} failed\nZig wire: {}\nRust wire: {}\nZig disk: {:?}\nRust disk: {:?}\nReadonly states [Zig, Rust]: {:?}",
+                            if index == 0 {
+                                "injected pinned Zig"
+                            } else {
+                                "Rust"
+                            },
+                            String::from_utf8_lossy(&results[0].0),
+                            String::from_utf8_lossy(&results[1].0),
+                            results[0].1,
+                            results[1].1,
+                            readonly_states,
+                        );
+                    }
                 }
                 assert_eq!(results[0], results[1], "{family} {provider} {mode}");
                 count += 1;
