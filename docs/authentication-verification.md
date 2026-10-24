@@ -54,3 +54,23 @@ If the IPC process or result pipe fails after a refresh request starts, do not
 assume the locally stored refresh token remains valid. Retry it only through the
 normal flow; if rejected, recover with device authorization. A core without an
 OS-backed secret store cannot make token rotation atomic across a caller crash.
+
+## Account-free HTTP adapter regression checks
+
+`zig build test` includes production `StdHttpTransport` tests using only a
+synthetic HTTP fixture on loopback. They cover numeric loopback addressing,
+`localhost` resolution, successful form POST response handling and timer
+cancellation, and timeout/cancellation of a stalled response. The fixture uses
+cancellable I/O so a failing client does not leave an accept task running.
+It supplies no proxy environment and contacts no Microsoft or Minecraft service.
+
+These checks do not exercise TLS, the operating system trust store, external
+DNS/proxies, a packaged GUI, or real device authorization. They cannot establish
+that a particular user's Windows login failure is fixed. A frontend revision
+alone also does not identify a manually supplied Core sidecar.
+
+Initial verification on Linux x86_64 with Zig 0.16.0, based on Core
+`5a4310debbcee26b3d2391bab2339f79cd6ec52e`: `zig build test --summary all`
+reported 319 passing tests and one skipped test (320 total). The focused adapter
+tests also compile for `x86_64-windows`; compilation is not a Windows execution
+result. Native Windows execution remains necessary.

@@ -228,3 +228,73 @@ test "rejects unsafe bearer header bytes before network access" {
         .bearer_token = "token\r\ninjected: value",
     }));
 }
+
+// Exercises the production adapter without contacting an account service.
+const LoopbackHttpFixture = struct {
+    io: std.Io,
+    listener: *std.Io.net.Server,
+    stall: bool = false,
+
+    fn serve(fixture: *LoopbackHttpFixture) !void {
+        var stream = try fixture.listener.accept(fixture.io);
+        defer stream.close(fixture.io);
+        var read_buffer: [4096]u8 = undefined;
+        var write_buffer: [4096]u8 = undefined;
+        var reader = stream.reader(fixture.io, &read_buffer);
+        var writer = stream.writer(fixture.io, &write_buffer);
+        var server: std.http.Server = .init(&reader.interface, &writer.interface);
+        var request = try server.receiveHead();
+        if (fixture.stall) try std.Io.sleep(fixture.io, .fromSeconds(10), .awake);
+        try request.respond("{\"fixture\":true}", .{ .keep_alive = false });
+    }
+};
+
+fn checkLoopbackHttp(host: []const u8) !void {
+    const io = std.testing.io;
+    const allocator = std.testing.allocator;
+    const address = try std.Io.net.IpAddress.parse("127.0.0.1", 0);
+    var listener = try address.listen(io, .{ .reuse_address = true });
+    defer listener.deinit(io);
+    var fixture: LoopbackHttpFixture = .{ .io = io, .listener = &listener };
+    var serving = try io.concurrent(LoopbackHttpFixture.serve, .{&fixture});
+    defer _ = serving.cancel(io) catch {};
+    const url = try std.fmt.allocPrint(allocator, "http://{s}:{d}/synthetic", .{ host, listener.socket.address.getPort() });
+    defer allocator.free(url);
+    var adapter: StdHttpTransport = .{ .io = io, .environ_map = null };
+    var response = try adapter.transport().postForm(allocator, .{
+        .url = url,
+        .body = "client_id=synthetic-fixture",
+        .timeout_ms = 2000,
+    });
+    defer response.deinit(allocator);
+    try serving.await(io);
+    try std.testing.expectEqual(std.http.Status.ok, response.status);
+    try std.testing.expectEqualStrings("{\"fixture\":true}", try response.body());
+}
+
+test "authentication HTTP adapter posts to numeric loopback and cancels timer" {
+    try checkLoopbackHttp("127.0.0.1");
+}
+
+test "authentication HTTP adapter resolves localhost and cancels timer" {
+    try checkLoopbackHttp("localhost");
+}
+
+test "authentication HTTP adapter times out a stalled loopback response" {
+    const io = std.testing.io;
+    const allocator = std.testing.allocator;
+    const address = try std.Io.net.IpAddress.parse("127.0.0.1", 0);
+    var listener = try address.listen(io, .{ .reuse_address = true });
+    defer listener.deinit(io);
+    var fixture: LoopbackHttpFixture = .{ .io = io, .listener = &listener, .stall = true };
+    var serving = try io.concurrent(LoopbackHttpFixture.serve, .{&fixture});
+    defer _ = serving.cancel(io) catch {};
+    const url = try std.fmt.allocPrint(allocator, "http://127.0.0.1:{d}/synthetic", .{listener.socket.address.getPort()});
+    defer allocator.free(url);
+    var adapter: StdHttpTransport = .{ .io = io, .environ_map = null };
+    try std.testing.expectError(error.Timeout, adapter.transport().postForm(allocator, .{
+        .url = url,
+        .body = "client_id=synthetic-fixture",
+        .timeout_ms = 100,
+    }));
+}
