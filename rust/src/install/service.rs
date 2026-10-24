@@ -112,3 +112,59 @@ pub fn record_completed(root: &ArtifactRoot, p: &Selection, target: &Target) -> 
     root.atomic_replace(".jmcl/install.json", &bytes)?;
     Ok(())
 }
+
+/// Legacy Forge has no processor chain. Do not infer a chain merely from the
+/// request's forge_version: the resolved plan is the source of truth.
+pub fn processor_loader<'a>(
+    plan: &Plan,
+    selection: &'a Selection,
+) -> Option<crate::loaders::Loader<'a>> {
+    match plan.loader.as_str() {
+        "forge" => {
+            selection
+                .forge_version
+                .as_deref()
+                .map(|version| crate::loaders::Loader::Forge {
+                    minecraft: &selection.id,
+                    version,
+                })
+        }
+        "neoforge" => selection
+            .neoforge_version
+            .as_deref()
+            .map(|version| crate::loaders::Loader::NeoForge { version }),
+        _ => None,
+    }
+}
+/// Preserve policy resolution before the chain (including its cached shortcut).
+/// Missing runtime provisioning is explicit: archive installation is not part
+/// of this slice and must never become a synthetic success.
+pub fn processor_java(
+    plan: &Plan,
+    paths: &[String],
+    policy: &str,
+    store: &std::path::Path,
+    environment: &crate::java::detect::Environment,
+) -> Result<String, &'static str> {
+    use crate::java::managed::{self, Policy};
+    let policy = match policy {
+        "auto" => Policy::Auto,
+        "local" => Policy::Local,
+        "managed" => Policy::Managed,
+        _ => return Err("InvalidInput"),
+    };
+    let request = managed::Request {
+        required_major: plan.java_major_version,
+        component: None,
+        arch: plan.target.arch.clone(),
+        policy,
+        java_paths: paths.to_vec(),
+        java_override: None,
+        store_directory: store.to_string_lossy().into_owned(),
+        allow_download: true,
+    };
+    managed::resolve(Some(environment), &request, &mut |_, _| {
+        Err("NotImplemented")
+    })
+    .map(|r| r.runtime.executable)
+}

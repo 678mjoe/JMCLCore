@@ -17,6 +17,10 @@ env:
   RUST_VERSION: 1.99.1
   # Experimental exact allowlist only; strict replacement checks omit this.
   JMCL_ALLOW_KNOWN_ORACLE_GAPS: "1"
+  JMCL_ALLOW_PROCESSOR_HASH_LIFETIME_GAP: "1"
+  CARGO_INCREMENTAL: "0"
+  CARGO_PROFILE_DEV_DEBUG: "0"
+  CARGO_PROFILE_TEST_DEBUG: "0"
   ORACLE_REVISION: 5a4310debbcee26b3d2391bab2339f79cd6ec52e
 
 jobs:
@@ -121,6 +125,7 @@ jobs:
           from pathlib import Path
           names = {
               "metadata": "JMCL_ZIG_METADATA_ORACLE",
+              "loaders": "JMCL_ZIG_LOADERS_ORACLE",
               "content_metadata": "JMCL_CONTENT_METADATA_ORACLE",
               "install": "JMCL_ZIG_INSTALL_ORACLE",
               "prepare": "JMCL_ZIG_PREPARE_ORACLE",
@@ -137,10 +142,34 @@ jobs:
                                   f"-Mjmcl_core={Path('.ci-oracle/src/root.zig').resolve()}",
                                   f"-femit-bin={binary}"], check=True)
                   output.write(f"{variable}={binary}\n")
+              binary = Path(os.environ["RUNNER_TEMP"]) / f"jmcl-loaders-install-oracle{suffix}"
+              subprocess.run(["zig", "build-exe", "--dep", "jmcl_core", "--dep", "jmcl_cli",
+                              "-Mroot=rust/compat/loaders_install_oracle.zig",
+                              f"-Mjmcl_core={Path('.ci-oracle/src/root.zig').resolve()}",
+                              "--dep", "jmcl_core", f"-Mjmcl_cli={Path('.ci-oracle/src/main.zig').resolve()}",
+                              f"-femit-bin={binary}"], check=True)
+              output.write(f"JMCL_ZIG_LOADERS_INSTALL_ORACLE={binary}\n")
               if os.name != "nt":
                   child = Path(os.environ["RUNNER_TEMP"]) / "jmcl-launch-child"
                   subprocess.run(["cc", "rust/tests/fixtures/launch/child.c", "-o", str(child)], check=True)
                   output.write(f"JMCL_FAKE_LAUNCH_CHILD={child}\n")
+          PYTHON
+      - name: Build explicitly injected service oracles (synthetic transports only)
+        run: |
+          python - <<'PYTHON'
+          import os, shutil, subprocess, sys
+          from pathlib import Path
+          zig = shutil.which("zig")
+          root = Path(os.environ["RUNNER_TEMP"])
+          jobs = [
+              ("JMCL_AUTH_ORACLE", [sys.executable, "rust/compat/build_auth_oracle.py", zig, ".ci-oracle", str(root / "jmcl-auth-oracle")]),
+              ("JMCL_CONTENT_SERVICE_ORACLE", [sys.executable, "rust/compat/build_content_fixture_oracle.py", "--source", ".ci-oracle", "--output", str(root / "jmcl-content-oracle"), "--zig", zig]),
+          ]
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as output:
+              for variable, command in jobs:
+                  binary = subprocess.check_output(command, text=True).strip().splitlines()[-1]
+                  assert Path(binary).is_file(), binary
+                  output.write(f"{variable}={binary}\n")
           PYTHON
       - name: Rust formatting and tests
         working-directory: rust
@@ -155,10 +184,10 @@ jobs:
         run: |
           python rust/compat/validate_coverage.py --oracle-source .ci-oracle
           if [[ "$RUNNER_OS" == "Windows" ]]; then
-            python rust/compat/check.py --zig .ci-oracle/zig-out/bin/jmcl-core.exe --rust rust/target/release/jmcl-core-rust.exe --oracle-source .ci-oracle --allow-known-gaps
+            python rust/compat/check.py --zig .ci-oracle/zig-out/bin/jmcl-core.exe --rust rust/target/release/jmcl-core-rust.exe --oracle-source .ci-oracle --allow-approved-deviations
             python rust/compat/accounts.py --zig .ci-oracle/zig-out/bin/jmcl-core.exe --rust rust/target/release/jmcl-core-rust.exe
           else
-            python rust/compat/check.py --zig .ci-oracle/zig-out/bin/jmcl-core --rust rust/target/release/jmcl-core-rust --oracle-source .ci-oracle --allow-known-gaps
+            python rust/compat/check.py --zig .ci-oracle/zig-out/bin/jmcl-core --rust rust/target/release/jmcl-core-rust --oracle-source .ci-oracle --allow-approved-deviations
             python rust/compat/accounts.py --zig .ci-oracle/zig-out/bin/jmcl-core --rust rust/target/release/jmcl-core-rust
           fi
       - name: Offline metadata and Java raw-wire corpus
@@ -166,7 +195,7 @@ jobs:
           python - <<'PYTHON'
           import os, subprocess
           suffix = ".exe" if os.name == "nt" else ""
-          for script in ["version_check.py", "java.py", "launch_rpc.py", "store.py"]:
+          for script in ["version_check.py", "java.py", "launch_rpc.py", "launch_execute.py", "instance_install.py", "instance_validation_check.py", "protocol_edges.py", "store.py"]:
               subprocess.run(["python", f"rust/compat/{script}", "--zig",
                               f".ci-oracle/zig-out/bin/jmcl-core{suffix}", "--rust",
                               f"rust/target/release/jmcl-core-rust{suffix}"], check=True)
@@ -175,3 +204,5 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           python rust/compat/server_oracle.py --zig .ci-oracle/zig-out/bin/jmcl-core --rust rust/target/release/jmcl-core-rust --oracle-source .ci-oracle
+          python rust/compat/server_remote.py --zig .ci-oracle/zig-out/bin/jmcl-core --rust rust/target/release/jmcl-core-rust --oracle-source .ci-oracle
+          python rust/compat/server_install.py --zig .ci-oracle/zig-out/bin/jmcl-core --rust rust/target/release/jmcl-core-rust --oracle-source .ci-oracle

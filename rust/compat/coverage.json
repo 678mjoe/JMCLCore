@@ -28,10 +28,12 @@
         "windows": "pending CI"
       },
       "known_gaps": [
-        "RPC oversized pipelined request recovery differs from pinned Zig oracle; owner decision pending.",
         "This finite corpus does not prove all possible inputs."
       ],
-      "compatible": false
+      "compatible": false,
+      "approved_deviations": [
+        "ZIG-001: exact invalid-request response then intact next ping; literal oracle mode still differs."
+      ]
     },
     {
       "method": "core.version",
@@ -57,10 +59,12 @@
         "windows": "pending CI"
       },
       "known_gaps": [
-        "RPC oversized pipelined request recovery differs from pinned Zig oracle; owner decision pending.",
         "This finite corpus does not prove all possible inputs."
       ],
-      "compatible": false
+      "compatible": false,
+      "approved_deviations": [
+        "ZIG-001: exact invalid-request response then intact next ping; literal oracle mode still differs."
+      ]
     },
     {
       "method": "version.list",
@@ -91,7 +95,8 @@
         "Finite fixture corpus does not establish all upstream schemas, platform errors or live network behavior.",
         "Oversized request recovery global oracle divergence remains pending owner decision."
       ],
-      "compatible": false
+      "compatible": false,
+      "approved_deviations": []
     },
     {
       "method": "version.get",
@@ -122,7 +127,8 @@
         "Finite fixture corpus does not establish all upstream schemas, platform errors or live network behavior.",
         "Oversized request recovery global oracle divergence remains pending owner decision."
       ],
-      "compatible": false
+      "compatible": false,
+      "approved_deviations": []
     },
     {
       "method": "version.resolve",
@@ -153,7 +159,8 @@
         "Finite fixture corpus does not establish all upstream schemas, platform errors or live network behavior.",
         "Oversized request recovery global oracle divergence remains pending owner decision."
       ],
-      "compatible": false
+      "compatible": false,
+      "approved_deviations": []
     },
     {
       "method": "install.plan",
@@ -184,7 +191,8 @@
         "Finite fixture corpus does not establish all upstream schemas, platform errors or live network behavior.",
         "Oversized request recovery global oracle divergence remains pending owner decision."
       ],
-      "compatible": false
+      "compatible": false,
+      "approved_deviations": []
     },
     {
       "method": "install.execute",
@@ -192,7 +200,8 @@
       "implementation": "partial_slice",
       "success_cases": [
         "install_rpc_differential: official/BMCL cached terminal/event/receipt corpus",
-        "install_differential and prepare_differential: pinned typed oracle fixtures"
+        "install_differential and prepare_differential: pinned typed oracle fixtures",
+        "tests/loaders_differential.rs: 96 engine cases, 20 CLI and 24 RPC runs (one exact approved hash-lifetime correction)"
       ],
       "invalid_cases": [
         "install_rpc_differential: 202 parameter cases and 24 CLI cases"
@@ -213,11 +222,13 @@
         "windows": "pending native CI"
       },
       "known_gaps": [
-        "Modern Forge/NeoForge processor engine explicitly unsupported before filesystem mutation.",
-        "Live network transport/redirect/error parity and native-platform acceptance pending.",
-        "Finite fixtures are not full compatibility proof."
+        "Automatic Java acquisition unavailable; local/installed paths only.",
+        "Live transport and combined native execution remain acceptance gates."
       ],
-      "compatible": false
+      "compatible": false,
+      "approved_deviations": [
+        "ZIG-003: Rust patched_client must equal actual generated file SHA-1; every unaffected output and receipt remains compared."
+      ]
     },
     {
       "method": "install.prepare",
@@ -225,7 +236,8 @@
       "implementation": "partial_slice",
       "success_cases": [
         "install_rpc_differential: official/BMCL cached terminal/event/receipt corpus",
-        "install_differential and prepare_differential: pinned typed oracle fixtures"
+        "install_differential and prepare_differential: pinned typed oracle fixtures",
+        "tests/loaders_differential.rs: 96 engine cases, 20 CLI and 24 RPC runs (one exact approved hash-lifetime correction)"
       ],
       "invalid_cases": [
         "install_rpc_differential: 202 parameter cases and 24 CLI cases"
@@ -246,11 +258,13 @@
         "windows": "pending native CI"
       },
       "known_gaps": [
-        "Modern Forge/NeoForge processor engine explicitly unsupported before filesystem mutation.",
-        "Live network transport/redirect/error parity and native-platform acceptance pending.",
-        "Finite fixtures are not full compatibility proof."
+        "Automatic Java acquisition unavailable; local/installed paths only.",
+        "Live transport and combined native execution remain acceptance gates."
       ],
-      "compatible": false
+      "compatible": false,
+      "approved_deviations": [
+        "ZIG-003: Rust patched_client must equal actual generated file SHA-1; every unaffected output and receipt remains compared."
+      ]
     },
     {
       "method": "store.gc",
@@ -283,7 +297,11 @@
         "Not implemented.",
         "Pinned Windows Zig GC reports one error instead of blocking under an existing held digest lock; exact error/retention/post-release pair allowlisted only in experimental CI. Strict replacement remains blocked."
       ],
-      "compatible": false
+      "compatible": false,
+      "approved_deviations": [
+        "ZIG-004: deterministic safe parameter error instead of numeric abort.",
+        "ZIG-005: exact Windows lock contention observation; exclusion and after-release cleanup positively asserted."
+      ]
     },
     {
       "method": "mods.list",
@@ -314,37 +332,62 @@
         "Finite fixture corpus does not establish all upstream schemas, platform errors or live network behavior.",
         "Oversized request recovery global oracle divergence remains pending owner decision."
       ],
-      "compatible": false
+      "compatible": false,
+      "approved_deviations": []
     },
     {
       "method": "mods.install",
       "source_inventory": true,
-      "implementation": "not_started",
-      "success_cases": [],
-      "invalid_cases": [],
-      "error_cases": [],
-      "event_cases": [],
-      "disk_cases": [],
+      "implementation": "implemented_slice",
+      "success_cases": [
+        "tests/content_install_wire.rs: finite success fixtures"
+      ],
+      "invalid_cases": [
+        "tests/content_install_wire.rs: parameter/selector corpus"
+      ],
+      "error_cases": [
+        "tests/content_install_wire.rs: explicit failure fixtures"
+      ],
+      "event_cases": [
+        "tests/content_install_wire.rs: response ordering and writer checks where applicable"
+      ],
+      "disk_cases": [
+        "tests/content_install_wire.rs: fixture disk/receipt effects where applicable"
+      ],
       "platform_evidence": {},
       "known_gaps": [
-        "Not implemented."
+        "Synthetic provider and transport fixtures; live HTTPS/redirect/error behavior not established.",
+        "Native combined execution pending."
       ],
-      "compatible": false
+      "compatible": false,
+      "approved_deviations": []
     },
     {
       "method": "mods.set-version",
       "source_inventory": true,
-      "implementation": "not_started",
-      "success_cases": [],
-      "invalid_cases": [],
-      "error_cases": [],
-      "event_cases": [],
-      "disk_cases": [],
+      "implementation": "implemented_slice",
+      "success_cases": [
+        "tests/content_install_wire.rs: finite success fixtures"
+      ],
+      "invalid_cases": [
+        "tests/content_install_wire.rs: parameter/selector corpus"
+      ],
+      "error_cases": [
+        "tests/content_install_wire.rs: explicit failure fixtures"
+      ],
+      "event_cases": [
+        "tests/content_install_wire.rs: response ordering and writer checks where applicable"
+      ],
+      "disk_cases": [
+        "tests/content_install_wire.rs: fixture disk/receipt effects where applicable"
+      ],
       "platform_evidence": {},
       "known_gaps": [
-        "Not implemented."
+        "Synthetic provider and transport fixtures; live HTTPS/redirect/error behavior not established.",
+        "Native combined execution pending."
       ],
-      "compatible": false
+      "compatible": false,
+      "approved_deviations": []
     },
     {
       "method": "mods.enable",
@@ -375,7 +418,8 @@
         "Finite fixture corpus does not establish all upstream schemas, platform errors or live network behavior.",
         "Oversized request recovery global oracle divergence remains pending owner decision."
       ],
-      "compatible": false
+      "compatible": false,
+      "approved_deviations": []
     },
     {
       "method": "mods.disable",
@@ -406,7 +450,8 @@
         "Finite fixture corpus does not establish all upstream schemas, platform errors or live network behavior.",
         "Oversized request recovery global oracle divergence remains pending owner decision."
       ],
-      "compatible": false
+      "compatible": false,
+      "approved_deviations": []
     },
     {
       "method": "mods.remove",
@@ -437,7 +482,8 @@
         "Finite fixture corpus does not establish all upstream schemas, platform errors or live network behavior.",
         "Oversized request recovery global oracle divergence remains pending owner decision."
       ],
-      "compatible": false
+      "compatible": false,
+      "approved_deviations": []
     },
     {
       "method": "mods.adopt",
@@ -468,7 +514,8 @@
         "Finite corpus is not exhaustive compatibility; real upstream/network behavior not established.",
         "Global oversized-input divergence remains pending owner decision."
       ],
-      "compatible": false
+      "compatible": false,
+      "approved_deviations": []
     },
     {
       "method": "resourcepacks.list",
@@ -499,37 +546,62 @@
         "Finite fixture corpus does not establish all upstream schemas, platform errors or live network behavior.",
         "Oversized request recovery global oracle divergence remains pending owner decision."
       ],
-      "compatible": false
+      "compatible": false,
+      "approved_deviations": []
     },
     {
       "method": "resourcepacks.install",
       "source_inventory": true,
-      "implementation": "not_started",
-      "success_cases": [],
-      "invalid_cases": [],
-      "error_cases": [],
-      "event_cases": [],
-      "disk_cases": [],
+      "implementation": "implemented_slice",
+      "success_cases": [
+        "tests/content_install_wire.rs: finite success fixtures"
+      ],
+      "invalid_cases": [
+        "tests/content_install_wire.rs: parameter/selector corpus"
+      ],
+      "error_cases": [
+        "tests/content_install_wire.rs: explicit failure fixtures"
+      ],
+      "event_cases": [
+        "tests/content_install_wire.rs: response ordering and writer checks where applicable"
+      ],
+      "disk_cases": [
+        "tests/content_install_wire.rs: fixture disk/receipt effects where applicable"
+      ],
       "platform_evidence": {},
       "known_gaps": [
-        "Not implemented."
+        "Synthetic provider and transport fixtures; live HTTPS/redirect/error behavior not established.",
+        "Native combined execution pending."
       ],
-      "compatible": false
+      "compatible": false,
+      "approved_deviations": []
     },
     {
       "method": "resourcepacks.set-version",
       "source_inventory": true,
-      "implementation": "not_started",
-      "success_cases": [],
-      "invalid_cases": [],
-      "error_cases": [],
-      "event_cases": [],
-      "disk_cases": [],
+      "implementation": "implemented_slice",
+      "success_cases": [
+        "tests/content_install_wire.rs: finite success fixtures"
+      ],
+      "invalid_cases": [
+        "tests/content_install_wire.rs: parameter/selector corpus"
+      ],
+      "error_cases": [
+        "tests/content_install_wire.rs: explicit failure fixtures"
+      ],
+      "event_cases": [
+        "tests/content_install_wire.rs: response ordering and writer checks where applicable"
+      ],
+      "disk_cases": [
+        "tests/content_install_wire.rs: fixture disk/receipt effects where applicable"
+      ],
       "platform_evidence": {},
       "known_gaps": [
-        "Not implemented."
+        "Synthetic provider and transport fixtures; live HTTPS/redirect/error behavior not established.",
+        "Native combined execution pending."
       ],
-      "compatible": false
+      "compatible": false,
+      "approved_deviations": []
     },
     {
       "method": "resourcepacks.enable",
@@ -560,7 +632,8 @@
         "Finite fixture corpus does not establish all upstream schemas, platform errors or live network behavior.",
         "Oversized request recovery global oracle divergence remains pending owner decision."
       ],
-      "compatible": false
+      "compatible": false,
+      "approved_deviations": []
     },
     {
       "method": "resourcepacks.disable",
@@ -591,7 +664,8 @@
         "Finite fixture corpus does not establish all upstream schemas, platform errors or live network behavior.",
         "Oversized request recovery global oracle divergence remains pending owner decision."
       ],
-      "compatible": false
+      "compatible": false,
+      "approved_deviations": []
     },
     {
       "method": "resourcepacks.remove",
@@ -622,7 +696,8 @@
         "Finite fixture corpus does not establish all upstream schemas, platform errors or live network behavior.",
         "Oversized request recovery global oracle divergence remains pending owner decision."
       ],
-      "compatible": false
+      "compatible": false,
+      "approved_deviations": []
     },
     {
       "method": "resourcepacks.adopt",
@@ -653,7 +728,8 @@
         "Finite corpus is not exhaustive compatibility; real upstream/network behavior not established.",
         "Global oversized-input divergence remains pending owner decision."
       ],
-      "compatible": false
+      "compatible": false,
+      "approved_deviations": []
     },
     {
       "method": "shaderpacks.list",
@@ -684,37 +760,62 @@
         "Finite fixture corpus does not establish all upstream schemas, platform errors or live network behavior.",
         "Oversized request recovery global oracle divergence remains pending owner decision."
       ],
-      "compatible": false
+      "compatible": false,
+      "approved_deviations": []
     },
     {
       "method": "shaderpacks.install",
       "source_inventory": true,
-      "implementation": "not_started",
-      "success_cases": [],
-      "invalid_cases": [],
-      "error_cases": [],
-      "event_cases": [],
-      "disk_cases": [],
+      "implementation": "implemented_slice",
+      "success_cases": [
+        "tests/content_install_wire.rs: finite success fixtures"
+      ],
+      "invalid_cases": [
+        "tests/content_install_wire.rs: parameter/selector corpus"
+      ],
+      "error_cases": [
+        "tests/content_install_wire.rs: explicit failure fixtures"
+      ],
+      "event_cases": [
+        "tests/content_install_wire.rs: response ordering and writer checks where applicable"
+      ],
+      "disk_cases": [
+        "tests/content_install_wire.rs: fixture disk/receipt effects where applicable"
+      ],
       "platform_evidence": {},
       "known_gaps": [
-        "Not implemented."
+        "Synthetic provider and transport fixtures; live HTTPS/redirect/error behavior not established.",
+        "Native combined execution pending."
       ],
-      "compatible": false
+      "compatible": false,
+      "approved_deviations": []
     },
     {
       "method": "shaderpacks.set-version",
       "source_inventory": true,
-      "implementation": "not_started",
-      "success_cases": [],
-      "invalid_cases": [],
-      "error_cases": [],
-      "event_cases": [],
-      "disk_cases": [],
+      "implementation": "implemented_slice",
+      "success_cases": [
+        "tests/content_install_wire.rs: finite success fixtures"
+      ],
+      "invalid_cases": [
+        "tests/content_install_wire.rs: parameter/selector corpus"
+      ],
+      "error_cases": [
+        "tests/content_install_wire.rs: explicit failure fixtures"
+      ],
+      "event_cases": [
+        "tests/content_install_wire.rs: response ordering and writer checks where applicable"
+      ],
+      "disk_cases": [
+        "tests/content_install_wire.rs: fixture disk/receipt effects where applicable"
+      ],
       "platform_evidence": {},
       "known_gaps": [
-        "Not implemented."
+        "Synthetic provider and transport fixtures; live HTTPS/redirect/error behavior not established.",
+        "Native combined execution pending."
       ],
-      "compatible": false
+      "compatible": false,
+      "approved_deviations": []
     },
     {
       "method": "shaderpacks.enable",
@@ -745,7 +846,8 @@
         "Finite fixture corpus does not establish all upstream schemas, platform errors or live network behavior.",
         "Oversized request recovery global oracle divergence remains pending owner decision."
       ],
-      "compatible": false
+      "compatible": false,
+      "approved_deviations": []
     },
     {
       "method": "shaderpacks.disable",
@@ -776,7 +878,8 @@
         "Finite fixture corpus does not establish all upstream schemas, platform errors or live network behavior.",
         "Oversized request recovery global oracle divergence remains pending owner decision."
       ],
-      "compatible": false
+      "compatible": false,
+      "approved_deviations": []
     },
     {
       "method": "shaderpacks.remove",
@@ -807,7 +910,8 @@
         "Finite fixture corpus does not establish all upstream schemas, platform errors or live network behavior.",
         "Oversized request recovery global oracle divergence remains pending owner decision."
       ],
-      "compatible": false
+      "compatible": false,
+      "approved_deviations": []
     },
     {
       "method": "shaderpacks.adopt",
@@ -838,7 +942,8 @@
         "Finite corpus is not exhaustive compatibility; real upstream/network behavior not established.",
         "Global oversized-input divergence remains pending owner decision."
       ],
-      "compatible": false
+      "compatible": false,
+      "approved_deviations": []
     },
     {
       "method": "datapacks.list",
@@ -869,37 +974,62 @@
         "Finite fixture corpus does not establish all upstream schemas, platform errors or live network behavior.",
         "Oversized request recovery global oracle divergence remains pending owner decision."
       ],
-      "compatible": false
+      "compatible": false,
+      "approved_deviations": []
     },
     {
       "method": "datapacks.install",
       "source_inventory": true,
-      "implementation": "not_started",
-      "success_cases": [],
-      "invalid_cases": [],
-      "error_cases": [],
-      "event_cases": [],
-      "disk_cases": [],
+      "implementation": "implemented_slice",
+      "success_cases": [
+        "tests/content_install_wire.rs: finite success fixtures"
+      ],
+      "invalid_cases": [
+        "tests/content_install_wire.rs: parameter/selector corpus"
+      ],
+      "error_cases": [
+        "tests/content_install_wire.rs: explicit failure fixtures"
+      ],
+      "event_cases": [
+        "tests/content_install_wire.rs: response ordering and writer checks where applicable"
+      ],
+      "disk_cases": [
+        "tests/content_install_wire.rs: fixture disk/receipt effects where applicable"
+      ],
       "platform_evidence": {},
       "known_gaps": [
-        "Not implemented."
+        "Synthetic provider and transport fixtures; live HTTPS/redirect/error behavior not established.",
+        "Native combined execution pending."
       ],
-      "compatible": false
+      "compatible": false,
+      "approved_deviations": []
     },
     {
       "method": "datapacks.set-version",
       "source_inventory": true,
-      "implementation": "not_started",
-      "success_cases": [],
-      "invalid_cases": [],
-      "error_cases": [],
-      "event_cases": [],
-      "disk_cases": [],
+      "implementation": "implemented_slice",
+      "success_cases": [
+        "tests/content_install_wire.rs: finite success fixtures"
+      ],
+      "invalid_cases": [
+        "tests/content_install_wire.rs: parameter/selector corpus"
+      ],
+      "error_cases": [
+        "tests/content_install_wire.rs: explicit failure fixtures"
+      ],
+      "event_cases": [
+        "tests/content_install_wire.rs: response ordering and writer checks where applicable"
+      ],
+      "disk_cases": [
+        "tests/content_install_wire.rs: fixture disk/receipt effects where applicable"
+      ],
       "platform_evidence": {},
       "known_gaps": [
-        "Not implemented."
+        "Synthetic provider and transport fixtures; live HTTPS/redirect/error behavior not established.",
+        "Native combined execution pending."
       ],
-      "compatible": false
+      "compatible": false,
+      "approved_deviations": []
     },
     {
       "method": "datapacks.enable",
@@ -930,7 +1060,8 @@
         "Finite fixture corpus does not establish all upstream schemas, platform errors or live network behavior.",
         "Oversized request recovery global oracle divergence remains pending owner decision."
       ],
-      "compatible": false
+      "compatible": false,
+      "approved_deviations": []
     },
     {
       "method": "datapacks.disable",
@@ -961,7 +1092,8 @@
         "Finite fixture corpus does not establish all upstream schemas, platform errors or live network behavior.",
         "Oversized request recovery global oracle divergence remains pending owner decision."
       ],
-      "compatible": false
+      "compatible": false,
+      "approved_deviations": []
     },
     {
       "method": "datapacks.remove",
@@ -992,7 +1124,8 @@
         "Finite fixture corpus does not establish all upstream schemas, platform errors or live network behavior.",
         "Oversized request recovery global oracle divergence remains pending owner decision."
       ],
-      "compatible": false
+      "compatible": false,
+      "approved_deviations": []
     },
     {
       "method": "datapacks.adopt",
@@ -1023,7 +1156,8 @@
         "Finite corpus is not exhaustive compatibility; real upstream/network behavior not established.",
         "Global oversized-input divergence remains pending owner decision."
       ],
-      "compatible": false
+      "compatible": false,
+      "approved_deviations": []
     },
     {
       "method": "modpack.install",
@@ -1055,14 +1189,16 @@
         "Global oversized-input divergence remains pending owner decision.",
         "Live provider API/TLS failures and native platform filesystem acceptance pending."
       ],
-      "compatible": false
+      "compatible": false,
+      "approved_deviations": []
     },
     {
       "method": "instance.create",
       "source_inventory": true,
       "implementation": "partial",
       "success_cases": [
-        "tests/instance_differential.rs: shared_directory_bidirectional"
+        "tests/instance_differential.rs: shared_directory_bidirectional",
+        "compat/instance_validation_check.py: 71 cached RPC/CLI/disk cases"
       ],
       "invalid_cases": [
         "tests/instance_differential.rs: invalid_parameter_and_disk_corpus",
@@ -1086,10 +1222,10 @@
         "windows": "adapter implemented and cross-compiled; native CI pending"
       },
       "known_gaps": [
-        "Native platform matrix pending.",
-        "validate=true metadata/loader resolution unported."
+        "Live metadata transport and combined native acceptance pending."
       ],
-      "compatible": false
+      "compatible": false,
+      "approved_deviations": []
     },
     {
       "method": "instance.list",
@@ -1122,7 +1258,8 @@
       "known_gaps": [
         "Native platform matrix pending."
       ],
-      "compatible": false
+      "compatible": false,
+      "approved_deviations": []
     },
     {
       "method": "instance.get",
@@ -1155,7 +1292,8 @@
       "known_gaps": [
         "Native platform matrix pending."
       ],
-      "compatible": false
+      "compatible": false,
+      "approved_deviations": []
     },
     {
       "method": "instance.delete",
@@ -1188,22 +1326,35 @@
       "known_gaps": [
         "Native platform matrix pending."
       ],
-      "compatible": false
+      "compatible": false,
+      "approved_deviations": []
     },
     {
       "method": "server.create",
       "source_inventory": true,
-      "implementation": "not_started",
-      "success_cases": [],
-      "invalid_cases": [],
-      "error_cases": [],
-      "event_cases": [],
-      "disk_cases": [],
+      "implementation": "implemented_slice",
+      "success_cases": [
+        "compat/server_install.py: finite success fixtures"
+      ],
+      "invalid_cases": [
+        "compat/server_install.py: parameter/selector corpus"
+      ],
+      "error_cases": [
+        "compat/server_install.py: explicit failure fixtures"
+      ],
+      "event_cases": [
+        "compat/server_install.py: response ordering and writer checks where applicable"
+      ],
+      "disk_cases": [
+        "compat/server_install.py: fixture disk/receipt effects where applicable"
+      ],
       "platform_evidence": {},
       "known_gaps": [
-        "Not implemented."
+        "Vanilla/Fabric cached end-to-end fixtures; full real loader/server deployment not performed.",
+        "Automatic Java acquisition unavailable."
       ],
-      "compatible": false
+      "compatible": false,
+      "approved_deviations": []
     },
     {
       "method": "server.list",
@@ -1236,7 +1387,8 @@
         "Synthetic Linux only; original RPC Linux platform gate preserved. Non-Linux server-world readonly CLI parity not yet complete.",
         "Real Minecraft server deployment not executed."
       ],
-      "compatible": false
+      "compatible": false,
+      "approved_deviations": []
     },
     {
       "method": "server.get",
@@ -1269,7 +1421,8 @@
         "Synthetic Linux only; original RPC Linux platform gate preserved. Non-Linux server-world readonly CLI parity not yet complete.",
         "Real Minecraft server deployment not executed."
       ],
-      "compatible": false
+      "compatible": false,
+      "approved_deviations": []
     },
     {
       "method": "server.delete",
@@ -1302,22 +1455,35 @@
         "Synthetic Linux only; original RPC Linux platform gate preserved. Non-Linux server-world readonly CLI parity not yet complete.",
         "Real Minecraft server deployment not executed."
       ],
-      "compatible": false
+      "compatible": false,
+      "approved_deviations": []
     },
     {
       "method": "server.install",
       "source_inventory": true,
-      "implementation": "not_started",
-      "success_cases": [],
-      "invalid_cases": [],
-      "error_cases": [],
-      "event_cases": [],
-      "disk_cases": [],
+      "implementation": "implemented_slice",
+      "success_cases": [
+        "compat/server_install.py: finite success fixtures"
+      ],
+      "invalid_cases": [
+        "compat/server_install.py: parameter/selector corpus"
+      ],
+      "error_cases": [
+        "compat/server_install.py: explicit failure fixtures"
+      ],
+      "event_cases": [
+        "compat/server_install.py: response ordering and writer checks where applicable"
+      ],
+      "disk_cases": [
+        "compat/server_install.py: fixture disk/receipt effects where applicable"
+      ],
       "platform_evidence": {},
       "known_gaps": [
-        "Not implemented."
+        "Vanilla/Fabric cached end-to-end fixtures; full real loader/server deployment not performed.",
+        "Automatic Java acquisition unavailable."
       ],
-      "compatible": false
+      "compatible": false,
+      "approved_deviations": []
     },
     {
       "method": "server.start",
@@ -1350,7 +1516,8 @@
         "Synthetic Linux only; original RPC Linux platform gate preserved. Non-Linux server-world readonly CLI parity not yet complete.",
         "Real Minecraft server deployment not executed."
       ],
-      "compatible": false
+      "compatible": false,
+      "approved_deviations": []
     },
     {
       "method": "server.stop",
@@ -1383,7 +1550,8 @@
         "Synthetic Linux only; original RPC Linux platform gate preserved. Non-Linux server-world readonly CLI parity not yet complete.",
         "Real Minecraft server deployment not executed."
       ],
-      "compatible": false
+      "compatible": false,
+      "approved_deviations": []
     },
     {
       "method": "server.restart",
@@ -1416,7 +1584,8 @@
         "Synthetic Linux only; original RPC Linux platform gate preserved. Non-Linux server-world readonly CLI parity not yet complete.",
         "Real Minecraft server deployment not executed."
       ],
-      "compatible": false
+      "compatible": false,
+      "approved_deviations": []
     },
     {
       "method": "server.status",
@@ -1449,7 +1618,8 @@
         "Synthetic Linux only; original RPC Linux platform gate preserved. Non-Linux server-world readonly CLI parity not yet complete.",
         "Real Minecraft server deployment not executed."
       ],
-      "compatible": false
+      "compatible": false,
+      "approved_deviations": []
     },
     {
       "method": "server.logs",
@@ -1482,7 +1652,8 @@
         "Synthetic Linux only; original RPC Linux platform gate preserved. Non-Linux server-world readonly CLI parity not yet complete.",
         "Real Minecraft server deployment not executed."
       ],
-      "compatible": false
+      "compatible": false,
+      "approved_deviations": []
     },
     {
       "method": "server.command",
@@ -1515,37 +1686,56 @@
         "Synthetic Linux only; original RPC Linux platform gate preserved. Non-Linux server-world readonly CLI parity not yet complete.",
         "Real Minecraft server deployment not executed."
       ],
-      "compatible": false
+      "compatible": false,
+      "approved_deviations": []
     },
     {
       "method": "server.rcon.command",
       "source_inventory": true,
-      "implementation": "not_started",
-      "success_cases": [],
-      "invalid_cases": [],
-      "error_cases": [],
-      "event_cases": [],
+      "implementation": "implemented_slice",
+      "success_cases": [
+        "compat/server_remote.py: finite success fixtures"
+      ],
+      "invalid_cases": [
+        "compat/server_remote.py: parameter/selector corpus"
+      ],
+      "error_cases": [
+        "compat/server_remote.py: explicit failure fixtures"
+      ],
+      "event_cases": [
+        "compat/server_remote.py: response ordering and writer checks where applicable"
+      ],
       "disk_cases": [],
       "platform_evidence": {},
       "known_gaps": [
-        "Not implemented."
+        "Loopback synthetic server fixtures only; native combined execution pending."
       ],
-      "compatible": false
+      "compatible": false,
+      "approved_deviations": []
     },
     {
       "method": "server.query",
       "source_inventory": true,
-      "implementation": "not_started",
-      "success_cases": [],
-      "invalid_cases": [],
-      "error_cases": [],
-      "event_cases": [],
+      "implementation": "implemented_slice",
+      "success_cases": [
+        "compat/server_remote.py: finite success fixtures"
+      ],
+      "invalid_cases": [
+        "compat/server_remote.py: parameter/selector corpus"
+      ],
+      "error_cases": [
+        "compat/server_remote.py: explicit failure fixtures"
+      ],
+      "event_cases": [
+        "compat/server_remote.py: response ordering and writer checks where applicable"
+      ],
       "disk_cases": [],
       "platform_evidence": {},
       "known_gaps": [
-        "Not implemented."
+        "Loopback synthetic server fixtures only; native combined execution pending."
       ],
-      "compatible": false
+      "compatible": false,
+      "approved_deviations": []
     },
     {
       "method": "server.properties.get",
@@ -1578,7 +1768,8 @@
         "Synthetic Linux only; original RPC Linux platform gate preserved. Non-Linux server-world readonly CLI parity not yet complete.",
         "Real Minecraft server deployment not executed."
       ],
-      "compatible": false
+      "compatible": false,
+      "approved_deviations": []
     },
     {
       "method": "server.properties.set",
@@ -1611,217 +1802,386 @@
         "Synthetic Linux only; original RPC Linux platform gate preserved. Non-Linux server-world readonly CLI parity not yet complete.",
         "Real Minecraft server deployment not executed."
       ],
-      "compatible": false
+      "compatible": false,
+      "approved_deviations": []
     },
     {
       "method": "server.mods.list",
       "source_inventory": true,
-      "implementation": "not_started",
-      "success_cases": [],
-      "invalid_cases": [],
-      "error_cases": [],
-      "event_cases": [],
-      "disk_cases": [],
+      "implementation": "implemented_slice",
+      "success_cases": [
+        "tests/server_content.rs: finite success fixtures"
+      ],
+      "invalid_cases": [
+        "tests/server_content.rs: parameter/selector corpus"
+      ],
+      "error_cases": [
+        "tests/server_content.rs: explicit failure fixtures"
+      ],
+      "event_cases": [
+        "tests/server_content.rs: response ordering and writer checks where applicable"
+      ],
+      "disk_cases": [
+        "tests/server_content.rs: fixture disk/receipt effects where applicable"
+      ],
       "platform_evidence": {},
       "known_gaps": [
-        "Not implemented."
+        "Linux-gated server RPC; native combined execution pending.",
+        "Live provider/redirect/error behavior is not established."
       ],
-      "compatible": false
+      "compatible": false,
+      "approved_deviations": []
     },
     {
       "method": "server.mods.install",
       "source_inventory": true,
-      "implementation": "not_started",
-      "success_cases": [],
-      "invalid_cases": [],
-      "error_cases": [],
-      "event_cases": [],
-      "disk_cases": [],
+      "implementation": "implemented_slice",
+      "success_cases": [
+        "tests/server_content.rs: finite success fixtures"
+      ],
+      "invalid_cases": [
+        "tests/server_content.rs: parameter/selector corpus"
+      ],
+      "error_cases": [
+        "tests/server_content.rs: explicit failure fixtures"
+      ],
+      "event_cases": [
+        "tests/server_content.rs: response ordering and writer checks where applicable"
+      ],
+      "disk_cases": [
+        "tests/server_content.rs: fixture disk/receipt effects where applicable"
+      ],
       "platform_evidence": {},
       "known_gaps": [
-        "Not implemented."
+        "Linux-gated server RPC; native combined execution pending.",
+        "Live provider/redirect/error behavior is not established."
       ],
-      "compatible": false
+      "compatible": false,
+      "approved_deviations": []
     },
     {
       "method": "server.mods.set-version",
       "source_inventory": true,
-      "implementation": "not_started",
-      "success_cases": [],
-      "invalid_cases": [],
-      "error_cases": [],
-      "event_cases": [],
-      "disk_cases": [],
+      "implementation": "implemented_slice",
+      "success_cases": [
+        "tests/server_content.rs: finite success fixtures"
+      ],
+      "invalid_cases": [
+        "tests/server_content.rs: parameter/selector corpus"
+      ],
+      "error_cases": [
+        "tests/server_content.rs: explicit failure fixtures"
+      ],
+      "event_cases": [
+        "tests/server_content.rs: response ordering and writer checks where applicable"
+      ],
+      "disk_cases": [
+        "tests/server_content.rs: fixture disk/receipt effects where applicable"
+      ],
       "platform_evidence": {},
       "known_gaps": [
-        "Not implemented."
+        "Linux-gated server RPC; native combined execution pending.",
+        "Live provider/redirect/error behavior is not established."
       ],
-      "compatible": false
+      "compatible": false,
+      "approved_deviations": []
     },
     {
       "method": "server.mods.enable",
       "source_inventory": true,
-      "implementation": "not_started",
-      "success_cases": [],
-      "invalid_cases": [],
-      "error_cases": [],
-      "event_cases": [],
-      "disk_cases": [],
+      "implementation": "implemented_slice",
+      "success_cases": [
+        "tests/server_content.rs: finite success fixtures"
+      ],
+      "invalid_cases": [
+        "tests/server_content.rs: parameter/selector corpus"
+      ],
+      "error_cases": [
+        "tests/server_content.rs: explicit failure fixtures"
+      ],
+      "event_cases": [
+        "tests/server_content.rs: response ordering and writer checks where applicable"
+      ],
+      "disk_cases": [
+        "tests/server_content.rs: fixture disk/receipt effects where applicable"
+      ],
       "platform_evidence": {},
       "known_gaps": [
-        "Not implemented."
+        "Linux-gated server RPC; native combined execution pending.",
+        "Live provider/redirect/error behavior is not established."
       ],
-      "compatible": false
+      "compatible": false,
+      "approved_deviations": []
     },
     {
       "method": "server.mods.disable",
       "source_inventory": true,
-      "implementation": "not_started",
-      "success_cases": [],
-      "invalid_cases": [],
-      "error_cases": [],
-      "event_cases": [],
-      "disk_cases": [],
+      "implementation": "implemented_slice",
+      "success_cases": [
+        "tests/server_content.rs: finite success fixtures"
+      ],
+      "invalid_cases": [
+        "tests/server_content.rs: parameter/selector corpus"
+      ],
+      "error_cases": [
+        "tests/server_content.rs: explicit failure fixtures"
+      ],
+      "event_cases": [
+        "tests/server_content.rs: response ordering and writer checks where applicable"
+      ],
+      "disk_cases": [
+        "tests/server_content.rs: fixture disk/receipt effects where applicable"
+      ],
       "platform_evidence": {},
       "known_gaps": [
-        "Not implemented."
+        "Linux-gated server RPC; native combined execution pending.",
+        "Live provider/redirect/error behavior is not established."
       ],
-      "compatible": false
+      "compatible": false,
+      "approved_deviations": []
     },
     {
       "method": "server.mods.remove",
       "source_inventory": true,
-      "implementation": "not_started",
-      "success_cases": [],
-      "invalid_cases": [],
-      "error_cases": [],
-      "event_cases": [],
-      "disk_cases": [],
+      "implementation": "implemented_slice",
+      "success_cases": [
+        "tests/server_content.rs: finite success fixtures"
+      ],
+      "invalid_cases": [
+        "tests/server_content.rs: parameter/selector corpus"
+      ],
+      "error_cases": [
+        "tests/server_content.rs: explicit failure fixtures"
+      ],
+      "event_cases": [
+        "tests/server_content.rs: response ordering and writer checks where applicable"
+      ],
+      "disk_cases": [
+        "tests/server_content.rs: fixture disk/receipt effects where applicable"
+      ],
       "platform_evidence": {},
       "known_gaps": [
-        "Not implemented."
+        "Linux-gated server RPC; native combined execution pending.",
+        "Live provider/redirect/error behavior is not established."
       ],
-      "compatible": false
+      "compatible": false,
+      "approved_deviations": []
     },
     {
       "method": "server.mods.adopt",
       "source_inventory": true,
-      "implementation": "not_started",
-      "success_cases": [],
-      "invalid_cases": [],
-      "error_cases": [],
-      "event_cases": [],
-      "disk_cases": [],
+      "implementation": "implemented_slice",
+      "success_cases": [
+        "tests/server_content.rs: finite success fixtures"
+      ],
+      "invalid_cases": [
+        "tests/server_content.rs: parameter/selector corpus"
+      ],
+      "error_cases": [
+        "tests/server_content.rs: explicit failure fixtures"
+      ],
+      "event_cases": [
+        "tests/server_content.rs: response ordering and writer checks where applicable"
+      ],
+      "disk_cases": [
+        "tests/server_content.rs: fixture disk/receipt effects where applicable"
+      ],
       "platform_evidence": {},
       "known_gaps": [
-        "Not implemented."
+        "Linux-gated server RPC; native combined execution pending.",
+        "Live provider/redirect/error behavior is not established."
       ],
-      "compatible": false
+      "compatible": false,
+      "approved_deviations": []
     },
     {
       "method": "server.datapacks.list",
       "source_inventory": true,
-      "implementation": "not_started",
-      "success_cases": [],
-      "invalid_cases": [],
-      "error_cases": [],
-      "event_cases": [],
-      "disk_cases": [],
+      "implementation": "implemented_slice",
+      "success_cases": [
+        "tests/server_content.rs: finite success fixtures"
+      ],
+      "invalid_cases": [
+        "tests/server_content.rs: parameter/selector corpus"
+      ],
+      "error_cases": [
+        "tests/server_content.rs: explicit failure fixtures"
+      ],
+      "event_cases": [
+        "tests/server_content.rs: response ordering and writer checks where applicable"
+      ],
+      "disk_cases": [
+        "tests/server_content.rs: fixture disk/receipt effects where applicable"
+      ],
       "platform_evidence": {},
       "known_gaps": [
-        "Not implemented."
+        "Linux-gated server RPC; native combined execution pending.",
+        "Live provider/redirect/error behavior is not established."
       ],
-      "compatible": false
+      "compatible": false,
+      "approved_deviations": []
     },
     {
       "method": "server.datapacks.install",
       "source_inventory": true,
-      "implementation": "not_started",
-      "success_cases": [],
-      "invalid_cases": [],
-      "error_cases": [],
-      "event_cases": [],
-      "disk_cases": [],
+      "implementation": "implemented_slice",
+      "success_cases": [
+        "tests/server_content.rs: finite success fixtures"
+      ],
+      "invalid_cases": [
+        "tests/server_content.rs: parameter/selector corpus"
+      ],
+      "error_cases": [
+        "tests/server_content.rs: explicit failure fixtures"
+      ],
+      "event_cases": [
+        "tests/server_content.rs: response ordering and writer checks where applicable"
+      ],
+      "disk_cases": [
+        "tests/server_content.rs: fixture disk/receipt effects where applicable"
+      ],
       "platform_evidence": {},
       "known_gaps": [
-        "Not implemented."
+        "Linux-gated server RPC; native combined execution pending.",
+        "Live provider/redirect/error behavior is not established."
       ],
-      "compatible": false
+      "compatible": false,
+      "approved_deviations": []
     },
     {
       "method": "server.datapacks.set-version",
       "source_inventory": true,
-      "implementation": "not_started",
-      "success_cases": [],
-      "invalid_cases": [],
-      "error_cases": [],
-      "event_cases": [],
-      "disk_cases": [],
+      "implementation": "implemented_slice",
+      "success_cases": [
+        "tests/server_content.rs: finite success fixtures"
+      ],
+      "invalid_cases": [
+        "tests/server_content.rs: parameter/selector corpus"
+      ],
+      "error_cases": [
+        "tests/server_content.rs: explicit failure fixtures"
+      ],
+      "event_cases": [
+        "tests/server_content.rs: response ordering and writer checks where applicable"
+      ],
+      "disk_cases": [
+        "tests/server_content.rs: fixture disk/receipt effects where applicable"
+      ],
       "platform_evidence": {},
       "known_gaps": [
-        "Not implemented."
+        "Linux-gated server RPC; native combined execution pending.",
+        "Live provider/redirect/error behavior is not established."
       ],
-      "compatible": false
+      "compatible": false,
+      "approved_deviations": []
     },
     {
       "method": "server.datapacks.enable",
       "source_inventory": true,
-      "implementation": "not_started",
-      "success_cases": [],
-      "invalid_cases": [],
-      "error_cases": [],
-      "event_cases": [],
-      "disk_cases": [],
+      "implementation": "implemented_slice",
+      "success_cases": [
+        "tests/server_content.rs: finite success fixtures"
+      ],
+      "invalid_cases": [
+        "tests/server_content.rs: parameter/selector corpus"
+      ],
+      "error_cases": [
+        "tests/server_content.rs: explicit failure fixtures"
+      ],
+      "event_cases": [
+        "tests/server_content.rs: response ordering and writer checks where applicable"
+      ],
+      "disk_cases": [
+        "tests/server_content.rs: fixture disk/receipt effects where applicable"
+      ],
       "platform_evidence": {},
       "known_gaps": [
-        "Not implemented."
+        "Linux-gated server RPC; native combined execution pending.",
+        "Live provider/redirect/error behavior is not established."
       ],
-      "compatible": false
+      "compatible": false,
+      "approved_deviations": []
     },
     {
       "method": "server.datapacks.disable",
       "source_inventory": true,
-      "implementation": "not_started",
-      "success_cases": [],
-      "invalid_cases": [],
-      "error_cases": [],
-      "event_cases": [],
-      "disk_cases": [],
+      "implementation": "implemented_slice",
+      "success_cases": [
+        "tests/server_content.rs: finite success fixtures"
+      ],
+      "invalid_cases": [
+        "tests/server_content.rs: parameter/selector corpus"
+      ],
+      "error_cases": [
+        "tests/server_content.rs: explicit failure fixtures"
+      ],
+      "event_cases": [
+        "tests/server_content.rs: response ordering and writer checks where applicable"
+      ],
+      "disk_cases": [
+        "tests/server_content.rs: fixture disk/receipt effects where applicable"
+      ],
       "platform_evidence": {},
       "known_gaps": [
-        "Not implemented."
+        "Linux-gated server RPC; native combined execution pending.",
+        "Live provider/redirect/error behavior is not established."
       ],
-      "compatible": false
+      "compatible": false,
+      "approved_deviations": []
     },
     {
       "method": "server.datapacks.remove",
       "source_inventory": true,
-      "implementation": "not_started",
-      "success_cases": [],
-      "invalid_cases": [],
-      "error_cases": [],
-      "event_cases": [],
-      "disk_cases": [],
+      "implementation": "implemented_slice",
+      "success_cases": [
+        "tests/server_content.rs: finite success fixtures"
+      ],
+      "invalid_cases": [
+        "tests/server_content.rs: parameter/selector corpus"
+      ],
+      "error_cases": [
+        "tests/server_content.rs: explicit failure fixtures"
+      ],
+      "event_cases": [
+        "tests/server_content.rs: response ordering and writer checks where applicable"
+      ],
+      "disk_cases": [
+        "tests/server_content.rs: fixture disk/receipt effects where applicable"
+      ],
       "platform_evidence": {},
       "known_gaps": [
-        "Not implemented."
+        "Linux-gated server RPC; native combined execution pending.",
+        "Live provider/redirect/error behavior is not established."
       ],
-      "compatible": false
+      "compatible": false,
+      "approved_deviations": []
     },
     {
       "method": "server.datapacks.adopt",
       "source_inventory": true,
-      "implementation": "not_started",
-      "success_cases": [],
-      "invalid_cases": [],
-      "error_cases": [],
-      "event_cases": [],
-      "disk_cases": [],
+      "implementation": "implemented_slice",
+      "success_cases": [
+        "tests/server_content.rs: finite success fixtures"
+      ],
+      "invalid_cases": [
+        "tests/server_content.rs: parameter/selector corpus"
+      ],
+      "error_cases": [
+        "tests/server_content.rs: explicit failure fixtures"
+      ],
+      "event_cases": [
+        "tests/server_content.rs: response ordering and writer checks where applicable"
+      ],
+      "disk_cases": [
+        "tests/server_content.rs: fixture disk/receipt effects where applicable"
+      ],
       "platform_evidence": {},
       "known_gaps": [
-        "Not implemented."
+        "Linux-gated server RPC; native combined execution pending.",
+        "Live provider/redirect/error behavior is not established."
       ],
-      "compatible": false
+      "compatible": false,
+      "approved_deviations": []
     },
     {
       "method": "worlds.list",
@@ -1854,7 +2214,8 @@
         "ZIP CRC mismatch acceptance differs from Zig; policy review pending.",
         "Export/backup timestamp CLI corpus incomplete."
       ],
-      "compatible": false
+      "compatible": false,
+      "approved_deviations": []
     },
     {
       "method": "worlds.get",
@@ -1887,7 +2248,8 @@
         "ZIP CRC mismatch acceptance differs from Zig; policy review pending.",
         "Export/backup timestamp CLI corpus incomplete."
       ],
-      "compatible": false
+      "compatible": false,
+      "approved_deviations": []
     },
     {
       "method": "worlds.rename",
@@ -1920,7 +2282,8 @@
         "ZIP CRC mismatch acceptance differs from Zig; policy review pending.",
         "Export/backup timestamp CLI corpus incomplete."
       ],
-      "compatible": false
+      "compatible": false,
+      "approved_deviations": []
     },
     {
       "method": "worlds.duplicate",
@@ -1953,7 +2316,8 @@
         "ZIP CRC mismatch acceptance differs from Zig; policy review pending.",
         "Export/backup timestamp CLI corpus incomplete."
       ],
-      "compatible": false
+      "compatible": false,
+      "approved_deviations": []
     },
     {
       "method": "worlds.delete",
@@ -1986,7 +2350,8 @@
         "ZIP CRC mismatch acceptance differs from Zig; policy review pending.",
         "Export/backup timestamp CLI corpus incomplete."
       ],
-      "compatible": false
+      "compatible": false,
+      "approved_deviations": []
     },
     {
       "method": "worlds.export",
@@ -2019,7 +2384,8 @@
         "ZIP CRC mismatch acceptance differs from Zig; policy review pending.",
         "Export/backup timestamp CLI corpus incomplete."
       ],
-      "compatible": false
+      "compatible": false,
+      "approved_deviations": []
     },
     {
       "method": "worlds.import",
@@ -2052,7 +2418,8 @@
         "ZIP CRC mismatch acceptance differs from Zig; policy review pending.",
         "Export/backup timestamp CLI corpus incomplete."
       ],
-      "compatible": false
+      "compatible": false,
+      "approved_deviations": []
     },
     {
       "method": "worlds.backup",
@@ -2085,7 +2452,8 @@
         "ZIP CRC mismatch acceptance differs from Zig; policy review pending.",
         "Export/backup timestamp CLI corpus incomplete."
       ],
-      "compatible": false
+      "compatible": false,
+      "approved_deviations": []
     },
     {
       "method": "worlds.backups",
@@ -2118,7 +2486,8 @@
         "ZIP CRC mismatch acceptance differs from Zig; policy review pending.",
         "Export/backup timestamp CLI corpus incomplete."
       ],
-      "compatible": false
+      "compatible": false,
+      "approved_deviations": []
     },
     {
       "method": "worlds.restore",
@@ -2151,7 +2520,8 @@
         "ZIP CRC mismatch acceptance differs from Zig; policy review pending.",
         "Export/backup timestamp CLI corpus incomplete."
       ],
-      "compatible": false
+      "compatible": false,
+      "approved_deviations": []
     },
     {
       "method": "worlds.backups.delete",
@@ -2184,7 +2554,8 @@
         "ZIP CRC mismatch acceptance differs from Zig; policy review pending.",
         "Export/backup timestamp CLI corpus incomplete."
       ],
-      "compatible": false
+      "compatible": false,
+      "approved_deviations": []
     },
     {
       "method": "server.worlds.list",
@@ -2217,7 +2588,8 @@
         "Synthetic Linux only; original RPC Linux platform gate preserved. Non-Linux server-world readonly CLI parity not yet complete.",
         "Real Minecraft server deployment not executed."
       ],
-      "compatible": false
+      "compatible": false,
+      "approved_deviations": []
     },
     {
       "method": "server.worlds.get",
@@ -2250,7 +2622,8 @@
         "Synthetic Linux only; original RPC Linux platform gate preserved. Non-Linux server-world readonly CLI parity not yet complete.",
         "Real Minecraft server deployment not executed."
       ],
-      "compatible": false
+      "compatible": false,
+      "approved_deviations": []
     },
     {
       "method": "server.worlds.rename",
@@ -2283,7 +2656,8 @@
         "Synthetic Linux only; original RPC Linux platform gate preserved. Non-Linux server-world readonly CLI parity not yet complete.",
         "Real Minecraft server deployment not executed."
       ],
-      "compatible": false
+      "compatible": false,
+      "approved_deviations": []
     },
     {
       "method": "server.worlds.delete",
@@ -2316,7 +2690,8 @@
         "Synthetic Linux only; original RPC Linux platform gate preserved. Non-Linux server-world readonly CLI parity not yet complete.",
         "Real Minecraft server deployment not executed."
       ],
-      "compatible": false
+      "compatible": false,
+      "approved_deviations": []
     },
     {
       "method": "server.worlds.backup",
@@ -2349,7 +2724,8 @@
         "Synthetic Linux only; original RPC Linux platform gate preserved. Non-Linux server-world readonly CLI parity not yet complete.",
         "Real Minecraft server deployment not executed."
       ],
-      "compatible": false
+      "compatible": false,
+      "approved_deviations": []
     },
     {
       "method": "server.worlds.backups",
@@ -2382,7 +2758,8 @@
         "Synthetic Linux only; original RPC Linux platform gate preserved. Non-Linux server-world readonly CLI parity not yet complete.",
         "Real Minecraft server deployment not executed."
       ],
-      "compatible": false
+      "compatible": false,
+      "approved_deviations": []
     },
     {
       "method": "server.worlds.restore",
@@ -2415,7 +2792,8 @@
         "Synthetic Linux only; original RPC Linux platform gate preserved. Non-Linux server-world readonly CLI parity not yet complete.",
         "Real Minecraft server deployment not executed."
       ],
-      "compatible": false
+      "compatible": false,
+      "approved_deviations": []
     },
     {
       "method": "server.worlds.backups.delete",
@@ -2448,7 +2826,8 @@
         "Synthetic Linux only; original RPC Linux platform gate preserved. Non-Linux server-world readonly CLI parity not yet complete.",
         "Real Minecraft server deployment not executed."
       ],
-      "compatible": false
+      "compatible": false,
+      "approved_deviations": []
     },
     {
       "method": "java.detect",
@@ -2479,7 +2858,8 @@
         "Finite fixture corpus does not establish all upstream schemas, platform errors or live network behavior.",
         "Oversized request recovery global oracle divergence remains pending owner decision."
       ],
-      "compatible": false
+      "compatible": false,
+      "approved_deviations": []
     },
     {
       "method": "java.select",
@@ -2510,7 +2890,8 @@
         "Finite fixture corpus does not establish all upstream schemas, platform errors or live network behavior.",
         "Oversized request recovery global oracle divergence remains pending owner decision."
       ],
-      "compatible": false
+      "compatible": false,
+      "approved_deviations": []
     },
     {
       "method": "launch.plan",
@@ -2544,97 +2925,162 @@
         "Bounded inherited-pipe completion differs from pinned oracle; explicit known-gap test, not a parity pass.",
         "Platform/Command internals are outside audited secret-allocation ownership."
       ],
-      "compatible": false
+      "compatible": false,
+      "approved_deviations": []
     },
     {
       "method": "launch.execute",
       "source_inventory": true,
-      "implementation": "not_started",
-      "success_cases": [],
-      "invalid_cases": [],
-      "error_cases": [],
-      "event_cases": [],
-      "disk_cases": [],
+      "implementation": "implemented_slice",
+      "success_cases": [
+        "compat/launch_execute.py: finite success fixtures"
+      ],
+      "invalid_cases": [
+        "compat/launch_execute.py: parameter/selector corpus"
+      ],
+      "error_cases": [
+        "compat/launch_execute.py: explicit failure fixtures"
+      ],
+      "event_cases": [
+        "compat/launch_execute.py: response ordering and writer checks where applicable"
+      ],
+      "disk_cases": [
+        "compat/launch_execute.py: fixture disk/receipt effects where applicable"
+      ],
       "platform_evidence": {},
       "known_gaps": [
-        "Not implemented."
+        "Local or installed Java only; automatic acquisition unavailable.",
+        "Native combined execution pending."
       ],
-      "compatible": false
+      "compatible": false,
+      "approved_deviations": [
+        "ZIG-002: bounded direct-child completion and drain; late descendant output may not be collected."
+      ]
     },
     {
       "method": "auth.microsoft.device.begin",
       "source_inventory": true,
-      "implementation": "not_started",
-      "success_cases": [],
-      "invalid_cases": [],
-      "error_cases": [],
-      "event_cases": [],
+      "implementation": "implemented_slice",
+      "success_cases": [
+        "tests/auth_oracle.rs: finite success fixtures"
+      ],
+      "invalid_cases": [
+        "tests/auth_oracle.rs: parameter/selector corpus"
+      ],
+      "error_cases": [
+        "tests/auth_oracle.rs: explicit failure fixtures"
+      ],
+      "event_cases": [
+        "tests/auth_oracle.rs: response ordering and writer checks where applicable"
+      ],
       "disk_cases": [],
       "platform_evidence": {},
       "known_gaps": [
-        "Not implemented."
+        "Synthetic injected transport only; real authentication and transport acceptance not performed.",
+        "General allocator erasure and recoverable OOM equivalence are not claimed."
       ],
-      "compatible": false
+      "compatible": false,
+      "approved_deviations": []
     },
     {
       "method": "auth.microsoft.device.poll",
       "source_inventory": true,
-      "implementation": "not_started",
-      "success_cases": [],
-      "invalid_cases": [],
-      "error_cases": [],
-      "event_cases": [],
+      "implementation": "implemented_slice",
+      "success_cases": [
+        "tests/auth_oracle.rs: finite success fixtures"
+      ],
+      "invalid_cases": [
+        "tests/auth_oracle.rs: parameter/selector corpus"
+      ],
+      "error_cases": [
+        "tests/auth_oracle.rs: explicit failure fixtures"
+      ],
+      "event_cases": [
+        "tests/auth_oracle.rs: response ordering and writer checks where applicable"
+      ],
       "disk_cases": [],
       "platform_evidence": {},
       "known_gaps": [
-        "Not implemented."
+        "Synthetic injected transport only; real authentication and transport acceptance not performed.",
+        "General allocator erasure and recoverable OOM equivalence are not claimed."
       ],
-      "compatible": false
+      "compatible": false,
+      "approved_deviations": []
     },
     {
       "method": "auth.microsoft.refresh",
       "source_inventory": true,
-      "implementation": "not_started",
-      "success_cases": [],
-      "invalid_cases": [],
-      "error_cases": [],
-      "event_cases": [],
+      "implementation": "implemented_slice",
+      "success_cases": [
+        "tests/auth_oracle.rs: finite success fixtures"
+      ],
+      "invalid_cases": [
+        "tests/auth_oracle.rs: parameter/selector corpus"
+      ],
+      "error_cases": [
+        "tests/auth_oracle.rs: explicit failure fixtures"
+      ],
+      "event_cases": [
+        "tests/auth_oracle.rs: response ordering and writer checks where applicable"
+      ],
       "disk_cases": [],
       "platform_evidence": {},
       "known_gaps": [
-        "Not implemented."
+        "Synthetic injected transport only; real authentication and transport acceptance not performed.",
+        "General allocator erasure and recoverable OOM equivalence are not claimed."
       ],
-      "compatible": false
+      "compatible": false,
+      "approved_deviations": []
     },
     {
       "method": "auth.minecraft.refresh_exchange",
       "source_inventory": true,
-      "implementation": "not_started",
-      "success_cases": [],
-      "invalid_cases": [],
-      "error_cases": [],
-      "event_cases": [],
+      "implementation": "implemented_slice",
+      "success_cases": [
+        "tests/auth_oracle.rs: finite success fixtures"
+      ],
+      "invalid_cases": [
+        "tests/auth_oracle.rs: parameter/selector corpus"
+      ],
+      "error_cases": [
+        "tests/auth_oracle.rs: explicit failure fixtures"
+      ],
+      "event_cases": [
+        "tests/auth_oracle.rs: response ordering and writer checks where applicable"
+      ],
       "disk_cases": [],
       "platform_evidence": {},
       "known_gaps": [
-        "Not implemented."
+        "Synthetic injected transport only; real authentication and transport acceptance not performed.",
+        "General allocator erasure and recoverable OOM equivalence are not claimed."
       ],
-      "compatible": false
+      "compatible": false,
+      "approved_deviations": []
     },
     {
       "method": "auth.minecraft.exchange",
       "source_inventory": true,
-      "implementation": "not_started",
-      "success_cases": [],
-      "invalid_cases": [],
-      "error_cases": [],
-      "event_cases": [],
+      "implementation": "implemented_slice",
+      "success_cases": [
+        "tests/auth_oracle.rs: finite success fixtures"
+      ],
+      "invalid_cases": [
+        "tests/auth_oracle.rs: parameter/selector corpus"
+      ],
+      "error_cases": [
+        "tests/auth_oracle.rs: explicit failure fixtures"
+      ],
+      "event_cases": [
+        "tests/auth_oracle.rs: response ordering and writer checks where applicable"
+      ],
       "disk_cases": [],
       "platform_evidence": {},
       "known_gaps": [
-        "Not implemented."
+        "Synthetic injected transport only; real authentication and transport acceptance not performed.",
+        "General allocator erasure and recoverable OOM equivalence are not claimed."
       ],
-      "compatible": false
+      "compatible": false,
+      "approved_deviations": []
     },
     {
       "method": "java.runtime.list",
@@ -2665,7 +3111,8 @@
         "Finite fixture corpus does not establish all upstream schemas, platform errors or live network behavior.",
         "Oversized request recovery global oracle divergence remains pending owner decision."
       ],
-      "compatible": false
+      "compatible": false,
+      "approved_deviations": []
     },
     {
       "method": "java.runtime.install",
@@ -2680,7 +3127,8 @@
       "known_gaps": [
         "Not implemented."
       ],
-      "compatible": false
+      "compatible": false,
+      "approved_deviations": []
     },
     {
       "method": "java.runtime.remove",
@@ -2711,7 +3159,8 @@
         "Finite fixture corpus does not establish all upstream schemas, platform errors or live network behavior.",
         "Oversized request recovery global oracle divergence remains pending owner decision."
       ],
-      "compatible": false
+      "compatible": false,
+      "approved_deviations": []
     },
     {
       "method": "account.microsoft.save",
@@ -2742,7 +3191,8 @@
         "Native platform matrix pending.",
         "Finite schema/error corpus; remaining equivalence review required."
       ],
-      "compatible": false
+      "compatible": false,
+      "approved_deviations": []
     },
     {
       "method": "account.microsoft.list",
@@ -2773,7 +3223,8 @@
         "Native platform matrix pending.",
         "Finite schema/error corpus; remaining equivalence review required."
       ],
-      "compatible": false
+      "compatible": false,
+      "approved_deviations": []
     },
     {
       "method": "account.microsoft.get",
@@ -2804,7 +3255,8 @@
         "Native platform matrix pending.",
         "Finite schema/error corpus; remaining equivalence review required."
       ],
-      "compatible": false
+      "compatible": false,
+      "approved_deviations": []
     },
     {
       "method": "account.microsoft.delete",
@@ -2835,7 +3287,8 @@
         "Native platform matrix pending.",
         "Finite schema/error corpus; remaining equivalence review required."
       ],
-      "compatible": false
+      "compatible": false,
+      "approved_deviations": []
     }
   ],
   "cli": {

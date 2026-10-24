@@ -6,6 +6,12 @@ use std::{
     sync::atomic::{AtomicU64, Ordering},
 };
 pub struct Dir(File);
+#[cfg(target_os = "linux")]
+impl Dir {
+    pub(crate) fn from_directory(dir: File) -> Self {
+        Self(dir)
+    }
+}
 static NEXT: AtomicU64 = AtomicU64::new(0);
 #[cfg(unix)]
 mod platform {

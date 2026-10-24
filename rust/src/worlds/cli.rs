@@ -127,7 +127,7 @@ pub(super) fn detail(out: &mut impl Write, v: &Value, meta: bool) -> io::Result<
         text(v, "version_relation")
     )
 }
-fn report(out: &mut impl Write, operation: &str, e: Error) -> io::Result<u8> {
+pub(super) fn report(out: &mut impl Write, operation: &str, e: Error) -> io::Result<u8> {
     let message = match e {
         Error::InvalidName => "invalid world name".into(),
         Error::WorldNotFound => "world not found".into(),
@@ -258,7 +258,7 @@ fn run(args: &[String], out: &mut impl Write, err: &mut impl Write) -> io::Resul
             } else {
                 let meta = saves(&path)
                     .ok()
-                    .and_then(|s| s.child(name, false).ok())
+                    .and_then(|s| s.child_alias(name).ok())
                     .and_then(|d| d.read_alias("level.dat", 32 * 1024 * 1024).ok())
                     .and_then(|b| decode_level(&b).ok())
                     .is_some_and(|d| matches!(d.root.get("Data"), Some(nbt::Tag::Compound(_))));

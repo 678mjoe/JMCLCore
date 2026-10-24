@@ -88,10 +88,6 @@ pub(crate) struct ExecuteParams {
     #[serde(default = "retries", deserialize_with = "number")]
     pub retries: u8,
     #[serde(default)]
-    #[expect(
-        dead_code,
-        reason = "parsed for compatibility; processor engine is separately gated"
-    )]
     pub java_paths: Vec<String>,
     #[serde(default = "policy")]
     pub java_policy: String,
@@ -391,16 +387,15 @@ fn run<P: Planner, T: Transport>(
         Ok(p) => p,
         Err(e) => return failure(out, id, planning_error(e)),
     };
-    // Processor execution is a separately gated engine. Never record or report a
-    // successful Forge/NeoForge installation merely because artifacts downloaded.
     if matches!(&request, Request::Execute(_))
         && matches!(plan.loader.as_str(), "forge" | "neoforge")
+        && service::processor_loader(&plan, selection).is_none()
     {
         return protocol::error(
             out,
             Some(id),
-            "NOT_IMPLEMENTED",
-            "The Rust processor execution engine is not available",
+            "PROCESSOR_FAILED",
+            "The processor plan has no loader version",
         );
     }
     let root = match base.directory.path().and_then(ArtifactRoot::open) {
@@ -484,6 +479,88 @@ fn run<P: Planner, T: Transport>(
                     );
                 }
             };
+            let patched = if let Some(loader) =
+                service::processor_loader(&plan, &p.prepare.selection)
+            {
+                let environment = std::env::vars_os().collect();
+                let java = match service::processor_java(
+                    &plan,
+                    &p.java_paths,
+                    &p.java_policy,
+                    &p.store_directory.path()?,
+                    &environment,
+                ) {
+                    Ok(java) => java,
+                    Err(error) => {
+                        let (code, message) = match error {
+                            "EnvironmentUnavailable" => (
+                                "ENVIRONMENT_UNAVAILABLE",
+                                "Process environment is unavailable",
+                            ),
+                            "JavaNotFound" => {
+                                ("JAVA_NOT_FOUND", "No Java executable candidates were found")
+                            }
+                            "JavaDownloadFailed" => (
+                                "JAVA_DOWNLOAD_FAILED",
+                                "The managed Java runtime download failed",
+                            ),
+                            _ => (
+                                "JAVA_INCOMPATIBLE",
+                                "No Java runtime is available for the processor chain",
+                            ),
+                        };
+                        return protocol::error(out, Some(id), code, message);
+                    }
+                };
+                let options = crate::loaders::Options {
+                    java_paths: vec![java],
+                    required_major: plan.java_major_version,
+                    ..Default::default()
+                };
+                let result = stream::stream(
+                    |sink| {
+                        crate::loaders::run(
+                            &root,
+                            &store,
+                            loader,
+                            &plan.version_id,
+                            &options,
+                            Some(&environment),
+                            &mut |event| sink(event),
+                        )
+                    },
+                    |event| write_processor_event(out, id, plan.source, event),
+                )?;
+                match result {
+                    Ok(summary) => Some(summary),
+                    Err(error) => {
+                        let loader_name = if plan.loader == "forge" {
+                            "Forge"
+                        } else {
+                            "NeoForge"
+                        };
+                        let (code, message) = match error.name() {
+                            "NoCompatibleJava" => (
+                                "JAVA_INCOMPATIBLE",
+                                format!(
+                                    "No Java runtime is available for the {loader_name} processor chain"
+                                ),
+                            ),
+                            "EnvironmentUnavailable" => (
+                                "ENVIRONMENT_UNAVAILABLE",
+                                "Process environment is unavailable".into(),
+                            ),
+                            _ => (
+                                "PROCESSOR_FAILED",
+                                format!("The {loader_name} processor chain failed"),
+                            ),
+                        };
+                        return protocol::error(out, Some(id), code, &message);
+                    }
+                }
+            } else {
+                None
+            };
             if service::record_completed(&root, &p.prepare.selection, &target).is_err() {
                 return protocol::error(
                     out,
@@ -498,6 +575,10 @@ fn run<P: Planner, T: Transport>(
                 version_id: &'a str,
                 #[serde(flatten)]
                 summary: Summary,
+                #[serde(skip_serializing_if = "Option::is_none")]
+                processors_run: Option<usize>,
+                #[serde(skip_serializing_if = "Option::is_none")]
+                patched_client: Option<&'a str>,
             }
             #[derive(Serialize)]
             struct PayloadResult<T> {
@@ -515,6 +596,8 @@ fn run<P: Planner, T: Transport>(
                             stage: "download",
                             version_id: &p.prepare.selection.id,
                             summary,
+                            processors_run: patched.as_ref().map(|s| s.processors_run),
+                            patched_client: patched.as_ref().map(|s| s.patched_sha1.as_str()),
                         },
                     },
                 },
@@ -554,4 +637,38 @@ fn run<P: Planner, T: Transport>(
             )
         }
     }
+}
+
+fn write_processor_event(
+    out: &mut impl Write,
+    id: &str,
+    source: Source,
+    event: crate::loaders::ProcessorStarted,
+) -> io::Result<()> {
+    #[derive(Serialize)]
+    struct Started {
+        stage: &'static str,
+        #[serde(flatten)]
+        event: crate::loaders::ProcessorStarted,
+    }
+    #[derive(Serialize)]
+    struct Payload {
+        processor_started: Started,
+    }
+    line(
+        out,
+        &Envelope {
+            protocol: 1,
+            id,
+            event: "processor_started",
+            source,
+            payload: Payload {
+                processor_started: Started {
+                    stage: "processor",
+                    event,
+                },
+            },
+        },
+    )?;
+    out.flush()
 }

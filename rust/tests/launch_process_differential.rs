@@ -71,7 +71,8 @@ fn process_oracle() {
         assert!(r["max_rss"].as_u64().unwrap() > 0);
     }
 }
-/// Explicit known divergence, not a parity pass: Zig waits for descendant pipe EOF.
+/// ZIG-002 approved correction: bounded completion, not literal oracle equality.
+/// Zig waits for descendant pipe EOF.
 /// The sole synthetic descendant exits itself after 600ms; we never kill guessed PIDs.
 #[test]
 #[ignore = "requires native benign C fixture and pinned Zig process adapter"]

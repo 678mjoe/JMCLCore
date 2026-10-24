@@ -1,6 +1,7 @@
 //! Caller-owned, stateless Microsoft/Minecraft authentication.
 //! Tests use scripted transports only. Credentials never enter a generic JSON
 //! tree or Debug/error text; owned decode, request and response buffers wipe.
+pub mod http;
 pub(crate) mod json;
 use json::Json;
 use serde::Serialize;
@@ -270,11 +271,21 @@ fn json_body(value: &impl Serialize) -> WipingBuffer {
     serde_json::to_writer(&mut out, value).expect("in-memory serialization");
     out
 }
+// Zig alloc_if_needed checks max_value_len only when an escape requires an
+// allocated decoding buffer; unescaped source slices bypass that limit.
+fn limited_string(j: Json<'_>, key: &str, limit: usize) -> Result<Secret, Error> {
+    let raw = j.required(key)?;
+    let s = raw.string()?;
+    if raw.0.as_bytes().contains(&b'\\') && s.len() > limit {
+        return Err(Error::InvalidResponse);
+    }
+    Ok(Secret::new(s))
+}
 fn general_failure(r: &Response) -> Error {
     match r.status {
         429 => Error::RateLimited,
-        400 | 401 => match parsed(r).and_then(|j| text(j, "error")) {
-            Ok(e) if e.expose().len() <= 128 => Error::OAuthRejected,
+        400 | 401 => match parsed(r).and_then(|j| limited_string(j, "error", 128)) {
+            Ok(e) if !e.expose().is_empty() => Error::OAuthRejected,
             _ => Error::InvalidResponse,
         },
         _ => Error::OAuthService,
@@ -446,8 +457,8 @@ pub fn poll(t: &mut impl Transport, client: &str, code: &str) -> Result<Poll, Er
         }),
         429 => Err(Error::RateLimited),
         400 => {
-            let e = text(parsed(&r)?, "error")?;
-            if e.expose().len() > 128 {
+            let e = limited_string(parsed(&r)?, "error", 128)?;
+            if e.expose().is_empty() {
                 return Err(Error::InvalidResponse);
             }
             match e.expose() {
@@ -640,10 +651,7 @@ pub fn exchange(t: &mut impl Transport, client: &str, access: &str) -> Result<Se
     let items = parsed(&r)?.required("items")?.array()?;
     let mut owned = false;
     for item in items {
-        let name = Secret::new(item.required("name")?.string()?);
-        if name.expose().len() > 256 {
-            return Err(Error::InvalidResponse);
-        }
+        let name = limited_string(item, "name", 256)?;
         owned |= matches!(
             name.expose(),
             "product_minecraft"
@@ -856,3 +864,14 @@ pub fn handle_with_transport(
 }
 #[cfg(test)]
 mod tests;
+
+/// Production binding. Constructing the adapter does not start authentication;
+/// only a recognized valid RPC method can invoke its official HTTPS endpoints.
+pub fn handle(
+    out: &mut impl Write,
+    id: &str,
+    method: &str,
+    params: Option<&serde_json::value::RawValue>,
+) -> Option<io::Result<()>> {
+    handle_with_transport(out, id, method, params, &mut http::HttpsTransport)
+}

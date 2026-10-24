@@ -1,6 +1,9 @@
 use jmcl_core_rust::{VERSION, protocol};
 use std::io::{self, Write};
 fn run(args: &[String], stdout: &mut impl Write, stderr: &mut impl Write) -> io::Result<u8> {
+    if let Some(result) = jmcl_core_rust::launch::cli::run(args, stdout, stderr) {
+        return result;
+    }
     if let Some(result) = jmcl_core_rust::install::cli::cli(args, stdout, stderr) {
         return result;
     }

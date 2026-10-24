@@ -91,7 +91,7 @@ fn level_meta(doc: Option<&nbt::Document>) -> Value {
 }
 fn world(parent: &fs::Dir, name: &str, version: Option<&str>) -> Result<Value> {
     validate_name(name)?;
-    let d = parent.child(name, false).map_err(absent)?;
+    let d = parent.child_alias(name).map_err(absent)?;
     let doc = d
         .read_alias("level.dat", 32 * 1024 * 1024)
         .ok()
@@ -125,7 +125,7 @@ pub(crate) fn saves(path: &str) -> Result<fs::Dir> {
 }
 pub(crate) fn guard(parent: &fs::Dir, name: &str) -> Result<fs::Dir> {
     validate_name(name)?;
-    let d = parent.child(name, false).map_err(absent)?;
+    let d = parent.child_alias(name).map_err(absent)?;
     if d.locked()? {
         return Err(Error::WorldLocked);
     }
@@ -172,7 +172,7 @@ pub fn get(path: &str, name: &str, version: Option<&str>) -> Result<Value> {
     use base64::Engine;
     let s = saves(path)?;
     let w = world(&s, name, version)?;
-    let icon = match s.child(name, false)?.read("icon.png", 65536) {
+    let icon = match s.child_alias(name)?.read_alias("icon.png", 65536) {
         Ok(b) => Some(base64::engine::general_purpose::STANDARD.encode(b)),
         Err(Error::Io(e)) if e.kind() == io::ErrorKind::NotFound => None,
         Err(Error::ArchiveTooLarge) => return Err(Error::IconTooLarge),
@@ -362,5 +362,5 @@ mod tests;
 #[cfg(target_os = "linux")]
 pub mod server;
 
-#[cfg(target_os = "linux")]
 pub mod server_cli;
+mod server_portable_cli;

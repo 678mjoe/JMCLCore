@@ -152,7 +152,7 @@ struct Params {
     store: Text,
 }
 impl Params {
-    fn parse(raw: &RawValue) -> Result<Self, ()> {
+    fn parse(raw: &RawValue, execute: bool) -> Result<Self, ()> {
         let j = Json::parse(raw.get())?;
         let source = Source::parse(&string(j, "source", Some("official"))?).ok_or(())?;
         let arch = optional(j, "arch")?;
@@ -165,7 +165,11 @@ impl Params {
         Ok(Self {
             id: string(j, "id", None)?,
             directory: string(j, "directory", Some(".minecraft"))?,
-            natives: string(j, "natives_directory", None)?,
+            natives: if execute {
+                Zeroizing::new(String::new())
+            } else {
+                string(j, "natives_directory", None)?
+            },
             auth: OwnedAuth::parse(j.required("auth")?)?,
             options: OwnedOptions::parse(j.field("options")?.unwrap_or(Json("{}")))?,
             source,
@@ -186,7 +190,7 @@ fn invalid(s: &str) -> RpcError {
 fn parse(raw: Option<&RawValue>) -> Result<Params, RpcError> {
     let raw =
         raw.ok_or_else(|| invalid("launch.plan requires version, paths, and authentication"))?;
-    let p = Params::parse(raw).map_err(|_| invalid("launch.plan parameters are invalid"))?;
+    let p = Params::parse(raw, false).map_err(|_| invalid("launch.plan parameters are invalid"))?;
     if p.id.is_empty() || p.directory.is_empty() || p.natives.is_empty() {
         return Err(invalid(
             "launch.plan paths and version id must not be empty",
@@ -408,6 +412,9 @@ pub fn handle(
     method: &str,
     raw: Option<&RawValue>,
 ) -> Option<io::Result<()>> {
+    if method == "launch.execute" {
+        return Some(handle_execute(out, id, raw));
+    }
     if method != "launch.plan" {
         return None;
     }
@@ -429,4 +436,201 @@ pub fn handle(
     let service = Service::new(transport, ".jmclcore/metadata-cache");
     let env = std::env::vars_os().collect();
     Some(write(out, id, resolve(p, &service, Some(&env))))
+}
+
+fn parse_execute(raw: Option<&RawValue>) -> Result<Params, RpcError> {
+    let raw = raw.ok_or_else(|| invalid("launch.execute requires version and authentication"))?;
+    let p =
+        Params::parse(raw, true).map_err(|_| invalid("launch.execute parameters are invalid"))?;
+    if p.id.is_empty()
+        || p.directory.is_empty()
+        || p.auth.access_token.is_empty()
+        || p.auth.access_token.len() > 16384
+    {
+        return Err(invalid(
+            "launch.execute directory, version, and access token are invalid",
+        ));
+    }
+    policy(&p.java_policy)?;
+    if p.java_override.is_some() && !p.java_paths.is_empty() {
+        return Err(invalid(
+            "java_override is mutually exclusive with java_paths",
+        ));
+    }
+    Ok(p)
+}
+fn execute_error(e: &str) -> RpcError {
+    let (code, message) = match e {
+        "UnsupportedPlatform" => ("UNSUPPORTED_PLATFORM", "The host platform is not supported"),
+        "MetadataFailed" => ("METADATA_ERROR", "Failed to resolve version metadata"),
+        "AssetIndexFailed" => ("ASSET_INDEX_ERROR", "Failed to resolve the asset index"),
+        "InstallPlanFailed" => ("INSTALL_PLAN_ERROR", "Failed to build the install plan"),
+        "DirectoryFailed" => (
+            "GAME_DIRECTORY_ERROR",
+            "Failed to create or resolve the .minecraft directory",
+        ),
+        "PrepareFailed" => (
+            "PREPARE_FAILED",
+            "Downloaded files are missing, invalid, or could not be prepared",
+        ),
+        "InvalidMetadata" => (
+            "INVALID_METADATA",
+            "Version metadata contains an invalid Java requirement",
+        ),
+        "EnvironmentUnavailable" => (
+            "ENVIRONMENT_UNAVAILABLE",
+            "Process environment is unavailable",
+        ),
+        "JavaNotFound" => ("JAVA_NOT_FOUND", "No Java executable candidates were found"),
+        "JavaIncompatible" => (
+            "JAVA_INCOMPATIBLE",
+            "No Java runtime matches the required version and architecture",
+        ),
+        "JavaDownloadFailed" => (
+            "JAVA_DOWNLOAD_FAILED",
+            "The managed Java runtime download failed",
+        ),
+        "LaunchPlanFailed" => ("LAUNCH_PLAN_ERROR", "Failed to generate launch arguments"),
+        "ProcessFailed" => (
+            "PROCESS_ERROR",
+            "Failed to start or supervise the game process",
+        ),
+        _ => ("LAUNCH_ERROR", "Failed to execute the game launch"),
+    };
+    RpcError::new(code, message)
+}
+#[derive(Serialize)]
+struct ExecuteResult<'a> {
+    stage: &'static str,
+    version_id: &'a str,
+    process: super::process::ResultData,
+    native_cleanup: &'static str,
+}
+#[derive(Serialize)]
+struct ExecuteEnvelope<'a> {
+    protocol: u32,
+    id: &'a str,
+    event: &'static str,
+    source: Source,
+    result: ExecuteResult<'a>,
+}
+/// Existing/local runtime resolution only. Managed archive acquisition is an
+/// explicitly unavailable dependency, not a no-op success or alternate downloader.
+fn execute_parsed<T: Transport>(
+    out: &mut impl Write,
+    id: &str,
+    p: Params,
+    service: &Service<T>,
+    env: Option<&detect::Environment>,
+) -> io::Result<()> {
+    let jvm = p
+        .options
+        .extra_jvm
+        .iter()
+        .map(|s| s.as_str())
+        .collect::<Vec<_>>();
+    let game = p
+        .options
+        .extra_game
+        .iter()
+        .map(|s| s.as_str())
+        .collect::<Vec<_>>();
+    let java_paths = p.java_paths.iter().map(|s| s.as_str()).collect::<Vec<_>>();
+    let prepared = super::executor::prepare(
+        service,
+        super::executor::Input {
+            id: &p.id,
+            fabric_loader: p.fabric.as_ref().map(|s| s.as_str()),
+            neoforge_version: p.neo.as_ref().map(|s| s.as_str()),
+            forge_version: p.forge.as_ref().map(|s| s.as_str()),
+            directory: &p.directory,
+            auth: p.auth.borrowed(),
+            options: p.options.borrowed(&jvm, &game),
+            source: p.source,
+            arch: p.arch.as_ref().map(|s| s.as_str()),
+            java_paths: &java_paths,
+            java_policy: policy(&p.java_policy).expect("validated policy"),
+            java_override: p.java_override.as_ref().map(|s| s.as_str()),
+            store_directory: &p.store,
+        },
+        env,
+        |request| managed::resolve(env, request, &mut |_, _| Err("JavaDownloadFailed")),
+    );
+    let prepared = match prepared {
+        Ok(v) => v,
+        Err(e) => {
+            let e = execute_error(e);
+            return protocol::error(out, Some(id), &e.code, &e.message);
+        }
+    };
+    let (mut sequence, mut failed) = (0, false);
+    let result = prepared.run(env.expect("prepare checked environment"), |event, plan| {
+        if failed {
+            return;
+        }
+        let mut writer = super::events::EventWriter::new(out, id, p.source, &p.id, plan);
+        writer.sequence = sequence;
+        writer.emit(event);
+        sequence = writer.sequence;
+        failed = writer.output_failed();
+    });
+    if failed {
+        return Err(io::Error::other("WriteFailed"));
+    }
+    match result {
+        Err(e) => {
+            let e = execute_error(e);
+            protocol::error(out, Some(id), &e.code, &e.message)
+        }
+        Ok(r) => {
+            serde_json::to_writer(
+                &mut *out,
+                &ExecuteEnvelope {
+                    protocol: 1,
+                    id,
+                    event: "result",
+                    source: p.source,
+                    result: ExecuteResult {
+                        stage: "launch",
+                        version_id: &p.id,
+                        process: r.process,
+                        native_cleanup: r.native_cleanup,
+                    },
+                },
+            )?;
+            out.write_all(b"\n")
+        }
+    }
+}
+pub fn handle_execute_with<T: Transport>(
+    out: &mut impl Write,
+    id: &str,
+    raw: Option<&RawValue>,
+    service: &Service<T>,
+    env: Option<&detect::Environment>,
+) -> io::Result<()> {
+    match parse_execute(raw) {
+        Ok(p) => execute_parsed(out, id, p, service, env),
+        Err(e) => protocol::error(out, Some(id), &e.code, &e.message),
+    }
+}
+fn handle_execute(out: &mut impl Write, id: &str, raw: Option<&RawValue>) -> io::Result<()> {
+    let p = match parse_execute(raw) {
+        Ok(p) => p,
+        Err(e) => return protocol::error(out, Some(id), &e.code, &e.message),
+    };
+    let transport = match version::HttpTransport::new() {
+        Ok(t) => t,
+        Err(_) => {
+            return protocol::error(
+                out,
+                Some(id),
+                "METADATA_ERROR",
+                "Failed to resolve version metadata",
+            );
+        }
+    };
+    let service = Service::new(transport, ".jmclcore/metadata-cache");
+    let env = std::env::vars_os().collect();
+    execute_parsed(out, id, p, &service, Some(&env))
 }

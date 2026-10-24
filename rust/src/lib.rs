@@ -1,4 +1,4 @@
-//! Experimental native Rust implementation. Only explicitly inventoried behavior is compatible.
+//! Experimental native Rust implementation. Finite slice evidence does not establish full compatibility.
 pub mod protocol;
 pub const NAME: &str = "jmcl-core";
 pub const VERSION: &str = "0.1.0-dev";
@@ -23,3 +23,8 @@ pub mod install;
 
 pub mod launch;
 pub mod modpack;
+
+pub mod loaders;
+
+pub(crate) mod json_number;
+pub mod server_content;

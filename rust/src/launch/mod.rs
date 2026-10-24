@@ -405,3 +405,8 @@ pub mod events;
 pub mod rpc;
 
 pub mod executor;
+
+pub mod cli;
+mod offline_uuid;
+
+pub mod instance_install;

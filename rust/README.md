@@ -28,16 +28,16 @@ The oracle must be built from a separate checkout at the exact pinned commit;
 the harness validates that checkout's HEAD and records both executable hashes.
 It compares exit status, stdout and stderr exactly, without normalization.
 
-### Known unresolved oracle defect
+### Approved source-defect correction: ZIG-001
 
 The pinned Zig RPC loop wipes its entire input buffer after discarding an
 oversized line. If another request is already buffered, it is wiped too and
 becomes a second invalid request. Rust preserves the subsequent request.
 Three oversized-pipelined cases expose this mismatch. The strict harness fails;
-`--allow-known-gaps` is a temporary, explicit experimental check which accepts
+`--allow-approved-deviations` (legacy alias `--allow-known-gaps`) is an explicit correction check which accepts
 only the exact recorded pair of outcomes and reports each case separately with
-`full_compatibility: false`. It never hides a new difference. The compatibility
-policy/oracle repair decision is pending; do not claim replacement readiness.
+`full_compatibility: false`. It never hides a new difference. The owner approved this individually documented correction; see the
+[original-defect ledger](../docs/rewrite/original-core-defects.md#zig-001). It does not establish replacement readiness.
 
 Oversized EOF behavior, valid unterminated final lines, CRLF, duplicate fields,
 Zig's numeric-string protocol coercion, and serial malformed-request recovery
@@ -48,13 +48,13 @@ are listed below; unsupported commands remain explicit gaps.
 Request lines and read buffers are bounded and zeroized. Params stay borrowed
 raw JSON; duplicate-key validation is iterative and does not materialize secret
 values. Decoded owned request keys/identity fields are wiped on drop, including
-partial-deserialization failures. This foundation does not yet implement auth
-or claim an audited secret-memory guarantee for future handlers.
+partial-deserialization failures. Typed authentication handlers now have synthetic injected-oracle evidence; this is
+not a general audited secret-memory or live authentication guarantee.
 
 ## First additive milestone
 
 - Serial RPC framing, ping/version and basic CLI observations are compared to the
-  fixed Zig oracle. Known oversized-pipeline divergence is explicitly unresolved.
+  fixed Zig oracle. The approved ZIG-001 oversized-pipeline correction is separately asserted.
 - Hard-link CAS backends retain legacy digest paths, immutable publication,
   per-digest locking and conservative GC. Required native oracle tests compare GC
   and the actual shared OS lock, not just a matching filename. Linux CI requires
@@ -85,7 +85,10 @@ Linux combined tests explicitly execute oracle-marked cases using
 in [version-slice.md](compat/version-slice.md). The raw metadata corpus contains
 106 network-free RPC/CLI cases, and Java contains 59 raw RPC/CLI/disk checks.
 Archive interoperability compares restored content, metadata and actual size,
-not byte-identical compressor output. CRC acceptance remains a documented gap.
+not byte-identical compressor output. Client-world import preserves source CRC
+metadata acceptance; bounded stored/deflate decoding still validates output size
+and stream structure. Named existing-world aliases retain source semantics;
+recursive copy/export and extraction confinement remain separate checks.
 
 Native Windows and both macOS architectures must execute the combined milestone
 in CI. Prior individual crosschecks are not combined native acceptance; the
@@ -112,10 +115,21 @@ cargo test --locked --test server_lifecycle
 The matrix compares RPC JSON envelopes semantically and CLI output/exit codes
 exactly; only generated backup filename timestamps are normalized. These tests
 do not establish real Minecraft/SSH/long-running deployment readiness. Server
-create/install orchestration, RCON and Query remain separate work. Server-world
-CLI wiring is currently Linux-only; Zig has some non-Linux read-only CLI paths,
-so that asymmetry is an explicit remaining compatibility gap. All server RPCs
-retain the baseline Linux platform gate.
+create/install now resolves dedicated-server plans, holds the stopped guard through
+verified installation and loader processing, and writes the completion marker last.
+`compat/server_install.py` compares offline cached Vanilla/Fabric RPC/CLI creation,
+installation, parameter schemas, failure ordering and on-disk records. Java is
+selected from existing candidates; this path does not implicitly download a runtime.
+RCON and Query have
+loopback-only transports and managed RPC/CLI adapters; `compat/server_remote.py`
+compares synthetic TCP/UDP exchanges, authentication/error framing and offline
+validation against the pinned oracle. Server-world CLI list/show/backups and
+backup deletion now use portable anchored adapters; mutations requiring a stopped
+server retain Linux lifecycle gating after checked server lookup. The native
+`server_worlds_portable` differential test must be explicitly run with
+`JMCL_ZIG_ORACLE` and `--ignored` on each platform. Linux evidence is present;
+non-Linux native execution remains pending. All server RPCs retain the baseline
+Linux platform gate.
 
 Design notes: [request lifetime, process identity, and coupled worlds](../docs/blog/03-server-lifecycle-and-worldsets.md).
 ### Windows pinned-oracle lock contention
@@ -126,7 +140,8 @@ fresh Zig GC after release exits 0 and deletes it. This establishes exclusion,
 **not blocking parity**. Source inspection suggests a cause: Zig's existing-file Windows lock path uses an
 asynchronous handle but does not handle pending completion; the native NT status
 was not directly traced. Neither oracle nor lock behavior
-is changed here; the compatibility decision remains pending.
+is changed here; the approved defect-correction principle is recorded under ZIG-005,
+while the exact syscall cause remains an inference rather than a traced fact.
 
 Strict `store_differential` rejects this difference. Experimental CI explicitly
 sets `JMCL_ALLOW_KNOWN_ORACLE_GAPS=1` and accepts only the exact observed exit/status/

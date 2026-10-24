@@ -151,8 +151,16 @@ fn run_inner(
                 "only one of --fabric-loader, --neoforge-version, or --forge-version may be given\n",
             );
         }
-        if o.validate {
-            err.write_all(b"Rust rewrite metadata validation is not implemented; do not use as a replacement Core\n")?;
+        if o.validate
+            && let Err(e) = super::validate_selection(
+                o.version.as_deref().unwrap(),
+                o.fabric.as_deref(),
+                o.neoforge.as_deref(),
+                o.forge.as_deref(),
+                &o.source,
+            )
+        {
+            writeln!(err, "failed to resolve Minecraft version: {}", e.name())?;
             return Ok(1);
         }
     }

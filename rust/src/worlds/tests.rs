@@ -332,36 +332,53 @@ fn zig_rust_errors_and_backup_listing_match() {
     assert_eq!(list["backups"][0]["file"], b["backup"]);
 }
 #[test]
-#[ignore = "records pending malformed-CRC policy, not a parity pass"]
-fn known_gap_crc_oracle_accepts_rust_rejects() {
+#[ignore = "requires pinned JMCL_ZIG_ORACLE; CI must run explicitly"]
+fn zig_rust_crc_metadata_mismatch_preserves_payload_acceptance() {
     let binary = std::env::var("JMCL_ZIG_ORACLE").expect("oracle required");
-    let t = fixture();
-    let p = t.path().join("crc.zip");
-    let mut zip = zip::ZipWriter::new(stdfs::File::create(&p).unwrap());
-    zip.start_file(
-        "world/level.dat",
-        zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored),
-    )
-    .unwrap();
-    zip.write_all(b"data").unwrap();
-    zip.finish().unwrap();
-    let mut bytes = stdfs::read(&p).unwrap();
-    let local = bytes.windows(4).position(|s| s == b"PK\x03\x04").unwrap();
-    let central = bytes.windows(4).position(|s| s == b"PK\x01\x02").unwrap();
-    bytes[local + 14] ^= 1;
-    bytes[central + 16] ^= 1;
-    stdfs::write(&p, bytes).unwrap();
-    let result = oracle(
-        &binary,
-        "worlds.import",
-        json!({"directory":path(&t),"file":p,"name":"Oracle"}),
-    );
-    assert_eq!(result["world"]["name"], "Oracle");
-    assert!(matches!(
-        archive::import(path(&t), p.to_str().unwrap(), Some("Rust"), false, None),
-        Err(Error::ArchiveInvalid)
-    ));
+    for method in [
+        zip::CompressionMethod::Stored,
+        zip::CompressionMethod::Deflated,
+    ] {
+        for (local_crc, central_crc) in [(true, false), (false, true), (true, true)] {
+            let t = fixture();
+            let p = t.path().join("crc.zip");
+            let mut zip = zip::ZipWriter::new(stdfs::File::create(&p).unwrap());
+            zip.start_file(
+                "world/level.dat",
+                zip::write::SimpleFileOptions::default().compression_method(method),
+            )
+            .unwrap();
+            zip.write_all(b"data").unwrap();
+            zip.finish().unwrap();
+            let mut bytes = stdfs::read(&p).unwrap();
+            let local = bytes.windows(4).position(|s| s == b"PK\x03\x04").unwrap();
+            let central = bytes.windows(4).position(|s| s == b"PK\x01\x02").unwrap();
+            if local_crc {
+                bytes[local + 14] ^= 1;
+            }
+            if central_crc {
+                bytes[central + 16] ^= 1;
+            }
+            stdfs::write(&p, bytes).unwrap();
+            let result = oracle(
+                &binary,
+                "worlds.import",
+                json!({"directory":path(&t),"file":p,"name":"Oracle"}),
+            );
+            assert_eq!(result["world"]["name"], "Oracle");
+            archive::import(path(&t), p.to_str().unwrap(), Some("Rust"), false, None).unwrap();
+            assert_eq!(
+                stdfs::read(t.path().join("saves/Oracle/level.dat")).unwrap(),
+                b"data"
+            );
+            assert_eq!(
+                stdfs::read(t.path().join("saves/Rust/level.dat")).unwrap(),
+                b"data"
+            );
+        }
+    }
 }
+
 #[test]
 #[ignore = "requires pinned JMCL_ZIG_ORACLE; CI must run explicitly"]
 #[cfg(unix)]
@@ -664,5 +681,108 @@ fn zig_rust_world_cli_mutation_results_match() {
             results[0]
         );
         assert_eq!(results[0], results[1], "{case:?}");
+    }
+}
+
+#[test]
+#[cfg(unix)]
+#[ignore = "requires pinned JMCL_ZIG_ORACLE; CI must run explicitly"]
+fn zig_rust_named_read_aliases_and_lock_probe_match() {
+    use std::os::unix::fs::symlink;
+    let binary = std::env::var("JMCL_ZIG_ORACLE").expect("oracle required");
+    let t = fixture();
+    let outside = tempfile::tempdir().unwrap();
+    let icon = outside.path().join("icon");
+    let lockpath = outside.path().join("lock");
+    stdfs::write(&icon, b"synthetic-icon").unwrap();
+    stdfs::write(&lockpath, b"unchanged-lock-bytes").unwrap();
+    symlink(&icon, t.path().join("saves/Alpha/icon.png")).unwrap();
+    symlink(&lockpath, t.path().join("saves/Alpha/session.lock")).unwrap();
+    let p = json!({"directory":path(&t),"world":"Alpha"});
+    assert_eq!(
+        oracle(&binary, "worlds.get", p.clone()),
+        call("worlds.get", p.clone()).unwrap()
+    );
+    let lock = stdfs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(&lockpath)
+        .unwrap();
+    lock.lock().unwrap();
+    let actual = call("worlds.get", p.clone()).unwrap();
+    assert_eq!(actual["world"]["locked"], true);
+    assert_eq!(oracle(&binary, "worlds.get", p.clone()), actual);
+    lock.unlock().unwrap();
+    assert_eq!(
+        oracle(&binary, "worlds.get", p.clone()),
+        call("worlds.get", p).unwrap()
+    );
+    // Existing named world aliases are selected explicitly; enumeration still
+    // excludes symlink entries. No mutation through the external target here.
+    symlink(t.path().join("saves/Alpha"), t.path().join("saves/Alias")).unwrap();
+    let p = json!({"directory":path(&t),"world":"Alias"});
+    assert_eq!(
+        oracle(&binary, "worlds.get", p.clone()),
+        call("worlds.get", p).unwrap()
+    );
+    let p = json!({"directory":path(&t)});
+    assert_eq!(
+        oracle(&binary, "worlds.list", p.clone()),
+        call("worlds.list", p).unwrap()
+    );
+    assert_eq!(stdfs::read(&icon).unwrap(), b"synthetic-icon");
+    assert_eq!(stdfs::read(&lockpath).unwrap(), b"unchanged-lock-bytes");
+}
+
+#[test]
+fn crc_compatibility_does_not_relax_deflate_validation() {
+    let t = fixture();
+    let p = t.path().join("deflate.zip");
+    let mut writer = zip::ZipWriter::new(stdfs::File::create(&p).unwrap());
+    writer
+        .start_file(
+            "world/level.dat",
+            zip::write::SimpleFileOptions::default()
+                .compression_method(zip::CompressionMethod::Deflated),
+        )
+        .unwrap();
+    writer
+        .write_all(b"synthetic payload synthetic payload")
+        .unwrap();
+    writer.finish().unwrap();
+    let original = stdfs::read(&p).unwrap();
+    let local = original
+        .windows(4)
+        .position(|s| s == b"PK\x03\x04")
+        .unwrap();
+    let central = original
+        .windows(4)
+        .position(|s| s == b"PK\x01\x02")
+        .unwrap();
+    let start = local
+        + 30
+        + u16::from_le_bytes(original[local + 26..local + 28].try_into().unwrap()) as usize
+        + u16::from_le_bytes(original[local + 28..local + 30].try_into().unwrap()) as usize;
+    for truncate in [false, true] {
+        let mut bytes = original.clone();
+        if truncate {
+            let size =
+                u32::from_le_bytes(bytes[central + 20..central + 24].try_into().unwrap()) - 1;
+            bytes[central + 20..central + 24].copy_from_slice(&size.to_le_bytes());
+            bytes[local + 18..local + 22].copy_from_slice(&size.to_le_bytes());
+        } else {
+            bytes[start] = 0x07;
+        } // Reserved DEFLATE block kind.
+        stdfs::write(&p, &bytes).unwrap();
+        assert!(matches!(
+            archive::import(path(&t), p.to_str().unwrap(), Some("Broken"), false, None),
+            Err(Error::ArchiveInvalid)
+        ));
+        assert!(!t.path().join("saves/Broken").exists());
+        assert_eq!(
+            stdfs::read(t.path().join("saves/Alpha/level.dat")).unwrap(),
+            b"not-nbt"
+        );
+        assert_eq!(stdfs::read_dir(t.path().join("saves")).unwrap().count(), 1);
     }
 }
