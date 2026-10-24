@@ -21,6 +21,7 @@
 | [ZIG-005](#zig-005) | Windows 竞争中的 GC 锁返回错误而非等待 | 未修 | 保留互斥并等待；原版等待语义差异仍单列 |
 | [ZIG-006](#zig-006) | Java 归档解包的 staging 写入边界不足 | 已有隔离证据 | 安全例外已批准；实现与验证尚未完成 |
 | [ZIG-007](#zig-007) | Windows 禁用内容换版在只读硬链接重命名时失败 | 原生观察确认特定案例 | Rust 保持禁用状态并完成换版；差分须显式选择窄例外 |
+| [ZIG-008](#zig-008) | Windows loader verbatim 路径混用分隔符导致准备失败 | 原生 neo/success 与最小路径实验已确认 | Rust 合成链成功；完整案例矩阵仍收集中，无例外门禁 |
 
 <a id="zig-001"></a>
 ## ZIG-001 — 超长行后的有效请求被清除
@@ -101,9 +102,22 @@
 - **精确门禁：** 仅 Windows 且显式设置 `JMCL_ALLOW_ZIG007_READONLY_RENAME=1` 时，测试接受预先列明的四类内容 × 两个 provider 的 disabled 合成案例。它逐字节断言 Zig 的两条既定 file/progress 事件、固定错误和精确残留磁盘状态，同时逐字节断言 Rust 的成功响应与更新 registry；还验证新文件、CAS 对象和旁路共享链接的字节、真实文件身份及 readonly。任何别的错误、事件、文件或 registry 改变都失败。如果原版在某个组合成功，仍要求双方严格相等，不强制制造预期失败。不设置开关仍为严格差分；启用例外不表示完全兼容。
 - **覆盖边界：** 最初原生观察仅覆盖上述 mods/Modrinth 案例；随后 [Windows 精确门禁运行](https://github.com/678mjoe/JMCLCore/actions/runs/40103030834/job/120898896518) 分别确认四类内容 × 两个 provider 的八个 disabled 案例均符合该错误/残留状态及 Rust 纠正不变量，其余 32 个案例仍严格相同。此处仅描述该缺陷测试，不能推断该工作流的其它测试或项目整体通过。Linux 仍运行真实 oracle 严格差分，并用明确合成的失败状态验证匹配器与负对照；这不是 Windows 验收替代品。错误码、额外事件、registry、额外文件、Rust 失败/错误字节、私有复制和可写文件均有拒绝对照。
 
+
+<a id="zig-008"></a>
+## ZIG-008 — Windows loader 的 verbatim 路径混用分隔符
+
+**分类：确认缺陷，覆盖范围仍在收集。**
+
+- **原生观察：** [Windows job 120917757037](https://github.com/678mjoe/JMCLCore/actions/runs/40109394068/job/120917757037)，重写提交 `090bf3`：修正测试用原生 Java 替身的目录比较后，loader 测试 10/12 通过。引擎 `neo/success` 中，Rust 执行两个合成 processor 并产生 SHA1 `d2a04d71301a8915217dd5faf81d12cffd6cd958`、大小 6 的输出；固定 Zig oracle 在首个 processor event 前返回 `BadPathName`。RPC 对应 Rust 完成而 Zig 返回 `PROCESSOR_FAILED`。这不是实际 Minecraft/Java 安装验收。
+- **最小隔离实验：** `windows_verbatim_join_diagnostic` 在临时目录中，使用原版 `hard_link.absolutePathAlloc` 获取 verbatim 绝对路径，再按原版方式 join `.jmcl-path-probe/nested`。保留混合分隔符的 `createDirPath` 返回 `BadPathName`；仅将 `/` 换为原生反斜杠的对照成功。测试输出两条完整路径与准确错误；实际 processor oracle 和固定基线没有改写。
+- **源码链条：** 固定基线 `src/install/hard_link.zig:149–161` 从目录句柄取得 Windows 绝对路径；`src/loaders/neoforge_executor.zig:204–240` 把它与含 `/` 的 Maven 父目录或工作目录 join 后交给 `cwd().createDirPath`。Zig 0.16 的 join 不重写片段内部的分隔符，而 verbatim 路径处理保留这些字符。该准备阶段在 processor 循环之前。`src/loaders/forge_executor.zig` 的客户端/服务端入口也调用同一 `runLayout`，但是否触发仍依赖各案例的前置验证和缓存；不能将全部 Forge 输入称为已观察失败。
+- **独立于 ZIG-003：** 此处没有进入最终成功响应，不能用释放后 hash 的窄例外去接受 `BadPathName`、缺失 processor event 或错误 receipt。Rust 不应为模仿缺陷而破坏路径或故意中断正常合成链。
+- **当前门禁：** 尚无 ZIG-008 接受开关或兼容性豁免。Windows 设置 `JMCL_DIAGNOSE_WINDOWS_LOADER_MATRIX=1` 只让既有有限语料收集所有响应/磁盘/receipt 对照，最后仍因任何差异失败；未设置时保持首次差异即失败。原生当前只确认上述首个成功案例和路径实验；后续逐模式、逐场景、逐次运行的显式差异列表必须来自完整原生证据，不能预先放行任意 `BadPathName`。
+- **Rust 正向约束：** `synthetic_native_chain_and_state` 必须执行真实合成子进程，验证输出内容、SHA1、大小、state、工作目录清理和缓存；CAS 对象及硬链接检查不能被 oracle 的原版失败取代。异常路径继续要求准确错误、事件顺序及没有错误的完成 receipt。
+
 ## 源码确认的独立风险：带凭据请求的跨源重定向
 
-此项与上面七条已收集运行观察的条目分开记录；**没有执行网络实验，也没有证据表明真实密钥已经泄露**。
+此项与上面已收集运行观察的条目分开记录；**没有执行网络实验，也没有证据表明真实密钥已经泄露**。
 
 - 固定基线 [`src/service.zig` 的 `fetchBodyWithHeader`](https://github.com/678mjoe/JMCLCore/blob/5a4310debbcee26b3d2391bab2339f79cd6ec52e/src/service.zig#L4147) 允许三次重定向，并将 `x-api-key` 放入 `extra_headers`。固定 Zig 0.16.0 `lib/std/http/Client.zig:821–829` 的规则保留跨域 `extra_headers`，只移除 `privileged_headers`。
 - [`src/install/https_fallback.zig:41–54`](https://github.com/678mjoe/JMCLCore/blob/5a4310debbcee26b3d2391bab2339f79cd6ec52e/src/install/https_fallback.zig#L41-L54) 的重定向循环也将同一 `extra_header` 传给后续 URL。这支持“凭据头可能被转发到不同源”的源码风险判断，但不等同于已观察到泄露。

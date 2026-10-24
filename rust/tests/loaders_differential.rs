@@ -274,6 +274,7 @@ fn synthetic_native_chain_and_state() {
 fn exact_processor_oracle() {
     let exe =
         std::env::var_os("JMCL_ZIG_LOADERS_ORACLE").expect("required pinned processor oracle");
+    let mut windows_mismatches = Vec::new();
     for mode in ["neo", "neo-server", "forge", "forge-server"] {
         for scenario in [
             "success",
@@ -325,14 +326,39 @@ fn exact_processor_oracle() {
             rust.setup();
             let zig = Case::new(mode, scenario);
             zig.setup();
+            let actual = rust.rust();
+            let baseline = zig.zig(&exe);
+            let actual_disk = rust.snapshot();
+            let baseline_disk = zig.snapshot();
+            if cfg!(windows)
+                && std::env::var("JMCL_DIAGNOSE_WINDOWS_LOADER_MATRIX").as_deref() == Ok("1")
+            {
+                // Collect the entire bounded corpus, but NEVER accept a mismatch.
+                // No known-defect allowance is implemented here.
+                eprintln!(
+                    "WINDOWS_LOADER_MATRIX {}",
+                    json!({
+                        "mode":mode,"scenario":scenario,"rust":actual,"zig":baseline,
+                        "rust_disk":actual_disk,"zig_disk":baseline_disk
+                    })
+                );
+                if actual != baseline || actual_disk != baseline_disk {
+                    windows_mismatches.push(format!("{mode}/{scenario}"));
+                    continue;
+                }
+            }
             assert_eq!(
-                serde_json::to_string(&rust.rust()).unwrap(),
-                serde_json::to_string(&zig.zig(&exe)).unwrap(),
+                serde_json::to_string(&actual).unwrap(),
+                serde_json::to_string(&baseline).unwrap(),
                 "{mode}/{scenario}"
             );
-            assert_eq!(rust.snapshot(), zig.snapshot(), "disk {mode}/{scenario}");
+            assert_eq!(actual_disk, baseline_disk, "disk {mode}/{scenario}");
         }
     }
+    assert!(
+        windows_mismatches.is_empty(),
+        "strict Windows loader mismatches: {windows_mismatches:?}"
+    );
 }
 #[test]
 fn reporter_failure_leaves_no_state() {
@@ -556,6 +582,7 @@ fn install_params(c: &Case) -> Value {
 #[ignore = "requires network-disabled pinned Zig protocol adapter"]
 fn install_processor_protocol_matches_oracle() {
     use jmcl_core_rust::install;
+    let mut windows_mismatches = Vec::new();
     let exe = std::env::var_os("JMCL_ZIG_LOADERS_INSTALL_ORACLE")
         .expect("JMCL_ZIG_LOADERS_INSTALL_ORACLE required");
     for mode in ["neo", "forge"] {
@@ -605,6 +632,25 @@ fn install_processor_protocol_matches_oracle() {
                 );
                 let rust_text = String::from_utf8(out).unwrap();
                 let zig_text = String::from_utf8(result.stdout).unwrap();
+                if cfg!(windows)
+                    && std::env::var("JMCL_DIAGNOSE_WINDOWS_LOADER_MATRIX").as_deref() == Ok("1")
+                {
+                    let rust_receipt = fs::read(rust.root().join(".jmcl/install.json")).ok();
+                    let zig_receipt = fs::read(zig.root().join(".jmcl/install.json")).ok();
+                    eprintln!(
+                        "WINDOWS_LOADER_RPC_MATRIX {}",
+                        json!({
+                            "mode":mode,"scenario":scenario,"run":run,
+                            "rust":rust_text,"zig":zig_text,
+                            "rust_disk":rust.snapshot(),"zig_disk":zig.snapshot(),
+                            "rust_receipt":rust_receipt,"zig_receipt":zig_receipt
+                        })
+                    );
+                    if rust_text != zig_text || rust_receipt != zig_receipt {
+                        windows_mismatches.push(format!("{mode}/{scenario}/run{run}"));
+                        continue;
+                    }
+                }
                 if std::env::var_os("JMCL_ALLOW_PROCESSOR_HASH_LIFETIME_GAP").is_some()
                     && !matches!(scenario, "processorless" | "legacy")
                 {
@@ -659,6 +705,10 @@ fn install_processor_protocol_matches_oracle() {
             }
         }
     }
+    assert!(
+        windows_mismatches.is_empty(),
+        "strict Windows loader RPC mismatches: {windows_mismatches:?}"
+    );
 }
 
 #[test]
