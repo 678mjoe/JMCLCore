@@ -78,6 +78,7 @@ impl Dir {
         }
         Ok(bytes)
     }
+    #[cfg(any(test, target_os = "linux"))]
     pub fn read(&self, name: &str, max: usize) -> Result<Vec<u8>> {
         let f = self.file(name, false)?;
         let mut bytes = vec![];

@@ -34,6 +34,7 @@ pub(crate) fn schema_number<'de, D: serde::Deserializer<'de>>(d: D) -> Result<u3
 
 // Only dynamic Value callers may use this visitor: finite JSON floats have
 // already been rounded to binary64 by the original request params parser.
+#[cfg(any(test, target_os = "linux"))]
 pub(crate) fn dynamic_schema_number<'de, D: serde::Deserializer<'de>>(
     d: D,
 ) -> Result<u32, D::Error> {
