@@ -299,3 +299,16 @@ fn run(args: &[String], out: &mut impl Write, err: &mut impl Write) -> io::Resul
     }
     Ok(0)
 }
+
+#[cfg(all(test, unix))]
+mod native_error_tests {
+    #[test]
+    fn raw_name_error_keeps_world_operation_message() {
+        let error = super::Error::Io(std::io::Error::from_raw_os_error(
+            rustix::io::Errno::ILSEQ.raw_os_error(),
+        ));
+        let mut out = Vec::new();
+        assert_eq!(super::report(&mut out, "import", error).unwrap(), 1);
+        assert_eq!(out, b"failed to import world: BadPathName\n");
+    }
+}

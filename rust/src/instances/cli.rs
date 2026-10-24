@@ -85,6 +85,12 @@ fn options(command: &str, args: &[String]) -> Option<Options> {
     Some(o)
 }
 pub(crate) fn zig_error(e: &io::Error) -> String {
+    // Pinned Zig native create/open maps EILSEQ to BadPathName. This shared
+    // boundary is also used for modpack override writes on APFS.
+    #[cfg(unix)]
+    if e.raw_os_error() == Some(rustix::io::Errno::ILSEQ.raw_os_error()) {
+        return "BadPathName".into();
+    }
     // Internal validation returns the exact Zig error name; OS errors map at boundary.
     if e.kind() == io::ErrorKind::InvalidData {
         return e.to_string();
@@ -278,6 +284,29 @@ pub(crate) fn game_path(root: &str, id: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(unix)]
+    #[test]
+    fn invalid_native_name_keeps_source_error() {
+        assert_eq!(
+            zig_error(&io::Error::from_raw_os_error(
+                rustix::io::Errno::ILSEQ.raw_os_error()
+            )),
+            "BadPathName"
+        );
+        assert_eq!(
+            zig_error(&io::Error::from_raw_os_error(
+                rustix::io::Errno::NOENT.raw_os_error()
+            )),
+            "FileNotFound"
+        );
+        assert_eq!(
+            zig_error(&io::Error::new(
+                io::ErrorKind::InvalidData,
+                "FixtureSchemaError"
+            )),
+            "FixtureSchemaError"
+        );
+    }
     #[test]
     fn strict_flags() {
         assert!(options("list", &["--wat".into()]).is_none());
