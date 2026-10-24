@@ -114,6 +114,19 @@ jobs:
           with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as output:
               output.write(f"JMCL_ZIG_ORACLE={binary.resolve()}\n")
           PYTHON
+      - name: Build pinned metadata differential adapter
+        run: |
+          python - <<'PYTHON'
+          import os, subprocess
+          from pathlib import Path
+          binary = Path(os.environ["RUNNER_TEMP"]) / ("jmcl-metadata-oracle.exe" if os.name == "nt" else "jmcl-metadata-oracle")
+          subprocess.run(["zig", "build-exe", "--dep", "jmcl_core",
+                          "-Mroot=rust/compat/metadata_oracle.zig",
+                          f"-Mjmcl_core={Path('.ci-oracle/src/root.zig').resolve()}",
+                          f"-femit-bin={binary}"], check=True)
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as output:
+              output.write(f"JMCL_ZIG_METADATA_ORACLE={binary}\n")
+          PYTHON
       - name: Rust formatting and tests
         working-directory: rust
         run: |
@@ -133,3 +146,13 @@ jobs:
             python rust/compat/check.py --zig .ci-oracle/zig-out/bin/jmcl-core --rust rust/target/release/jmcl-core-rust --oracle-source .ci-oracle --allow-known-gaps
             python rust/compat/accounts.py --zig .ci-oracle/zig-out/bin/jmcl-core --rust rust/target/release/jmcl-core-rust
           fi
+      - name: Offline metadata and Java raw-wire corpus
+        run: |
+          python - <<'PYTHON'
+          import os, subprocess
+          suffix = ".exe" if os.name == "nt" else ""
+          for script in ["version_check.py", "java.py"]:
+              subprocess.run(["python", f"rust/compat/{script}", "--zig",
+                              f".ci-oracle/zig-out/bin/jmcl-core{suffix}", "--rust",
+                              f"rust/target/release/jmcl-core-rust{suffix}"], check=True)
+          PYTHON

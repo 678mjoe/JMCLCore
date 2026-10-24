@@ -195,6 +195,25 @@ pub(crate) fn read_follow_at(dir: &File, name: &std::ffi::OsStr) -> io::Result<F
     info(&file)?;
     Ok(file)
 }
+/// Compatibility directory read: original content scans follow named directory
+/// aliases. The resolved directory handle anchors subsequent child operations;
+/// CAS publication continues using the no-follow `child` API.
+pub(crate) fn read_dir_follow_at(dir: &File, name: &std::ffi::OsStr) -> io::Result<File> {
+    let file = open_nt_raw_policy(
+        Some(dir),
+        &mut leaf(name)?,
+        Some(true),
+        nt::FILE_OPEN,
+        false,
+        false,
+        true,
+    )?;
+    let metadata = info(&file)?;
+    if metadata.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY == 0 {
+        return Err(invalid("InvalidObjectKind"));
+    }
+    Ok(file)
+}
 pub(crate) fn child(
     dir: &File,
     name: &std::ffi::OsStr,
@@ -743,6 +762,32 @@ fn eligible(f: &File, options: GcOptions, s: &mut GcSummary) -> io::Result<bool>
         return Ok(false);
     }
     Ok(true)
+}
+
+/// Rename a validated entry using mutation rights without reopening its path.
+pub(crate) fn rename_at(
+    parent: &File,
+    old: &std::ffi::OsStr,
+    dest: &File,
+    new: &std::ffi::OsStr,
+) -> io::Result<()> {
+    let file = open_nt_raw(
+        Some(parent),
+        &mut leaf(old)?,
+        None,
+        nt::FILE_OPEN,
+        false,
+        true,
+    )?;
+    info(&file)?;
+    named_op(&file, dest, new, true)
+}
+/// Match case-insensitive NT entry lookup without following the entry itself.
+pub(crate) fn entry_exists(parent: &File, name: &std::ffi::OsStr) -> bool {
+    let Ok(mut wide) = leaf(name) else {
+        return false;
+    };
+    open_nt_raw(Some(parent), &mut wide, None, nt::FILE_OPEN, false, false).is_ok()
 }
 
 #[cfg(test)]

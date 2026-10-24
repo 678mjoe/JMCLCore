@@ -105,6 +105,14 @@ struct Event<'a, T: Serialize> {
     result: T,
 }
 #[derive(Serialize)]
+struct SourceEvent<'a, T: Serialize> {
+    protocol: u32,
+    id: &'a str,
+    event: &'static str,
+    source: crate::metadata::Source,
+    result: T,
+}
+#[derive(Serialize)]
 struct Failure<'a> {
     protocol: u32,
     id: Option<&'a str>,
@@ -241,8 +249,28 @@ pub fn handle_line(line: &[u8], out: &mut impl Write) -> io::Result<()> {
             "Unsupported protocol version",
         );
     }
+    if let Some(result) = crate::version::handle(&request.method, request.params)
+        .or_else(|| crate::java::select::handle(&request.method, request.params))
+    {
+        return match result {
+            Ok(response) => json_line(
+                out,
+                &SourceEvent {
+                    protocol: PROTOCOL,
+                    id: &request.id,
+                    event: "result",
+                    source: response.source,
+                    result: response.result,
+                },
+            ),
+            Err(failure) => error(out, Some(&request.id), &failure.code, &failure.message),
+        };
+    }
     if let Some(result) = crate::accounts::handle(&request.method, request.params)
         .or_else(|| crate::instances::handle(&request.method, request.params))
+        .or_else(|| crate::worlds::handle(&request.method, request.params))
+        .or_else(|| crate::content::handle(&request.method, request.params))
+        .or_else(|| crate::java::handle(&request.method, request.params))
     {
         return match result {
             Ok(result) => json_line(

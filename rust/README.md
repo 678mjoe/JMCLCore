@@ -42,7 +42,8 @@ policy/oracle repair decision is pending; do not claim replacement readiness.
 Oversized EOF behavior, valid unterminated final lines, CRLF, duplicate fields,
 Zig's numeric-string protocol coercion, and serial malformed-request recovery
 are included in the foundation differential cases. Basic CLI help/version and
-unknown-command/error cases are included. Other CLI commands remain unported.
+unknown-command/error cases are included. Additional offline instance, world/content, metadata/planning and Java CLI slices
+are listed below; unsupported commands remain explicit gaps.
 
 Request lines and read buffers are bounded and zeroized. Params stay borrowed
 raw JSON; duplicate-key validation is iterative and does not materialize secret
@@ -70,6 +71,26 @@ not be reported as an oracle compatibility pass. Cross-platform results are
 recorded against the exact PR/main revision rather than inferred from Linux.
 
 
+## Second experimental milestone
+
+The isolated `rust-rewrite` branch now integrates native client world/NBT/archive
+operations, local content/datapack registry mutations, source-aware metadata and
+Vanilla/Fabric/NeoForge/modern-and-legacy-Forge plans, Java probing/selection and
+existing managed runtime list/remove. The worlds remain mutable private copies,
+not CAS hardlinks. No installer execution, runtime download, real game/server
+launch or authentication completion is claimed here.
+
+Linux combined tests explicitly execute oracle-marked cases using
+`JMCL_ZIG_ORACLE` and `JMCL_ZIG_METADATA_ORACLE`; build the adapter as described
+in [version-slice.md](compat/version-slice.md). The raw metadata corpus contains
+106 network-free RPC/CLI cases, and Java contains 59 raw RPC/CLI/disk checks.
+Archive interoperability compares restored content, metadata and actual size,
+not byte-identical compressor output. CRC acceptance remains a documented gap.
+
+Native Windows and both macOS architectures must execute the combined milestone
+in CI. Prior individual crosschecks are not combined native acceptance; the
+reqwest/AWS-LC dependency additionally requires a C crosscompiler for Linux-to-
+Windows crosschecking. No TLS validation bypass is used.
 ### Windows pinned-oracle lock contention
 
 Native CI confirmed that pinned Zig GC exits 1 with exactly one collection error
