@@ -52,6 +52,9 @@ fn fixture_server(
                     Err(e) => panic!("{e}"),
                 }
             };
+            // Accepted sockets inherit O_NONBLOCK on macOS, unlike Linux.
+            // Only accept polling is nonblocking; each bounded HTTP exchange is not.
+            s.set_nonblocking(false).unwrap();
             s.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
             let mut request = Vec::new();
             let mut b = [0; 1];
