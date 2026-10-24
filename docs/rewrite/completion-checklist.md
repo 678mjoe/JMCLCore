@@ -8,7 +8,7 @@ This checklist separates **implemented names**, **finite contract evidence**, an
 - [x] Milestone 2: PR #4 squash `e95a1906a4d9dd12cc54b6cd8210bfd56c4501ad`; exact-head native checks passed on all four platforms. This includes the direct-exec macOS correction, not a normalized error result.
 - [x] Milestone 2 postmerge push runs `40082466174` / `40082466203`: all eight native jobs reached terminal success, verified 2026-10-24 09:53 UTC.
 - [x] Milestone 3: PR #5 squash `234562fa8b9ec2b9baa37ec41d90dad530c032e5`, exact merged tree `93f70ef18f9a79bdc8f98dd85f5c3a07813d192b`; all eight exact-head native Rust/Zig checks passed.
-- [ ] Milestone 3 postmerge push workflows still require terminal success; the fourth milestone must not merge before this gate.
+- [x] Milestone 3 postmerge push runs `40089317339` / `40089317373`: all eight native jobs reached terminal success, verified 2026-10-24 11:32 UTC.
 - [ ] Milestone 4 combines later server/provider/auth/processor/launch and numeric work. The combined Linux suite passed 309 tests with zero ignored; its own exact-head native and postmerge checks are still required.
 
 ## Concrete ordinary-contract work still open

@@ -4,7 +4,7 @@ import argparse,pathlib,tempfile,subprocess,json,hashlib,time,re,os,shutil
 p=argparse.ArgumentParser();p.add_argument('--zig',required=True);p.add_argument('--rust',required=True);a=p.parse_args();bins=[str(pathlib.Path(x).resolve()) for x in [a.zig,a.rust]];count=0
 with tempfile.TemporaryDirectory() as tmp:
  root=pathlib.Path(tmp);fake=root/('java.exe' if os.name=='nt' else 'java');src=pathlib.Path(__file__).resolve().parent.parent/'tests/fixtures/launch/child.rs';subprocess.run(['rustc',str(src),'-o',str(fake)],check=True)
- probe=subprocess.run([str(fake),'-XshowSettings:properties','-version'],capture_output=True);assert probe.returncode==0 and b'java.specification.version = 17' in probe.stderr
+ probe=subprocess.run([str(fake),'-XshowSettings:properties','-version'],capture_output=True);assert probe.returncode==0 and b'java.specification.version = 17' in probe.stderr and b'os.arch = amd64' in probe.stderr
  cache=root/'.jmclcore/metadata-cache';cache.mkdir(parents=True)
  md={'id':'demo','type':'release','mainClass':'args','libraries':[],'downloads':{'client':{'sha1':'1'*40,'size':0,'url':'https://example.invalid/client'}},'javaVersion':{'component':'fixture','majorVersion':17},'arguments':{'jvm':[],'game':['${auth_access_token}','${auth_player_name}','${auth_uuid}','literal argument',';not shell']}}
  def seed():
@@ -42,11 +42,15 @@ with tempfile.TemporaryDirectory() as tmp:
  platform='windows-x64' if os.name=='nt' else ('mac-os' if __import__('sys').platform=='darwin' else 'linux')
  rt=root/'store/runtimes/mojang-fixture';(rt/'bin').mkdir(parents=True);rel='bin/java.exe' if os.name=='nt' else 'bin/java';shutil.copy2(fake,rt/rel)
  (rt/'.jmcl-runtime.json').write_text(json.dumps({'provider':'mojang','id':'fixture','platform':platform,'major_version':17,'java_home':'','executable':rel,'source_url':'https://example.invalid/runtime','installed_at_ms':123,'component':'fixture'}))
- installed=dict(base,java_policy='managed',java_paths=[],store_directory=str(root/'store'));del installed['java_override']
+ # The native fixture reports amd64 on every host; select that synthetic receipt explicitly.
+ installed=dict(base,arch='x86_64',java_policy='managed',java_paths=[],store_directory=str(root/'store'));del installed['java_override']
  # Plan preflight cannot download. Abort fixture before execute if receipt/probe is invalid.
  for exe in bins:
   pre=run(exe,['rpc'],json.dumps({'protocol':1,'id':'preflight','method':'launch.plan','params':dict(installed,natives_directory='unused')}).encode()+b'\n')
-  assert json.loads(pre.stdout)['result']['java_source']=='managed',pre.stdout
+  assert 'result' in json.loads(pre.stdout),pre.stdout
+  result=json.loads(pre.stdout)['result']
+  assert result['java_source']=='managed',pre.stdout
+  assert pathlib.Path(result['launch']['java_executable']).resolve()==(rt/rel).resolve(),pre.stdout
  rpc(installed,True)
  def cli(args,success=False):
   global count
