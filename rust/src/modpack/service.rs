@@ -145,3 +145,16 @@ fn save_registry(
     game.atomic_replace(".jmcl/content.json", &bytes)
         .map_err(io)
 }
+
+#[cfg(all(test, unix))]
+mod native_error_tests {
+    #[test]
+    fn raw_name_error_keeps_modpack_boundary() {
+        let error = super::io(std::io::Error::from_raw_os_error(
+            rustix::io::Errno::ILSEQ.raw_os_error(),
+        ));
+        assert_eq!(error.name(), "BadPathName");
+        let missing = super::io(std::io::Error::from(std::io::ErrorKind::NotFound));
+        assert_eq!(missing.name(), "FileNotFound");
+    }
+}

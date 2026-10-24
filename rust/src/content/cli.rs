@@ -358,3 +358,15 @@ fn adopt(
     writeln!(out, "adoptedCount\t{}", adopted.len())?;
     Ok(0)
 }
+
+#[cfg(all(test, unix))]
+mod native_error_tests {
+    #[test]
+    fn raw_name_error_keeps_content_boundary() {
+        let error = super::Error::Io(std::io::Error::from_raw_os_error(
+            rustix::io::Errno::ILSEQ.raw_os_error(),
+        ));
+        assert_eq!(super::name(&error), "BadPathName");
+        assert_eq!(super::name(&super::Error::WorldLocked), "WorldLocked");
+    }
+}
