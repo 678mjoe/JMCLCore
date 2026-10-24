@@ -36,6 +36,9 @@ impl Dir {
             false,
         )?))
     }
+    pub fn child_alias(&self, name: &str) -> Result<Self> {
+        Ok(Self(nt::read_dir_follow_at(&self.0, name.as_ref())?))
+    }
     pub fn new_child(&self, name: &str) -> Result<Self> {
         Ok(Self(nt::create_dir(&self.0, name.as_ref())?))
     }
@@ -103,13 +106,18 @@ impl Dir {
         r
     }
     pub fn rename(&self, old: &str, to: &Dir, new: &str) -> Result<()> {
-        Ok(nt::rename_at(&self.0, old.as_ref(), &to.0, new.as_ref())?)
+        Ok(nt::rename_entry_at(
+            &self.0,
+            old.as_ref(),
+            &to.0,
+            new.as_ref(),
+        )?)
     }
     pub fn unlink(&self, name: impl AsRef<OsStr>) -> Result<()> {
         Ok(nt::unlink(&nt::file_at(&self.0, name.as_ref())?)?)
     }
     pub fn remove_tree(&self, name: impl AsRef<OsStr>) -> Result<()> {
-        Ok(nt::remove_tree(&self.0, name.as_ref())?)
+        Ok(nt::remove_entry_tree(&self.0, name.as_ref())?)
     }
     pub fn size(&self) -> u64 {
         let mut total = 0;
@@ -133,7 +141,7 @@ impl Dir {
         total
     }
     pub fn locked(&self) -> Result<bool> {
-        let f = match self.file("session.lock", true) {
+        let f = match nt::lock_follow_at(&self.0, "session.lock".as_ref()).map_err(Error::Io) {
             Ok(f) => f,
             Err(Error::Io(e)) if e.kind() == std::io::ErrorKind::NotFound => return Ok(false),
             Err(e) => return Err(e),

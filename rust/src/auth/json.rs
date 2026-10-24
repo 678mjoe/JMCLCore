@@ -7,6 +7,38 @@ pub(crate) struct Json<'a>(pub &'a str);
 impl<'a> Json<'a> {
     pub fn parse(s: &'a str) -> Result<Self, ()> {
         let _: &serde_json::value::RawValue = serde_json::from_str(s).map_err(|_| ())?;
+        // RawValue deliberately does not check surrogate pairing. Zig's scanner
+        // does, including ignored fields. Validate escapes without decoding or
+        // allocating unknown (possibly secret) string content.
+        let b = s.as_bytes();
+        let mut i = 0;
+        while i < b.len() {
+            if b[i] != b'\\' {
+                i += 1;
+                continue;
+            }
+            if b.get(i + 1) != Some(&b'u') {
+                i += 2;
+                continue;
+            }
+            let hex = |start: usize| -> Result<u16, ()> {
+                let digits = s.get(start..start + 4).ok_or(())?;
+                u16::from_str_radix(digits, 16).map_err(|_| ())
+            };
+            let code = hex(i + 2)?;
+            i += 6;
+            if (0xd800..=0xdbff).contains(&code) {
+                if b.get(i..i + 2) != Some(b"\\u") {
+                    return Err(());
+                }
+                if !(0xdc00..=0xdfff).contains(&hex(i + 2)?) {
+                    return Err(());
+                }
+                i += 6;
+            } else if (0xdc00..=0xdfff).contains(&code) {
+                return Err(());
+            }
+        }
         Ok(Self(s.trim()))
     }
     fn take(s: &'a str) -> Result<(Self, &'a str), ()> {
@@ -116,51 +148,34 @@ impl<'a> Json<'a> {
         } else {
             Zeroizing::new(self.0.to_owned())
         };
-        // Zig selects parseInt whenever no '.', 'e' or 'E' occurs. Its
-        // integer syntax accepts a single sign and internal underscores.
-        if !text.bytes().any(|b| matches!(b, b'.' | b'e' | b'E')) {
-            let negative = text.starts_with('-');
-            let digits = text
-                .strip_prefix('+')
-                .or_else(|| text.strip_prefix('-'))
-                .unwrap_or(&text);
-            if digits.is_empty() || digits.starts_with('_') || digits.ends_with('_') {
-                return Err(());
-            }
-            let mut n = 0u64;
-            for b in digits.bytes() {
-                if b == b'_' {
-                    continue;
-                }
-                if !b.is_ascii_digit() {
-                    return Err(());
-                }
-                n = n
-                    .checked_mul(10)
-                    .and_then(|n| n.checked_add(u64::from(b - b'0')))
-                    .ok_or(())?;
-            }
-            return if negative && n != 0 { Err(()) } else { Ok(n) };
-        }
-        let n = text.parse::<f64>().map_err(|_| ())?;
-        if !n.is_finite() || n < 0.0 || n.fract() != 0.0 || n >= 18446744073709551616.0 {
-            Err(())
-        } else {
-            Ok(n as u64)
-        }
+        unsigned_text(&text)
     }
     pub fn u32(self) -> Result<u32, ()> {
         self.u64()?.try_into().map_err(|_| ())
     }
 }
+
+/// Typed response numbers follow Zig's binary128 coercion.
+pub(crate) fn unsigned_text(text: &str) -> Result<u64, ()> {
+    crate::json_number::unsigned_text(text, 64).map_err(|_| ())
+}
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn float_underscore_syntax_is_distinct_from_integer_syntax() {
+        for text in ["1__0.0", "1_.0", "1._0", "1e_0", "1e0_", "_1.0"] {
+            assert!(unsigned_text(text).is_err(), "{text}");
+        }
+        assert_eq!(unsigned_text("1__0"), Ok(10));
+    }
     #[test]
     fn zig_integer_string_coercion() {
         for (raw, n) in [
             (r#""1_280""#, 1280),
             (r#""1__280""#, 1280),
+            (r#""1_280.0""#, 1280),
+            (r#""1.28e0_3""#, 1280),
             (r#""+1280""#, 1280),
             (r#""-0""#, 0),
             (r#""18446744073709551615""#, u64::MAX),
@@ -185,7 +200,7 @@ mod tests {
             &**j.required("access_token").unwrap().string().unwrap(),
             "a😀\nsecret"
         );
-        assert!(Json::parse(r#""secret\uD800x""#).unwrap().string().is_err());
+        assert!(Json::parse(r#""secret\uD800x""#).is_err());
         assert!(
             Json::parse(r#"{"a":"x","a":"y"}"#)
                 .unwrap()

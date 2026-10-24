@@ -32,7 +32,7 @@ if let Some(result) = crate::modpack::rpc::handle(&request.method, request.param
 ```
 
 CLI adapter `modpack::cli::run` receives arguments **after** `instance modpack`.
-Integrator owns central protocol/main edits. Provider requests and artifact downloads use separate
+Central protocol/main dispatch is integrated separately. Provider requests and artifact downloads use separate
 transports; the caller's API key is not put into plans, events, registry, or CDN requests.
 
 ## Evidence
@@ -48,7 +48,7 @@ transports; the caller's API key is not put into plans, events, registry, or CDN
 - 3 bounded-writer tests: repeated failure across concurrent emitters, writer panic/receiver
   disconnect, worker panic. Worker termination is checked rather than assuming no deadlock.
 
-Run with a per-worktree target directory, never overwrite another worker's differential binary:
+Run with a per-worktree target directory, never overwrite another checkout's differential binary:
 
 ```sh
 ZIG_GLOBAL_CACHE_DIR=/tmp/jmcl-modpack-zig-cache zig build-exe --dep jmcl_core \

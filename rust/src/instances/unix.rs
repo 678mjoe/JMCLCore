@@ -140,7 +140,13 @@ impl Root {
         }
         // Configured roots are caller-selected. Match Zig: allow symlink ancestors
         // (including macOS /tmp and /var), but refuse a symlink final directory.
-        std::fs::create_dir_all(path)?;
+        // createDirPathOpen reports the subsequent directory open error when
+        // the final component exists as a file (NotDir, not PathAlreadyExists).
+        match std::fs::create_dir_all(path) {
+            Ok(()) => {}
+            Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {}
+            Err(e) => return Err(e),
+        }
         let dir = File::from(cv(fs::open(
             path,
             OFlags::RDONLY | OFlags::DIRECTORY | OFlags::NOFOLLOW | OFlags::CLOEXEC,

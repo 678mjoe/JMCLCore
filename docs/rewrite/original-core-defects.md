@@ -10,8 +10,6 @@
 - **分类：** “确认缺陷”须区分观察结果与原因推断；“兼容性特征”不是待修 bug；“未验证假设”不得升级为确认缺陷。修复完成时补入提交、准确测试名、平台和结果，不能把计划中的测试写成通过。
 - **门禁：** 已批准差异仍不是逐字节一致。严格差分不得静默归一化；实验性例外必须限定具体案例和预期结果，并关联下列稳定 ID。`full_compatibility` 与 `replacement_allowed` 不因本台账变为 true。
 
-> 本文同时记录后续重写切片的证据；第三里程碑尚未集成 loader processor 修正和精确数值模块。下列标注“后续集成”的测试路径不代表本分支已有实现。
-
 ## 当前确认缺陷索引
 
 | ID | 问题 | 固定 Zig 基线 | Rust 状态与剩余门禁 |
@@ -53,7 +51,7 @@
 
 - **条件与症状：** loader processor 成功生成 patched client 后，终态安装 RPC 响应可能不是有效 hash。隔离 fixture 中 Debug 分配器的释放填充值被序列化为 40 个 `170` 的数组，而非正确 SHA-1；不同构建不保证出现相同表现。
 - **源码：** [`src/protocol/install.zig:310–343`](https://github.com/678mjoe/JMCLCore/blob/5a4310debbcee26b3d2391bab2339f79cd6ec52e/src/protocol/install.zig#L310-L343)：loader 分支内 `defer free(patched.patched_sha1)`，但把借用 slice 赋给 `patched_client`，分支结束后才序列化最终响应。完成安装记录也发生在该最终序列化之前。
-- **已有证据：** loader 证据（后续集成：`../../rust/compat/loaders-slice.md`）及 `install_processor_protocol_matches_oracle`（后续集成：`../../rust/tests/loaders_differential.rs`）。fixture 使用离线合成数据。实验性例外仅识别准确的释放填充形态，并另行验证 Rust hash 等于生成文件的 SHA-1；这不证明任意原版输出都可忽略。
+- **已有证据：** [loader 证据](../../rust/compat/loaders-slice.md)及 [`install_processor_protocol_matches_oracle`](../../rust/tests/loaders_differential.rs)。fixture 使用离线合成数据。实验性例外仅识别准确的释放填充形态，并另行验证 Rust hash 等于生成文件的 SHA-1；这不证明任意原版输出都可忽略。
 - **预期与 Rust：** 对最终 JSON 序列化保持 hash 所有权。Rust 持有 owning summary 到输出结束，不仿造释放后读取。该有限观察不扩展为数据损坏或可利用性结论。
 - **以后修 Zig：** 将所有权/释放位置延长到终态输出之后；对两个 loader 的正常成功响应、真实文件 hash、写出失败与 receipt 时序建立回归，不能仅检测 Debug poison。
 
@@ -64,7 +62,7 @@
 
 - **条件与症状：** `store.gc.min_age_seconds` 的某些未加引号浮点数先经 `std.json.Value` 转为 f64；数学上的 u64 最大值在 f64 中已舍入至 2^64。已记录两个边界输入均使原版退出 `-6`，stdout 为空，stderr 为整数转换越界 panic。语料使用空目录参数，在参数解析阶段结束，未执行 GC 文件操作。
 - **源码：** Zig 0.16.0 `lib/std/json/dynamic.zig::Value.parseFromNumberSlice` 的有限浮点路径与 `lib/std/json/static.zig::innerParseFromValue:565–573`。将 `maxInt(u64)` 转为 f64 后也得到 2^64，上界比较放行，后续 checked `@intFromFloat` 越界。
-- **已有证据：** 精确输入、源码推导及退出结果（后续集成：`../../rust/compat/protocol-edges.md`）。对应 oracle SHA-256：`b9e628efc5b7ea34047ad25129a98756b6f8ec5d0be38193aee2620d87a82bfe`。已收集一次性观察；普通 141-case 协议语料和 342-case 数值 golden 的通过不能代替本项退出差异说明。
+- **已有证据：** [精确输入、源码推导及退出结果](../../rust/compat/protocol-edges.md)。对应 oracle SHA-256：`b9e628efc5b7ea34047ad25129a98756b6f8ec5d0be38193aee2620d87a82bfe`。已收集一次性观察；普通 141-case 协议语料和 342-case 数值 golden 的通过不能代替本项退出差异说明。
 - **预期与 Rust：** 无法安全表示的动态输入走现有 `INVALID_PARAMS`，不终止服务。Rust `json_number::dynamic_raw` 的 u64 路径安全拒绝该上界；不故意重现 abort。
 - **以后修 Zig：** 在执行转换之前采用不会因 f64 上界舍入而放行的检查，并覆盖边界两侧及错误优先级。不得统一把所有数字改为 f64：带引号的 `"18446744073709551615.0"` 走 typed binary128 路径，可表示有效 u64 最大值，仍须接受。
 
@@ -90,6 +88,15 @@
 - **批准的预期：** 允许合法内部链接，禁止实际解包写入逃离 staging；详见[安全边界决策](archive-safety-decision.md)。这不是一刀切禁止 symlink，更不能据此拒绝安全的只读 manifest/world 别名。
 - **Rust 状态：** 实现与验收仍待完成；不能因原则获批就把 `runtime.install`、下载后启动或归档防护标记为已验证。现有本地/已安装 Java 的执行证据不覆盖此路径。
 - **以后修 Zig：** 审核解包期间每次写入和路径组件解析的目录边界，保留正常内部链接；通过安全的内部链接、拒绝案例和清理行为回归验证。应单独记录工具链依赖，不悄然改变正常归档/协议契约。
+
+## 源码确认的独立风险：带凭据请求的跨源重定向
+
+此项与上面六条已收集运行观察的条目分开记录；**没有执行网络实验，也没有证据表明真实密钥已经泄露**。
+
+- 固定基线 [`src/service.zig` 的 `fetchBodyWithHeader`](https://github.com/678mjoe/JMCLCore/blob/5a4310debbcee26b3d2391bab2339f79cd6ec52e/src/service.zig#L4147) 允许三次重定向，并将 `x-api-key` 放入 `extra_headers`。固定 Zig 0.16.0 `lib/std/http/Client.zig:821–829` 的规则保留跨域 `extra_headers`，只移除 `privileged_headers`。
+- [`src/install/https_fallback.zig:41–54`](https://github.com/678mjoe/JMCLCore/blob/5a4310debbcee26b3d2391bab2339f79cd6ec52e/src/install/https_fallback.zig#L41-L54) 的重定向循环也将同一 `extra_header` 传给后续 URL。这支持“凭据头可能被转发到不同源”的源码风险判断，但不等同于已观察到泄露。
+- Rust [`content/http.rs`](../../rust/src/content/http.rs) 对带 key 的元数据请求保留 HTTPS `api.curseforge.com:443` 的源限制，不为了逐字节兼容而放开凭据转发。真实服务、TLS、跨源响应及错误映射的网络验收仍未进行。
+- 未来修复应把敏感头的发送限制在明确授权的源，并独立核对主传输和 fallback 的重定向路径；正常无凭据 artifact 请求不能与带 key 的元数据请求混为一谈。
 
 ## 不列为缺陷的兼容性特征
 

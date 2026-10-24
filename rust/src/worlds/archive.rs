@@ -158,6 +158,65 @@ fn archive(f: File) -> Result<ZipArchive<Cursor<Vec<u8>>>> {
     }
     Ok(zip)
 }
+// The source zip_reader.readAlloc intentionally reads stored/deflate payloads
+// without CRC validation. Keep structural/path/encryption/bounds checks above;
+// bypass only the dependency's CRC wrapper, never decompression validation.
+fn entry_bytes(zip: &mut ZipArchive<Cursor<Vec<u8>>>, index: usize) -> Result<Vec<u8>> {
+    let mut entry = zip.by_index_raw(index).map_err(ziperr)?;
+    let expected = entry.size();
+    if expected > MAX_ARCHIVE as u64 || entry.compressed_size() > MAX_ARCHIVE as u64 {
+        return Err(Error::ArchiveInvalid);
+    }
+    let method = entry.compression();
+    let mut compressed = vec![];
+    (&mut entry)
+        .take(MAX_ARCHIVE as u64 + 1)
+        .read_to_end(&mut compressed)
+        .map_err(|_| Error::ArchiveInvalid)?;
+    if compressed.len() as u64 != entry.compressed_size() {
+        return Err(Error::ArchiveInvalid);
+    }
+    match method {
+        CompressionMethod::Stored => {
+            if compressed.len() as u64 != expected {
+                return Err(Error::ArchiveInvalid);
+            }
+            Ok(compressed)
+        }
+        CompressionMethod::Deflated => {
+            let mut decoder = flate2::Decompress::new(false);
+            let mut output = vec![];
+            let mut chunk = [0u8; 8192];
+            loop {
+                let before_in = decoder.total_in();
+                let before_out = decoder.total_out();
+                let status = decoder
+                    .decompress(
+                        &compressed[before_in as usize..],
+                        &mut chunk,
+                        flate2::FlushDecompress::None,
+                    )
+                    .map_err(|_| Error::ArchiveInvalid)?;
+                let count = (decoder.total_out() - before_out) as usize;
+                if decoder.total_out() > expected {
+                    return Err(Error::ArchiveInvalid);
+                }
+                output.extend_from_slice(&chunk[..count]);
+                if status == flate2::Status::StreamEnd {
+                    break;
+                }
+                if decoder.total_in() == before_in && count == 0 {
+                    return Err(Error::ArchiveInvalid);
+                }
+            }
+            if output.len() as u64 != expected {
+                return Err(Error::ArchiveInvalid);
+            }
+            Ok(output)
+        }
+        _ => Err(Error::ArchiveInvalid),
+    }
+}
 fn import_to(
     saves: &fs::Dir,
     file: File,
@@ -192,7 +251,7 @@ fn import_to(
     let staging = saves.new_child(&temp)?;
     let result = (|| {
         for i in 0..zip.len() {
-            let mut f = zip.by_index(i).map_err(ziperr)?;
+            let f = zip.by_index(i).map_err(ziperr)?;
             let full = f.name().to_owned();
             let rel = if let Some(p) = &prefix {
                 full.strip_prefix(&format!("{p}/")).unwrap_or(&full)
@@ -209,17 +268,8 @@ fn import_to(
             if rel == "session.lock" {
                 continue;
             }
-            if f.size() > MAX_ARCHIVE as u64 {
-                return Err(Error::ArchiveInvalid);
-            }
-            let mut data = vec![];
-            (&mut f)
-                .take(MAX_ARCHIVE as u64 + 1)
-                .read_to_end(&mut data)
-                .map_err(|_| Error::ArchiveInvalid)?;
-            if data.len() > MAX_ARCHIVE || data.len() as u64 != f.size() {
-                return Err(Error::ArchiveInvalid);
-            }
+            drop(f);
+            let data = entry_bytes(&mut zip, i)?;
             staging.write_relative(rel, &data)?;
         }
         Ok(())

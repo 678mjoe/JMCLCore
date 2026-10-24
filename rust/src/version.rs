@@ -1343,3 +1343,6 @@ mod fabric_transport_tests {
         assert_eq!(s.transport.calls.get(), 1);
     }
 }
+#[cfg(target_os = "linux")]
+#[path = "version_server.rs"]
+pub mod server;

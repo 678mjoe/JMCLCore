@@ -8,7 +8,15 @@ pub fn run(args: &[String], out: &mut impl Write, err: &mut impl Write) -> Optio
         return Some(adopt(kind, &args[2..], out, err));
     }
     if matches!(op, "install" | "set-version") {
-        return None;
+        return Some(super::cli_remote::run_with(
+            kind,
+            op,
+            &args[2..],
+            out,
+            err,
+            &super::http::Native,
+            &super::http::Native,
+        ));
     }
     Some(inner(kind, op, &args[2.min(args.len())..], out, err))
 }

@@ -1087,6 +1087,60 @@ pub(crate) fn path_from_bytes(bytes: &[u8]) -> io::Result<std::ffi::OsString> {
     Ok(std::ffi::OsString::from_wide(&wide))
 }
 
+/// Probe-only lock access for an explicitly named existing world lock alias.
+pub(crate) fn lock_follow_at(dir: &File, name: &std::ffi::OsStr) -> io::Result<File> {
+    let file = open_nt_raw_policy(
+        Some(dir),
+        &mut leaf(name)?,
+        Some(false),
+        nt::FILE_OPEN,
+        true,
+        false,
+        true,
+    )?;
+    info(&file)?;
+    Ok(file)
+}
+/// Operate on an existing world entry itself, never follow a rename source.
+pub(crate) fn rename_entry_at(
+    parent: &File,
+    old: &std::ffi::OsStr,
+    dest: &File,
+    new: &std::ffi::OsStr,
+) -> io::Result<()> {
+    let file = open_nt_raw(
+        Some(parent),
+        &mut leaf(old)?,
+        None,
+        nt::FILE_OPEN,
+        false,
+        true,
+    )?;
+    if unsafe { GetFileType(file.as_raw_handle()) } != FILE_TYPE_DISK {
+        return Err(invalid("InvalidObjectKind"));
+    }
+    named_op(&file, dest, new, true)
+}
+/// Zig deleteTree unlinks top-level aliases rather than traversing their targets.
+pub(crate) fn remove_entry_tree(parent: &File, name: &std::ffi::OsStr) -> io::Result<()> {
+    let file = open_nt_raw(
+        Some(parent),
+        &mut leaf(name)?,
+        None,
+        nt::FILE_OPEN,
+        false,
+        true,
+    )?;
+    let mut metadata = BY_HANDLE_FILE_INFORMATION::default();
+    if unsafe { GetFileInformationByHandle(file.as_raw_handle(), &mut metadata) } == 0 {
+        return Err(io::Error::last_os_error());
+    }
+    if metadata.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT != 0 {
+        return unlink(&file);
+    }
+    drop(file);
+    remove_tree(parent, name)
+}
 #[cfg(test)]
 mod tests {
     use super::*;

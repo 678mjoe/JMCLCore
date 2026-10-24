@@ -337,13 +337,14 @@ fn dependency_resolution_order_cycle_and_version_switch() {
         serde_json::to_vec(&next).unwrap(),
     );
     let c = root
-        .set_modrinth_version(
+        .set_version(
             &store,
             Kind::Mod,
             "1.20.1",
             Some("fabric"),
             "project",
             "Ver2",
+            None,
             &f,
             &f,
             install::Options::default(),
@@ -358,13 +359,14 @@ fn dependency_resolution_order_cycle_and_version_switch() {
     assert!(!reg.entries[0].enabled);
     assert_eq!(reg.entries[0].source.version_id.as_deref(), Some("Ver2"));
     let c = root
-        .set_modrinth_version(
+        .set_version(
             &store,
             Kind::Mod,
             "1.20.1",
             Some("fabric"),
             "project",
             "Ver2",
+            None,
             &Fixture {
                 docs: HashMap::new(),
                 fail: true,
@@ -375,4 +377,133 @@ fn dependency_resolution_order_cycle_and_version_switch() {
         )
         .unwrap();
     assert!(!c.changed);
+}
+#[test]
+fn curseforge_selection_and_borrowed_key_boundary() {
+    use jmcl_core_rust::content::curseforge as cf;
+    struct Cf {
+        docs: HashMap<String, Vec<u8>>,
+    }
+    impl cf::Metadata for Cf {
+        fn get(&self, url: &str, key: &str, _: usize) -> mr::Result<Vec<u8>> {
+            assert_eq!(key, "synthetic-key");
+            assert!(url.starts_with("https://api.curseforge.com/"));
+            self.docs
+                .get(url)
+                .cloned()
+                .ok_or_else(|| mr::Error("MissingFixture".into()))
+        }
+    }
+    let file = |id: u32, release: u8, date: &str| json!({"id":id,"modId":42,"fileName":format!("{id}.jar"),"releaseType":release,"hashes":[{"value":format!("{:x}",Sha1::digest(b"content")),"algo":1}],"fileDate":date,"fileLength":7,"downloadUrl":null,"gameVersions":["1.20.1","Fabric"]});
+    let mut docs = HashMap::new();
+    docs.insert(
+        "https://api.curseforge.com/v1/mods/42".into(),
+        serde_json::to_vec(
+            &json!({"data":{"id":42,"slug":"project","name":"Project","classId":6}}),
+        )
+        .unwrap(),
+    );
+    // Page bound is 8 MiB; individual file envelopes use 2 MiB, but an
+    // ignored field inside a page must not accidentally inherit that tighter cap.
+    let mut wide = file(1, 2, "2025");
+    wide["ignored"] = json!("x".repeat(2 * 1024 * 1024 + 1));
+    docs.insert(
+        cf::page_url("42", "1.20.1", Some("fabric"), 0).unwrap(),
+        serde_json::to_vec(&json!({"data":[wide,file(2,1,"2023"),file(3,1,"2024")]})).unwrap(),
+    );
+    docs.insert(
+        "https://api.curseforge.com/v1/mods/42/files/3/download-url".into(),
+        serde_json::to_vec(&json!({"data":"https://cdn.invalid/3.jar"})).unwrap(),
+    );
+    let r = cf::resolve(
+        &Cf { docs },
+        Kind::Mod,
+        "1.20.1",
+        Some("fabric"),
+        "synthetic-key",
+        "42",
+        None,
+        true,
+        &Registry::default(),
+    )
+    .unwrap();
+    assert_eq!(r.files.len(), 1);
+    assert_eq!(r.files[0].version_id, "3");
+    assert_eq!(r.files[0].url, "https://cdn.invalid/3.jar");
+    assert!(!format!("{:?}", r.files).contains("synthetic-key"));
+}
+
+impl jmcl_core_rust::content::curseforge::Metadata for Fixture {
+    fn get(&self, _: &str, _: &str, _: usize) -> mr::Result<Vec<u8>> {
+        Err("MissingFixture".into())
+    }
+}
+#[test]
+#[ignore = "requires pinned JMCL_CONTENT_METADATA_ORACLE"]
+fn curseforge_schema_oracle() {
+    let exe = std::env::var_os("JMCL_CONTENT_METADATA_ORACLE").unwrap();
+    let t = tempfile::tempdir().unwrap();
+    let path = t.path().join("cf.json");
+    let base = json!({"data":{"id":1,"modId":42,"fileName":"a.jar","releaseType":1,"hashes":[{"algo":1,"value":"1111111111111111111111111111111111111111"}],"fileDate":"2024","fileLength":7,"downloadUrl":null,"gameVersions":["1.20.1","Fabric"]}});
+    let mut count = 0;
+    let mut check = |v: Value| {
+        let b = serde_json::to_vec(&v).unwrap();
+        std::fs::write(&path, &b).unwrap();
+        let o = std::process::Command::new(&exe)
+            .args(["cffile", path.to_str().unwrap()])
+            .output()
+            .unwrap();
+        assert!(o.status.success());
+        let z: Value = serde_json::from_slice(&o.stdout).unwrap();
+        let r = match jmcl_core_rust::content::curseforge::parse_file(&b) {
+            Ok(f) => {
+                json!({"id":f.id,"project":f.project,"name":f.name,"sha1":f.sha1,"size":f.size,"url":f.url})
+            }
+            Err(e) => json!({"error":e.0}),
+        };
+        assert_eq!(z, r, "{v}");
+        count += 1;
+    };
+    check(base.clone());
+    for field in [
+        "id",
+        "modId",
+        "fileName",
+        "releaseType",
+        "hashes",
+        "fileDate",
+        "fileLength",
+        "downloadUrl",
+        "gameVersions",
+        "dependencies",
+    ] {
+        for value in [
+            json!(null),
+            json!([]),
+            json!("1_0"),
+            json!(-1),
+            json!(256),
+            json!(1.5),
+            json!("-1"),
+            json!("-0"),
+            json!("4294967296"),
+            json!("18446744073709551616"),
+            json!(true),
+        ] {
+            let mut v = base.clone();
+            v["data"][field] = value;
+            check(v)
+        }
+    }
+    for value in [
+        json!({}),
+        json!([]),
+        json!([[]]),
+        json!([{"algo":1,"value":[]}]),
+    ] {
+        let mut v = base.clone();
+        v["data"]["hashes"] = value;
+        check(v)
+    }
+    eprintln!("{count} CurseForge schema fixtures matched");
 }

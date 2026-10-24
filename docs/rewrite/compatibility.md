@@ -84,7 +84,7 @@ validation error is not implemented-success coverage. A source list or test
 count is not a coverage percentage. Tests requiring real services, credentials
 or OS facilities remain explicitly pending or platform-skipped with reasons.
 
-## Open oracle discrepancy decisions
+## Approved source-defect corrections
 
 The foundation harness reports known oversized-request differences at the pinned
 oracle:
@@ -97,8 +97,4 @@ oracle:
   an `EndOfStream` diagnostic on stderr and no RPC event. The Rust foundation
   already preserves this separate EOF behavior; it is not a known mismatch.
 
-Whether to repair the buffered-next-request defect in the oracle before aligning
-Rust is pending the owner's compatibility decision. Keep exact harness fixtures and record the resolution;
-do not silently normalize them away, modify the oracle, or count these cases as
-parity while unresolved. Independent storage and ordinary protocol work can
-continue.
+The owner approved preserving correct Rust behavior for individually source-and-test-proven defects while keeping normal behavior compatible. [ZIG-001 in the defect ledger](original-core-defects.md#zig-001) records this correction. The opt-in correction gate requires the exact rejection followed by an intact ping result; literal oracle mode continues to expose the difference. No oracle or Zig main change follows from this decision, and no unrelated mismatch is allowed. Other approved corrections and their remaining verification boundaries are recorded separately in the same ledger.

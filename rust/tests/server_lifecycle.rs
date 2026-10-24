@@ -300,3 +300,83 @@ fn supervisor_handshake_failure_kills_child_and_cleans_state() {
     assert!(!status.success());
     assert!(!f.tmp.path().join("test/.jmcl/server.pid").exists());
 }
+
+#[test]
+fn managed_rcon_and_query_use_property_derived_loopback_ports() {
+    use std::io::Read;
+    use std::net::{Ipv4Addr, TcpListener, UdpSocket};
+    fn frame(stream: &mut std::net::TcpStream) -> (i32, i32, Vec<u8>) {
+        let mut p = [0; 4];
+        stream.read_exact(&mut p).unwrap();
+        let n = i32::from_le_bytes(p);
+        assert!((10..=65536).contains(&n));
+        let mut b = vec![0; n as usize];
+        stream.read_exact(&mut b).unwrap();
+        (
+            i32::from_le_bytes(b[..4].try_into().unwrap()),
+            i32::from_le_bytes(b[4..8].try_into().unwrap()),
+            b[8..b.len() - 2].to_vec(),
+        )
+    }
+    fn send(stream: &mut std::net::TcpStream, id: i32, kind: i32, body: &[u8]) {
+        let mut bytes = vec![];
+        bytes.extend_from_slice(&((body.len() + 10) as i32).to_le_bytes());
+        bytes.extend_from_slice(&id.to_le_bytes());
+        bytes.extend_from_slice(&kind.to_le_bytes());
+        bytes.extend_from_slice(body);
+        bytes.extend_from_slice(&[0, 0]);
+        stream.write_all(&bytes).unwrap();
+    }
+    let f = Fixture::new();
+    let tcp = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
+    let udp = UdpSocket::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
+    udp.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
+    fs::write(f.tmp.path().join("test/server.properties"),format!("enable-rcon=true\nrcon.port={}\nenable-query=true\nquery.port={}\nserver-ip=not-a-host-to-dial.invalid\n",tcp.local_addr().unwrap().port(),udp.local_addr().unwrap().port())).unwrap();
+    let t = std::thread::spawn(move || {
+        let (mut stream, _) = tcp.accept().unwrap();
+        stream
+            .set_read_timeout(Some(Duration::from_secs(3)))
+            .unwrap();
+        let (auth, kind, password) = frame(&mut stream);
+        assert_eq!(kind, 3);
+        assert_eq!(password, b"synthetic-secret");
+        send(&mut stream, auth, 2, b"");
+        let (cmd, _, body) = frame(&mut stream);
+        assert_eq!(body, b"list");
+        send(&mut stream, cmd, 0, b"part-one");
+        let (probe, _, body) = frame(&mut stream);
+        assert!(body.is_empty());
+        send(&mut stream, cmd, 0, b"+part-two");
+        send(&mut stream, probe, 0, b"");
+    });
+    let u = std::thread::spawn(move || {
+        let mut b = [0; 64];
+        let (n, peer) = udp.recv_from(&mut b).unwrap();
+        assert_eq!(n, 7);
+        let session = b[3..7].to_vec();
+        let mut response = vec![9];
+        response.extend_from_slice(&session);
+        response.extend_from_slice(b"42\0");
+        udp.send_to(&response, peer).unwrap();
+        let (n, _) = udp.recv_from(&mut b).unwrap();
+        assert_eq!(n, 11);
+        let mut response = vec![0];
+        response.extend_from_slice(&session);
+        response.extend_from_slice(b"fixture\0SMP\0world\x000\x0020\0\xdd\x63127.0.0.1\0");
+        udp.send_to(&response, peer).unwrap();
+    });
+    assert_eq!(rpc("server.start", f.params())["result"]["running"], true);
+    let mut p = f.params();
+    p["password"] = "synthetic-secret".into();
+    p["command"] = "list".into();
+    let r = rpc("server.rcon.command", p);
+    assert_eq!(r["result"]["text"], "part-one+part-two", "{r}");
+    assert!(!r.to_string().contains("synthetic-secret"));
+    let mut p = f.params();
+    p["mode"] = "basic".into();
+    let r = rpc("server.query", p);
+    assert_eq!(r["result"]["hostname"], "fixture", "{r}");
+    assert_eq!(r["result"]["host_port"], 25565);
+    t.join().unwrap();
+    u.join().unwrap();
+}

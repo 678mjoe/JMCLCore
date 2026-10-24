@@ -173,12 +173,29 @@ fn notice(out: &mut impl Write, source: Source) -> io::Result<()> {
     }
     Ok(())
 }
-fn run<P: Planner, T: Transport>(
+pub(crate) fn run<P: Planner, T: Transport>(
     request: Request,
     planner: &P,
     transport: &T,
     out: &mut impl Write,
     err: &mut impl Write,
+) -> io::Result<u8> {
+    run_with_environment(
+        request,
+        planner,
+        transport,
+        out,
+        err,
+        &std::env::vars_os().collect(),
+    )
+}
+fn run_with_environment<P: Planner, T: Transport>(
+    request: Request,
+    planner: &P,
+    transport: &T,
+    out: &mut impl Write,
+    err: &mut impl Write,
+    environment: &crate::java::detect::Environment,
 ) -> io::Result<u8> {
     let base = match &request {
         Request::Execute(p) => &p.prepare,
@@ -206,8 +223,9 @@ fn run<P: Planner, T: Transport>(
     };
     if matches!(&request, Request::Execute(_))
         && matches!(plan.loader.as_str(), "forge" | "neoforge")
+        && service::processor_loader(&plan, selection).is_none()
     {
-        writeln!(err, "processor execution unavailable: NotImplemented")?;
+        writeln!(err, "processor chain failed: MissingLoaderVersion")?;
         return Ok(1);
     }
     let root = match base.directory.path().and_then(ArtifactRoot::open) {
@@ -281,6 +299,64 @@ fn run<P: Planner, T: Transport>(
                     return Ok(1);
                 }
             };
+            if let Some(loader) = service::processor_loader(&plan, &p.prepare.selection) {
+                let java = match service::processor_java(
+                    &plan,
+                    &p.java_paths,
+                    &p.java_policy,
+                    &p.store_directory.path()?,
+                    environment,
+                ) {
+                    Ok(java) => java,
+                    Err(error) => {
+                        writeln!(err, "processor Java resolution failed: {error}")?;
+                        return Ok(1);
+                    }
+                };
+                let options = crate::loaders::Options {
+                    java_paths: vec![java],
+                    required_major: plan.java_major_version,
+                    ..Default::default()
+                };
+                let result = stream::stream(
+                    |sink| {
+                        crate::loaders::run(
+                            &root,
+                            &store,
+                            loader,
+                            &plan.version_id,
+                            &options,
+                            Some(environment),
+                            &mut |event| sink(event),
+                        )
+                    },
+                    |event| {
+                        writeln!(
+                            err,
+                            "processor {}/{}: {}",
+                            event.index, event.total, event.name
+                        )?;
+                        err.flush()
+                    },
+                )?;
+                let patched = match result {
+                    Ok(summary) => summary,
+                    Err(error) => {
+                        let name = if plan.loader == "forge" {
+                            "Forge"
+                        } else {
+                            "NeoForge"
+                        };
+                        writeln!(err, "{name} processor chain failed: {}", error.name())?;
+                        return Ok(1);
+                    }
+                };
+                writeln!(
+                    out,
+                    "processors\t{}\npatchedClient\t{}",
+                    patched.processors_run, patched.patched_sha1
+                )?;
+            }
             if let Err(e) = service::record_completed(&root, &p.prepare.selection, &target) {
                 writeln!(err, "failed to record completed installation: {}", e.name())?;
                 return Ok(1);
@@ -319,4 +395,20 @@ fn run<P: Planner, T: Transport>(
         }
     }
     Ok(0)
+}
+
+/// Explicit process environment for embedding and offline fixture execution.
+pub fn cli_with_environment<P: Planner, T: Transport>(
+    args: &[String],
+    out: &mut impl Write,
+    err: &mut impl Write,
+    planner: &P,
+    transport: &T,
+    environment: &crate::java::detect::Environment,
+) -> Option<io::Result<u8>> {
+    let method = method(args)?;
+    Some(match parse(method, &args[2..]) {
+        Ok(request) => run_with_environment(request, planner, transport, out, err, environment),
+        Err(()) => writeln!(err, "{}", usage(method)).map(|_| 2),
+    })
 }

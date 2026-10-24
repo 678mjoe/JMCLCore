@@ -222,7 +222,7 @@ fn writer_failure_does_not_record_completed_installation() {
     assert!(!tmp.path().join("rust/.jmcl/install.json").exists());
 }
 #[test]
-fn incomplete_processor_engine_never_records_success() {
+fn modern_processor_plan_requires_loader_version() {
     struct Forge;
     impl Planner for Forge {
         fn plan(&self, _: &Selection, target: Target) -> Result<Plan, metadata::Error> {
@@ -254,7 +254,7 @@ fn incomplete_processor_engine_never_records_success() {
     )
     .unwrap()
     .unwrap();
-    assert!(String::from_utf8(out).unwrap().contains("NOT_IMPLEMENTED"));
+    assert!(String::from_utf8(out).unwrap().contains("PROCESSOR_FAILED"));
     assert!(!dir.exists());
 }
 

@@ -97,3 +97,20 @@ BMCLAPI source envelopes. `resolve_forge[_preferred]` returns metadata and its
 actual `forge`/`forge_legacy` kind; `plan_forge` retains that kind. Processor
 execution, runtime download and real-upstream interoperability remain separate
 acceptance gates.
+
+## Typed numeric lexemes (wave 4 compatibility repair)
+
+Metadata schema integers now retain their raw JSON numeric token until typed
+coercion. Both raw and quoted `1.0000000000000001` reject with `InvalidNumber`,
+while raw/quoted `18446744073709551615.0` decode to `u64::MAX`, matching Zig's
+binary128 intermediate. Typed u8/u16/u32/u64 fields delegate to the shared
+`json_number::unsigned_text` helper (integration prerequisite: numeric helper
+commit `7b5fb57`, integrated as `5c772fc`). No global serde precision feature is
+changed. Dynamic RPC `Value` parsing/coercion remains separate and unchanged.
+
+The private typed tree preserves object insertion order, duplicate tracking and
+unknown-field dropping. Numeric tokens do not become string field values, and
+parsing remains nesting-bounded. Sixteen additional raw-source oracle cases cover
+fractional precision, binary128 rounding, huge exponents and integer width edges;
+the prior 40 pure cases and 106 end-to-end cache-backed cases remain acceptance
+gates. This does not claim exhaustive malformed-field error precedence parity.
