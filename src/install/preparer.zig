@@ -287,13 +287,18 @@ fn findPlannedFile(files: []const install_plan.File, path: []const u8) ?install_
 }
 
 fn openVerified(root: std.Io.Dir, io: std.Io, expected: install_plan.File) !std.Io.File {
-    const file = try root.openFile(io, expected.path, .{
+    var file = try root.openFile(io, expected.path, .{
         .mode = .read_only,
         .allow_directory = false,
         .follow_symlinks = false,
         .resolve_beneath = true,
     });
     errdefer file.close(io);
+    // Zig 0.16 opens no-follow Windows files with ASYNCHRONOUS IO but marks
+    // the returned File synchronous. Correct that metadata so both ZIP
+    // preflight and extraction readers wait for pending positional reads.
+    // Keep the no-follow / resolve-beneath options above unchanged.
+    if (builtin.os.tag == .windows) file.flags.nonblocking = true;
     if (!try verifyOpenFile(file, io, expected)) return error.CacheFileInvalid;
     return file;
 }
@@ -514,4 +519,34 @@ test "atomic asset projection copies multiple buffers after hashing the source" 
     defer destination.close(io);
     try std.testing.expectEqual(@as(u64, data.len), (try destination.stat(io)).size);
     try std.testing.expectEqualSlices(u8, &expected_hash, &(try artifact_store.hashFile(destination, io)));
+}
+
+test "verified no-follow archives support positional readers" {
+    const io = std.testing.io;
+    var temporary = std.testing.tmpDir(.{});
+    defer temporary.cleanup();
+    const data = "verified archive bytes";
+    try temporary.dir.writeFile(io, .{ .sub_path = "archive", .data = data });
+    var digest: [Sha1.digest_length]u8 = undefined;
+    Sha1.hash(data, &digest, .{});
+    const hash = std.fmt.bytesToHex(digest, .lower);
+    const file = try openVerified(temporary.dir, io, .{
+        .path = "archive",
+        .url = "https://example.invalid/archive",
+        .fallback_url = null,
+        .sha1 = &hash,
+        .size = data.len,
+        .usage = .{ .native = true },
+    });
+    defer file.close(io);
+    if (builtin.os.tag == .windows) try std.testing.expect(file.flags.nonblocking);
+    var buffer: [8]u8 = undefined;
+    var reader = file.reader(io, &buffer);
+    try reader.seekTo(9);
+    var actual: [7]u8 = undefined;
+    try reader.interface.readSliceAll(&actual);
+    try std.testing.expectEqualStrings("archive", &actual);
+    try reader.seekTo(0);
+    try reader.interface.readSliceAll(&actual);
+    try std.testing.expectEqualStrings("verifie", &actual);
 }
