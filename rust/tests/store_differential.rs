@@ -71,13 +71,32 @@ fn native_gc_and_digest_lock_match_zig() {
         .arg(&shared)
         .args(["--min-age-seconds", "0", "--execute", "--json"])
         .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
         .spawn()
         .unwrap();
     std::thread::sleep(Duration::from_millis(300));
-    assert!(
-        child.try_wait().unwrap().is_none(),
-        "Zig bypassed a held Rust digest lock"
-    );
+    if child.try_wait().unwrap().is_some() {
+        let output = child.wait_with_output().unwrap();
+        let retained = shared.join(object_path(&hash).unwrap()).exists();
+        drop(guard);
+        let fresh = Command::new(&oracle)
+            .args(["store", "gc", "--store-directory"])
+            .arg(&shared)
+            .args(["--min-age-seconds", "0", "--execute", "--json"])
+            .output()
+            .unwrap();
+        panic!(
+            "Zig exited while Rust held digest lock: status={:?}; stdout={}; stderr={}; retained={}; fresh_status={:?}; fresh_stdout={}; fresh_stderr={}; after_release_exists={}",
+            output.status,
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr),
+            retained,
+            fresh.status,
+            String::from_utf8_lossy(&fresh.stdout),
+            String::from_utf8_lossy(&fresh.stderr),
+            shared.join(object_path(&hash).unwrap()).exists()
+        );
+    }
     assert!(shared.join(object_path(&hash).unwrap()).exists());
     drop(guard);
     let deadline = Instant::now() + Duration::from_secs(10);
