@@ -6,6 +6,15 @@ use std::{
     fs::File,
     io::{Read, Seek, SeekFrom, Write},
 };
+// Pinned Zig std.Io.Dir.max_path_bytes controls validation before filename reads.
+// Windows accounts for WTF-8 expansion of a 32767-unit UTF-16 path; Unix uses
+// the native PATH_MAX (1024 on Darwin, 4096 on Linux), not a universal 4096.
+#[cfg(windows)]
+const MAX_NATIVE_PATH_BYTES: usize = 32767 * 3 + 1;
+#[cfg(unix)]
+const MAX_NATIVE_PATH_BYTES: usize = libc::PATH_MAX as usize;
+#[cfg(not(any(unix, windows)))]
+const MAX_NATIVE_PATH_BYTES: usize = 4096;
 type Result<T> = std::result::Result<T, Error>;
 fn err(s: &str) -> Error {
     Error::named(s)
@@ -192,7 +201,7 @@ pub(super) fn entries(
         if index >= 4096 {
             return Err(err("TooManyArchiveEntries"));
         }
-        if name_len == 0 || name_len > 4096 {
+        if name_len == 0 || name_len > MAX_NATIVE_PATH_BYTES {
             return Err(err("UnsafeArchivePath"));
         }
         let name = read_at(f, name_offset, name_len).map_err(|e| {

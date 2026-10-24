@@ -148,7 +148,7 @@ jobs:
           if [[ "$RUNNER_OS" == "Linux" ]]; then export JMCL_REQUIRE_CROSS_DEVICE=1; fi
           cargo fmt --all -- --check
           cargo clippy --locked --all-targets -- -D warnings
-          cargo test --locked --all-targets -- --include-ignored
+          cargo test --locked --all-targets -- --include-ignored --show-output
           cargo test --locked --test store_differential -- --include-ignored --nocapture
           cargo build --locked --release
       - name: Differential implemented-slice compatibility

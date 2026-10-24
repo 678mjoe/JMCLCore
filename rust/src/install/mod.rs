@@ -27,6 +27,12 @@ impl Error {
 }
 impl From<io::Error> for Error {
     fn from(e: io::Error) -> Self {
+        // Pinned Zig 0.16 POSIX create/open paths classify EILSEQ as
+        // BadPathName (observed for non-UTF8 filenames on APFS).
+        #[cfg(unix)]
+        if e.raw_os_error() == Some(rustix::io::Errno::ILSEQ.raw_os_error()) {
+            return Self::named("BadPathName");
+        }
         Self(
             match e.kind() {
                 io::ErrorKind::NotFound => "FileNotFound",
@@ -563,6 +569,43 @@ mod tests {
             }
             Ok(self.status)
         }
+    }
+    #[cfg(unix)]
+    #[test]
+    fn path_encoding_errno_matches_zig_without_normalizing_other_errors() {
+        assert_eq!(
+            Error::from(io::Error::from_raw_os_error(
+                rustix::io::Errno::ILSEQ.raw_os_error()
+            ))
+            .name(),
+            "BadPathName"
+        );
+        let unrelated = io::Error::from_raw_os_error(rustix::io::Errno::INVAL.raw_os_error());
+        let unchanged_text = unrelated.to_string();
+        assert_eq!(Error::from(unrelated).name(), unchanged_text);
+        assert_eq!(
+            Error::from(io::Error::from_raw_os_error(
+                rustix::io::Errno::IO.raw_os_error()
+            ))
+            .name(),
+            "FileIoError"
+        );
+        assert_eq!(
+            Error::from(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "fixture path error"
+            ))
+            .name(),
+            "fixture path error"
+        );
+        assert_eq!(
+            Error::from(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "fixture data error"
+            ))
+            .name(),
+            "fixture data error"
+        );
     }
     #[test]
     fn maximum_size_helper_accepts_short_verified_and_checks_bad_digest_after_fetch() {

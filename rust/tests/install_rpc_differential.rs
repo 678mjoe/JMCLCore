@@ -1,3 +1,6 @@
+#[cfg(unix)]
+#[path = "support/raw_names.rs"]
+mod raw_names;
 use jmcl_core_rust::{
     install::{
         self,
@@ -376,9 +379,17 @@ fn raw_rpc_directory_bytes_preserve_legacy_paths() {
     };
     let rust = raw_dir("rust-");
     let zig = raw_dir("zig-");
-    for root in [&rust, &zig] {
-        fs::create_dir_all(root.join("versions/fixture")).unwrap();
-        fs::write(root.join("versions/fixture/fixture.jar"), b"abc").unwrap();
+    let support = raw_names::probe(tmp.path(), raw_names::Kind::Directory);
+    match &support {
+        raw_names::Support::Supported => {
+            for root in [&rust, &zig] {
+                fs::create_dir_all(root.join("versions/fixture")).unwrap();
+                fs::write(root.join("versions/fixture/fixture.jar"), b"abc").unwrap();
+            }
+        }
+        raw_names::Support::Rejected(error) => eprintln!(
+            "raw-directory success unsupported on fixture filesystem ({error}); testing exact RPC rejection parity instead"
+        ),
     }
     let zp = json!({"id":"fixture","directory":zig.as_os_str().as_bytes(),"store_directory":tmp.path().join("zstore"),"workers":1});
     let rp = json!({"id":"fixture","directory":rust.as_os_str().as_bytes(),"store_directory":tmp.path().join("rstore"),"workers":1});
@@ -398,5 +409,17 @@ fn raw_rpc_directory_bytes_preserve_legacy_paths() {
     .unwrap()
     .unwrap();
     assert_eq!(String::from_utf8(out).unwrap(), zig_out);
-    assert!(rust.join(".jmcl/install.json").is_file());
+    match support {
+        raw_names::Support::Supported => assert!(rust.join(".jmcl/install.json").is_file()),
+        raw_names::Support::Rejected(_) => {
+            let event: Value = serde_json::from_str(zig_out.trim()).unwrap();
+            assert_eq!(event["event"], "error");
+            assert_eq!(event["error"]["code"], "INSTALL_ROOT_ERROR");
+            for entry in fs::read_dir(tmp.path()).unwrap() {
+                let name = entry.unwrap().file_name();
+                assert_ne!(name, rust.file_name().unwrap());
+                assert_ne!(name, zig.file_name().unwrap());
+            }
+        }
+    }
 }

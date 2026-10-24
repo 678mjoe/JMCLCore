@@ -130,6 +130,24 @@ fn snapshot(root: &Path) -> Vec<(String, Vec<u8>)> {
 fn raw_wire_cli_and_disk_oracle() {
     let exe = std::env::var_os("JMCL_ZIG_ORACLE").expect("set required pinned JMCL_ZIG_ORACLE");
     let tmp = tempfile::tempdir().unwrap();
+    #[cfg(unix)]
+    let raw_names_supported = {
+        use std::os::unix::ffi::OsStrExt;
+        let probe = tmp.path().join(std::ffi::OsStr::from_bytes(b"probe-\xff"));
+        match fs::write(&probe, b"probe") {
+            Ok(()) => {
+                fs::remove_file(probe).unwrap();
+                true
+            }
+            Err(error) if error.raw_os_error() == Some(libc::EILSEQ) => {
+                eprintln!(
+                    "Raw-name success is unavailable on this filesystem (EILSEQ); comparing modpack rejection and disk effects instead"
+                );
+                false
+            }
+            Err(error) => panic!("raw-name capability probe failed unexpectedly: {error:?}"),
+        }
+    };
     let mut count = 0;
     for mode in [
         "raw",
@@ -175,7 +193,7 @@ fn raw_wire_cli_and_disk_oracle() {
         );
         assert_eq!(snapshot(&zroot), snapshot(&rroot), "disk {mode}");
         #[cfg(unix)]
-        if mode == "raw" {
+        if mode == "raw" && raw_names_supported {
             use std::os::unix::ffi::OsStrExt;
             assert_eq!(
                 fs::read(
@@ -185,6 +203,16 @@ fn raw_wire_cli_and_disk_oracle() {
                 )
                 .unwrap(),
                 b"private"
+            );
+        }
+        #[cfg(unix)]
+        if mode == "raw" && !raw_names_supported {
+            let last: Value =
+                serde_json::from_str(std::str::from_utf8(&ro).unwrap().lines().last().unwrap())
+                    .unwrap();
+            assert_eq!(
+                last["event"], "error",
+                "unsupported raw name must not report installation success"
             );
         }
         count += 1;

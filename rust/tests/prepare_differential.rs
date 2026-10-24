@@ -1,3 +1,6 @@
+#[cfg(unix)]
+#[path = "support/raw_names.rs"]
+mod raw_names;
 use jmcl_core_rust::{
     install,
     metadata::Source,
@@ -388,14 +391,18 @@ fn zip64_native_entry_and_directory_extents_are_supported() {
 #[ignore = "requires pinned Zig preparer fixture adapter"]
 fn zip64_and_entry_count_match_pinned_zig() {
     let oracle = std::env::var("JMCL_ZIG_PREPARE_ORACLE").unwrap();
-    let mut long_name = archive(&[entry("native.bin")]);
-    let central = long_name
-        .windows(4)
-        .position(|v| v == b"PK\x01\x02")
-        .unwrap();
-    long_name[central + 28..central + 30].copy_from_slice(&8192u16.to_le_bytes());
+    // Keep the original truncated fixture; vary only its declared filename
+    // length beyond Darwin/Linux PATH_MAX but below the larger Windows bound.
+    let long_name = |length: u16| {
+        let mut bytes = archive(&[entry("native.bin")]);
+        let central = bytes.windows(4).position(|v| v == b"PK\x01\x02").unwrap();
+        bytes[central + 28..central + 30].copy_from_slice(&length.to_le_bytes());
+        bytes
+    };
     for (name, b) in [
-        ("long-name-before-truncated", long_name),
+        ("name-1025-before-truncated", long_name(1025)),
+        ("name-4097-before-truncated", long_name(4097)),
+        ("name-8192-before-truncated", long_name(8192)),
         ("zip64", zip64_archive()),
         ("entry-limit", archive(&vec![entry("same"); 4097])),
     ] {
@@ -459,8 +466,42 @@ fn raw_unix_native_names_match_without_lossy_writes() {
         .arg(&zig)
         .output()
         .unwrap();
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
     let zv: Value = serde_json::from_slice(&out.stdout).unwrap();
-    let rv = install::prepare(&root, &p).unwrap();
+    let support = raw_names::probe(&rust, raw_names::Kind::File);
+    let rv = install::prepare(&root, &p);
+    if let raw_names::Support::Rejected(error) = support {
+        let rust_error = rv.expect_err("raw native filename must be rejected by this filesystem");
+        let zig_error = zv["error"]
+            .as_str()
+            .expect("Zig must also reject the raw native filename");
+        assert_eq!(
+            serde_json::json!({"error": rust_error.name()}),
+            zv,
+            "filesystem rejection must retain exact error parity; a mismatch is a production contract gap, not an unsupported-success skip"
+        );
+        eprintln!(
+            "raw-native success unsupported on fixture filesystem ({error}); both cores reject identically and clean up (Zig={zig_error}, Rust={})",
+            rust_error.name()
+        );
+        for directory in [&rust, &zig] {
+            assert_eq!(fs::read(directory.join("native.jar")).unwrap(), b);
+            let native_parent = directory.join(".jmcl/runtime/natives");
+            match fs::read_dir(native_parent) {
+                Ok(entries) => {
+                    assert_eq!(entries.count(), 0, "failed extraction left a native tree")
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                Err(e) => panic!("cannot verify native cleanup: {e}"),
+            }
+        }
+        return;
+    }
+    let rv = rv.unwrap();
     assert_eq!(zv["native_files"], 1);
     assert_eq!(rv.native_files, 1);
     let name = std::ffi::OsStr::from_bytes(b"\xffaw.bin");
@@ -513,10 +554,33 @@ fn byte_path_replacement_remains_atomic_and_anchored() {
     #[cfg(unix)]
     {
         use std::os::unix::ffi::OsStrExt;
-        root.atomic_replace_bytes(b"config/\xff", b"raw").unwrap();
-        assert_eq!(
-            fs::read(tmp.path().join(std::ffi::OsStr::from_bytes(b"config/\xff"))).unwrap(),
-            b"raw"
-        );
+        match raw_names::probe(&tmp.path().join("config"), raw_names::Kind::File) {
+            raw_names::Support::Supported => {
+                root.atomic_replace_bytes(b"config/\xff", b"raw").unwrap();
+                assert_eq!(
+                    fs::read(tmp.path().join(std::ffi::OsStr::from_bytes(b"config/\xff"))).unwrap(),
+                    b"raw"
+                );
+            }
+            raw_names::Support::Rejected(probe_error) => {
+                let error = root
+                    .atomic_replace_bytes(b"config/\xff", b"raw")
+                    .expect_err("raw filename replacement must be rejected on this filesystem");
+                assert_eq!(error.raw_os_error(), probe_error.raw_os_error());
+                assert_eq!(fs::read(tmp.path().join("config/name")).unwrap(), b"two");
+                let names = fs::read_dir(tmp.path().join("config"))
+                    .unwrap()
+                    .map(|entry| entry.unwrap().file_name())
+                    .collect::<Vec<_>>();
+                assert_eq!(
+                    names,
+                    vec![std::ffi::OsString::from("name")],
+                    "failed replacement leaked temporary files"
+                );
+                eprintln!(
+                    "raw-byte replacement success unsupported on fixture filesystem ({probe_error}); rejection and atomic cleanup verified instead"
+                );
+            }
+        }
     }
 }

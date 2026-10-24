@@ -134,3 +134,26 @@ by this corpus (filesystem paths themselves preserve raw bytes/WTF-8).
 JMCL_ZIG_ORACLE=/path/to/pinned/zig-out/bin/jmcl-core \
   cargo test --test install_rpc_differential -- --include-ignored
 ```
+
+### Filesystem-dependent raw-name fixtures
+
+APFS on the native macOS ARM runner rejected the existing `0xFF` fixture pathname
+with EILSEQ before the cores were invoked. Raw-name tests now probe their temporary
+filesystem, accepting only that observed capability rejection (not arbitrary IO
+failures). On supporting filesystems the original byte-exact success assertions
+remain. On rejecting filesystems both cores still receive the original raw RPC or
+ZIP input: RPC errors and native error names must match exactly, and cleanup is
+checked. Atomic byte-path replacement checks EILSEQ propagation and absence of leaked
+temporary files; ordinary UTF-8 replacement and traversal checks always run.
+
+Run these suites with `--include-ignored --show-output` to display any unsupported
+success-branch reports. A rejection branch is not evidence that raw-name success
+works on that filesystem. Linux success coverage can run locally; native APFS
+rejection parity remains a separate CI gate. No OS error mismatch is waived by the
+capability probe.
+
+The separate production correction maps only Unix raw errno EILSEQ to
+`BadPathName`, as pinned Zig 0.16 `std/Io/Threaded.zig` does in POSIX create/open
+paths. It does not normalize OS error text or change unrelated errors. A Linux
+synthetic errno regression proves this mapping; it is not a substitute for the
+pending native APFS rejection/cleanup run.
