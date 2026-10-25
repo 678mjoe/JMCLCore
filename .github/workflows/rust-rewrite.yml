@@ -207,6 +207,18 @@ jobs:
           if failures:
               raise SystemExit(f"Offline corpus failures: {failures}")
           PYTHON
+      - name: World export and backup CLI archive corpus
+        run: |
+          python - <<'PYTHON'
+          import hashlib, os, subprocess, sys
+          from pathlib import Path
+          suffix = ".exe" if os.name == "nt" else ""
+          zig = Path(f".ci-oracle/zig-out/bin/jmcl-core{suffix}")
+          rust = Path(f"rust/target/release/jmcl-core-rust{suffix}")
+          subprocess.run([sys.executable, "rust/compat/world_cli_archives.py",
+                          "--zig", str(zig), "--zig-sha256", hashlib.sha256(zig.read_bytes()).hexdigest(),
+                          "--rust", str(rust), "--rust-sha256", hashlib.sha256(rust.read_bytes()).hexdigest()], check=True)
+          PYTHON
       - name: Pinned Linux server lifecycle and worldset matrix
         if: runner.os == 'Linux'
         run: |
