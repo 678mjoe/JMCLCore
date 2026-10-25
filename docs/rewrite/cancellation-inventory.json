@@ -1,0 +1,539 @@
+{
+  "status": "design-inventory-not-implemented",
+  "baseline": "03ad49d787a6493fd2393b1f2f0d04dd91fbab74",
+  "legacy_protocol": 1,
+  "method_count": 106,
+  "purpose": "Every legacy method has an explicit cancellation policy; this does not advertise cancellation support or passing tests. Short calls may complete before cancellation. Family-specific boundaries in task-cancellation.md override generic policy labels.",
+  "methods": [
+    {
+      "method": "ping",
+      "policy": "short-call",
+      "family": "local-metadata"
+    },
+    {
+      "method": "core.version",
+      "policy": "short-call",
+      "family": "local-metadata"
+    },
+    {
+      "method": "version.list",
+      "policy": "cooperative-staged",
+      "family": "installation-metadata"
+    },
+    {
+      "method": "version.get",
+      "policy": "cooperative-staged",
+      "family": "installation-metadata"
+    },
+    {
+      "method": "version.resolve",
+      "policy": "cooperative-staged",
+      "family": "installation-metadata"
+    },
+    {
+      "method": "install.plan",
+      "policy": "cooperative-staged",
+      "family": "installation-metadata"
+    },
+    {
+      "method": "install.execute",
+      "policy": "cooperative-staged",
+      "family": "installation-metadata"
+    },
+    {
+      "method": "install.prepare",
+      "policy": "cooperative-staged",
+      "family": "installation-metadata"
+    },
+    {
+      "method": "store.gc",
+      "policy": "checkpoint-partial",
+      "family": "deletion-gc"
+    },
+    {
+      "method": "mods.list",
+      "policy": "cooperative-read",
+      "family": "read-scan-network"
+    },
+    {
+      "method": "mods.install",
+      "policy": "cooperative-staged",
+      "family": "content"
+    },
+    {
+      "method": "mods.set-version",
+      "policy": "cooperative-staged",
+      "family": "content"
+    },
+    {
+      "method": "mods.enable",
+      "policy": "short-call",
+      "family": "content-registry"
+    },
+    {
+      "method": "mods.disable",
+      "policy": "short-call",
+      "family": "content-registry"
+    },
+    {
+      "method": "mods.remove",
+      "policy": "checkpoint-partial",
+      "family": "deletion-gc"
+    },
+    {
+      "method": "mods.adopt",
+      "policy": "cooperative-staged",
+      "family": "content"
+    },
+    {
+      "method": "resourcepacks.list",
+      "policy": "cooperative-read",
+      "family": "read-scan-network"
+    },
+    {
+      "method": "resourcepacks.install",
+      "policy": "cooperative-staged",
+      "family": "content"
+    },
+    {
+      "method": "resourcepacks.set-version",
+      "policy": "cooperative-staged",
+      "family": "content"
+    },
+    {
+      "method": "resourcepacks.enable",
+      "policy": "short-call",
+      "family": "content-registry"
+    },
+    {
+      "method": "resourcepacks.disable",
+      "policy": "short-call",
+      "family": "content-registry"
+    },
+    {
+      "method": "resourcepacks.remove",
+      "policy": "checkpoint-partial",
+      "family": "deletion-gc"
+    },
+    {
+      "method": "resourcepacks.adopt",
+      "policy": "cooperative-staged",
+      "family": "content"
+    },
+    {
+      "method": "shaderpacks.list",
+      "policy": "cooperative-read",
+      "family": "read-scan-network"
+    },
+    {
+      "method": "shaderpacks.install",
+      "policy": "cooperative-staged",
+      "family": "content"
+    },
+    {
+      "method": "shaderpacks.set-version",
+      "policy": "cooperative-staged",
+      "family": "content"
+    },
+    {
+      "method": "shaderpacks.enable",
+      "policy": "short-call",
+      "family": "content-registry"
+    },
+    {
+      "method": "shaderpacks.disable",
+      "policy": "short-call",
+      "family": "content-registry"
+    },
+    {
+      "method": "shaderpacks.remove",
+      "policy": "checkpoint-partial",
+      "family": "deletion-gc"
+    },
+    {
+      "method": "shaderpacks.adopt",
+      "policy": "cooperative-staged",
+      "family": "content"
+    },
+    {
+      "method": "datapacks.list",
+      "policy": "cooperative-read",
+      "family": "read-scan-network"
+    },
+    {
+      "method": "datapacks.install",
+      "policy": "cooperative-staged",
+      "family": "content"
+    },
+    {
+      "method": "datapacks.set-version",
+      "policy": "cooperative-staged",
+      "family": "content"
+    },
+    {
+      "method": "datapacks.enable",
+      "policy": "short-call",
+      "family": "content-registry"
+    },
+    {
+      "method": "datapacks.disable",
+      "policy": "short-call",
+      "family": "content-registry"
+    },
+    {
+      "method": "datapacks.remove",
+      "policy": "checkpoint-partial",
+      "family": "deletion-gc"
+    },
+    {
+      "method": "datapacks.adopt",
+      "policy": "cooperative-staged",
+      "family": "content"
+    },
+    {
+      "method": "modpack.install",
+      "policy": "cooperative-staged",
+      "family": "installation-metadata"
+    },
+    {
+      "method": "instance.create",
+      "policy": "cooperative-staged",
+      "family": "installation-metadata"
+    },
+    {
+      "method": "instance.list",
+      "policy": "cooperative-read",
+      "family": "read-scan-network"
+    },
+    {
+      "method": "instance.get",
+      "policy": "short-call",
+      "family": "local-metadata"
+    },
+    {
+      "method": "instance.delete",
+      "policy": "checkpoint-partial",
+      "family": "deletion-gc"
+    },
+    {
+      "method": "server.create",
+      "policy": "cooperative-staged",
+      "family": "installation-metadata"
+    },
+    {
+      "method": "server.list",
+      "policy": "cooperative-read",
+      "family": "read-scan-network"
+    },
+    {
+      "method": "server.get",
+      "policy": "short-call",
+      "family": "local-metadata"
+    },
+    {
+      "method": "server.delete",
+      "policy": "checkpoint-partial",
+      "family": "deletion-gc"
+    },
+    {
+      "method": "server.install",
+      "policy": "cooperative-staged",
+      "family": "installation-metadata"
+    },
+    {
+      "method": "server.start",
+      "policy": "process-lifecycle",
+      "family": "process"
+    },
+    {
+      "method": "server.stop",
+      "policy": "process-lifecycle",
+      "family": "process"
+    },
+    {
+      "method": "server.restart",
+      "policy": "process-lifecycle",
+      "family": "process"
+    },
+    {
+      "method": "server.status",
+      "policy": "short-call",
+      "family": "local-metadata"
+    },
+    {
+      "method": "server.logs",
+      "policy": "cooperative-read",
+      "family": "read-scan-network"
+    },
+    {
+      "method": "server.command",
+      "policy": "external-effect",
+      "family": "remote-command"
+    },
+    {
+      "method": "server.rcon.command",
+      "policy": "external-effect",
+      "family": "remote-command"
+    },
+    {
+      "method": "server.query",
+      "policy": "cooperative-read",
+      "family": "read-scan-network"
+    },
+    {
+      "method": "server.properties.get",
+      "policy": "short-call",
+      "family": "local-metadata"
+    },
+    {
+      "method": "server.properties.set",
+      "policy": "short-call",
+      "family": "local-metadata"
+    },
+    {
+      "method": "server.mods.list",
+      "policy": "cooperative-read",
+      "family": "read-scan-network"
+    },
+    {
+      "method": "server.mods.install",
+      "policy": "cooperative-staged",
+      "family": "content"
+    },
+    {
+      "method": "server.mods.set-version",
+      "policy": "cooperative-staged",
+      "family": "content"
+    },
+    {
+      "method": "server.mods.enable",
+      "policy": "short-call",
+      "family": "content-registry"
+    },
+    {
+      "method": "server.mods.disable",
+      "policy": "short-call",
+      "family": "content-registry"
+    },
+    {
+      "method": "server.mods.remove",
+      "policy": "checkpoint-partial",
+      "family": "deletion-gc"
+    },
+    {
+      "method": "server.mods.adopt",
+      "policy": "cooperative-staged",
+      "family": "content"
+    },
+    {
+      "method": "server.datapacks.list",
+      "policy": "cooperative-read",
+      "family": "read-scan-network"
+    },
+    {
+      "method": "server.datapacks.install",
+      "policy": "cooperative-staged",
+      "family": "content"
+    },
+    {
+      "method": "server.datapacks.set-version",
+      "policy": "cooperative-staged",
+      "family": "content"
+    },
+    {
+      "method": "server.datapacks.enable",
+      "policy": "short-call",
+      "family": "content-registry"
+    },
+    {
+      "method": "server.datapacks.disable",
+      "policy": "short-call",
+      "family": "content-registry"
+    },
+    {
+      "method": "server.datapacks.remove",
+      "policy": "checkpoint-partial",
+      "family": "deletion-gc"
+    },
+    {
+      "method": "server.datapacks.adopt",
+      "policy": "cooperative-staged",
+      "family": "content"
+    },
+    {
+      "method": "worlds.list",
+      "policy": "cooperative-staged",
+      "family": "worlds"
+    },
+    {
+      "method": "worlds.get",
+      "policy": "short-call",
+      "family": "local-metadata"
+    },
+    {
+      "method": "worlds.rename",
+      "policy": "short-call",
+      "family": "worlds"
+    },
+    {
+      "method": "worlds.duplicate",
+      "policy": "cooperative-staged",
+      "family": "worlds"
+    },
+    {
+      "method": "worlds.delete",
+      "policy": "checkpoint-partial",
+      "family": "deletion-gc"
+    },
+    {
+      "method": "worlds.export",
+      "policy": "cooperative-staged",
+      "family": "worlds"
+    },
+    {
+      "method": "worlds.import",
+      "policy": "cooperative-staged",
+      "family": "worlds"
+    },
+    {
+      "method": "worlds.backup",
+      "policy": "cooperative-staged",
+      "family": "worlds"
+    },
+    {
+      "method": "worlds.backups",
+      "policy": "cooperative-staged",
+      "family": "worlds"
+    },
+    {
+      "method": "worlds.restore",
+      "policy": "cooperative-staged",
+      "family": "worlds"
+    },
+    {
+      "method": "worlds.backups.delete",
+      "policy": "checkpoint-partial",
+      "family": "deletion-gc"
+    },
+    {
+      "method": "server.worlds.list",
+      "policy": "cooperative-staged",
+      "family": "worlds"
+    },
+    {
+      "method": "server.worlds.get",
+      "policy": "short-call",
+      "family": "local-metadata"
+    },
+    {
+      "method": "server.worlds.rename",
+      "policy": "short-call",
+      "family": "worlds"
+    },
+    {
+      "method": "server.worlds.delete",
+      "policy": "checkpoint-partial",
+      "family": "deletion-gc"
+    },
+    {
+      "method": "server.worlds.backup",
+      "policy": "cooperative-staged",
+      "family": "worlds"
+    },
+    {
+      "method": "server.worlds.backups",
+      "policy": "cooperative-staged",
+      "family": "worlds"
+    },
+    {
+      "method": "server.worlds.restore",
+      "policy": "cooperative-staged",
+      "family": "worlds"
+    },
+    {
+      "method": "server.worlds.backups.delete",
+      "policy": "checkpoint-partial",
+      "family": "deletion-gc"
+    },
+    {
+      "method": "java.detect",
+      "policy": "cooperative-staged",
+      "family": "installation-metadata"
+    },
+    {
+      "method": "java.select",
+      "policy": "cooperative-staged",
+      "family": "installation-metadata"
+    },
+    {
+      "method": "launch.plan",
+      "policy": "cooperative-staged",
+      "family": "installation-metadata"
+    },
+    {
+      "method": "launch.execute",
+      "policy": "process-lifecycle",
+      "family": "process"
+    },
+    {
+      "method": "auth.microsoft.device.begin",
+      "policy": "external-effect",
+      "family": "authentication"
+    },
+    {
+      "method": "auth.microsoft.device.poll",
+      "policy": "external-effect",
+      "family": "authentication"
+    },
+    {
+      "method": "auth.microsoft.refresh",
+      "policy": "external-effect",
+      "family": "authentication"
+    },
+    {
+      "method": "auth.minecraft.refresh_exchange",
+      "policy": "external-effect",
+      "family": "authentication"
+    },
+    {
+      "method": "auth.minecraft.exchange",
+      "policy": "external-effect",
+      "family": "authentication"
+    },
+    {
+      "method": "java.runtime.list",
+      "policy": "cooperative-staged",
+      "family": "installation-metadata"
+    },
+    {
+      "method": "java.runtime.install",
+      "policy": "dependency-blocked",
+      "family": "runtime-acquisition"
+    },
+    {
+      "method": "java.runtime.remove",
+      "policy": "checkpoint-partial",
+      "family": "deletion-gc"
+    },
+    {
+      "method": "account.microsoft.save",
+      "policy": "short-call",
+      "family": "local-metadata"
+    },
+    {
+      "method": "account.microsoft.list",
+      "policy": "short-call",
+      "family": "local-metadata"
+    },
+    {
+      "method": "account.microsoft.get",
+      "policy": "short-call",
+      "family": "local-metadata"
+    },
+    {
+      "method": "account.microsoft.delete",
+      "policy": "short-call",
+      "family": "local-metadata"
+    }
+  ]
+}
