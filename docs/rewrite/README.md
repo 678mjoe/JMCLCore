@@ -55,6 +55,18 @@ permission to silently change formats or protocol semantics for Rust convenience
    frontend contract tests and existing disk takeover. Resolve every uncovered
    method/CLI/storage family before changing the default binary or frontend pin.
 
+## First new feature after the compatibility baseline
+
+The owner requested complete cancellation coverage for long-running Core work.
+Track it as the first additive post-baseline feature, separately from parity:
+[cooperative task cancellation design](task-cancellation.md) and
+[per-method policy inventory](cancellation-inventory.json).
+The design is not implemented. Legacy protocol v1 remains synchronous and has
+no caller-facing cancellation; a new opt-in task/control layer must preserve
+legacy contracts, hard-link ownership, safe cleanup and honest partial outcomes.
+This requirement does not mark replacement gates or managed-runtime acquisition
+as complete.
+
 Each slice records exact commits, executed tests and remaining gaps in its PR.
 A green skeleton or a successful compile does not close later gates. Zig remains
 available as the reference and current implementation until replacement gates
