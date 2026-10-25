@@ -19,8 +19,11 @@ This is **not full worlds compatibility** yet:
   Cross-compilation and lint pass; native execution is still required. Ordinary
   private-copy, lock, archive, rollback, and NBT tests are enabled on Windows too.
   `instance worlds` CLI is oracle-tested for read/validation, rename, duplicate,
-  deletion, import, restore, and backup deletion output. Export size and backup
-  timestamp-bearing CLI output still require broader corpus coverage.
+  deletion, import, restore, and backup deletion output. The bounded
+  `compat/world_cli_archives.py` corpus additionally covers export replacement,
+  actual printed archive size/file count, five backup-label cases, timestamped
+  filenames, plain/JSON backup listings, and three failure cases on Linux.
+  This is not exhaustive CLI or native-platform acceptance.
 - Explicitly selected existing world-directory aliases follow the original
   `openWorld`/`openMutable` contract: their resolved directory is the requested
   world, including requested mutations. Listing does not enumerate aliases as
@@ -47,3 +50,27 @@ path traversal, over-limit declared archive entries, failed publication rollback
 cleanup of temporary state, and filesystem symlinks in duplicate/export. They are
 not exhaustive fuzzing or power-loss tests. Coupled Linux server dimension-world
 backup/restore remains a separate server-lifecycle slice, not these client APIs.
+
+## Timestamp-bearing CLI corpus
+
+Run from `rust/` with both compiled binaries and their independently recorded
+SHA-256 values (the runner verifies and privately copies them before execution):
+
+```sh
+python3 compat/world_cli_archives.py \
+  --zig /path/to/pinned/jmcl-core --zig-sha256 "$ZIG_SHA256" \
+  --rust /path/to/jmcl-core-rust --rust-sha256 "$RUST_SHA256"
+```
+
+The corpus checks 48 command results across nine paired synthetic scenarios.
+Every stdout/stderr/status is checked; archive entry sets, bytes, fixed DOS
+metadata timestamps, exclusions and private source-file identity are checked on
+disk. Each displayed size is checked against that implementation's actual
+archive, never rewritten to hide compressor differences. Generated filename
+UTC timestamps must parse and fall between the command's sampled start/end
+seconds before they can be abstracted. Listing `created_ms` must equal the
+archive's exact on-disk modification time; a controlled subsecond mtime verifies
+that it is not inferred from the filename. Only the validated filename timestamp
+is abstracted across runs. No live game, Java runtime, network, or external data
+is used. Linux execution is verified; native Windows/macOS execution of this
+additional standalone corpus is not claimed.
