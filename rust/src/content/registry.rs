@@ -81,26 +81,18 @@ impl Default for Registry {
         }
     }
 }
+fn typed_number<'de, D: serde::Deserializer<'de>>(d: D, width: usize) -> Result<u64, D::Error> {
+    // Zig content_registry.parse reads the disk document directly into Registry,
+    // not through dynamic RPC Value. Keep its lexeme and typed numeric errors.
+    let raw = <&serde_json::value::RawValue>::deserialize(d)?;
+    crate::json_number::typed_raw(raw.get(), width)
+        .map_err(|e| serde::de::Error::custom(format!("Zig:{}", e.name())))
+}
 fn number<'de, D: serde::Deserializer<'de>>(d: D) -> Result<u64, D::Error> {
-    let v = serde_json::Value::deserialize(d)?;
-    let n = match v {
-        serde_json::Value::Number(n) => n.as_u64().or_else(|| {
-            n.as_f64()
-                .filter(|x| x.is_finite() && *x >= 0. && x.fract() == 0. && *x < u64::MAX as f64)
-                .map(|x| x as u64)
-        }),
-        serde_json::Value::String(s) => s.parse::<u64>().ok().or_else(|| {
-            s.parse::<f64>()
-                .ok()
-                .filter(|x| x.is_finite() && *x >= 0. && x.fract() == 0. && *x < u64::MAX as f64)
-                .map(|x| x as u64)
-        }),
-        _ => None,
-    };
-    n.ok_or_else(|| serde::de::Error::custom("invalid integer"))
+    typed_number(d, 64)
 }
 fn schema<'de, D: serde::Deserializer<'de>>(d: D) -> Result<u32, D::Error> {
-    u32::try_from(number(d)?).map_err(serde::de::Error::custom)
+    typed_number(d, 32).map(|n| n as u32)
 }
 pub fn parse(bytes: &[u8]) -> Result<Registry, &'static str> {
     if bytes.len() > MAX_BYTES {
@@ -119,7 +111,13 @@ pub fn parse(bytes: &[u8]) -> Result<Registry, &'static str> {
     };
     let r: Registry = serde_json::from_slice(bytes).map_err(|e| {
         let m = e.to_string();
-        if e.is_eof() {
+        if m.starts_with("Zig:InvalidNumber") {
+            "InvalidNumber"
+        } else if m.starts_with("Zig:InvalidCharacter") {
+            "InvalidCharacter"
+        } else if m.starts_with("Zig:Overflow") {
+            "Overflow"
+        } else if e.is_eof() {
             "UnexpectedEndOfInput"
         } else if m.starts_with("missing field") {
             "MissingField"
