@@ -1,0 +1,2901 @@
+{
+  "engine": [
+    {
+      "mode": "neo",
+      "scenario": "success",
+      "rust": [
+        {
+          "processor": {
+            "index": 1,
+            "total": 2,
+            "name": "a:tool:1"
+          }
+        },
+        {
+          "processor": {
+            "index": 2,
+            "total": 2,
+            "name": "a:tool:1"
+          }
+        },
+        {
+          "status": "patched",
+          "processors_run": 2,
+          "patched_sha1": "d2a04d71301a8915217dd5faf81d12cffd6cd958",
+          "patched_size": 6
+        }
+      ],
+      "zig": [
+        {
+          "error": "BadPathName"
+        }
+      ],
+      "rust_disk": {
+        "state": "{\"patched_sha1\":\"d2a04d71301a8915217dd5faf81d12cffd6cd958\",\"patched_size\":6}\n",
+        "order": "both\nclient\n",
+        "work_exists": false,
+        "patched": "client"
+      },
+      "zig_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      }
+    },
+    {
+      "mode": "neo",
+      "scenario": "failed",
+      "rust": [
+        {
+          "processor": {
+            "index": 1,
+            "total": 2,
+            "name": "a:tool:1"
+          }
+        },
+        {
+          "error": "ProcessorFailed"
+        }
+      ],
+      "zig": [
+        {
+          "error": "BadPathName"
+        }
+      ],
+      "rust_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      },
+      "zig_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      }
+    },
+    {
+      "mode": "neo",
+      "scenario": "stdout-large",
+      "rust": [
+        {
+          "processor": {
+            "index": 1,
+            "total": 2,
+            "name": "a:tool:1"
+          }
+        },
+        {
+          "error": "StreamTooLong"
+        }
+      ],
+      "zig": [
+        {
+          "error": "BadPathName"
+        }
+      ],
+      "rust_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      },
+      "zig_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      }
+    },
+    {
+      "mode": "neo",
+      "scenario": "stderr-large",
+      "rust": [
+        {
+          "processor": {
+            "index": 1,
+            "total": 2,
+            "name": "a:tool:1"
+          }
+        },
+        {
+          "error": "StreamTooLong"
+        }
+      ],
+      "zig": [
+        {
+          "error": "BadPathName"
+        }
+      ],
+      "rust_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      },
+      "zig_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      }
+    },
+    {
+      "mode": "neo",
+      "scenario": "missing-output",
+      "rust": [
+        {
+          "error": "PatchedClientMissing"
+        }
+      ],
+      "zig": [
+        {
+          "error": "BadPathName"
+        }
+      ],
+      "rust_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      },
+      "zig_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      }
+    },
+    {
+      "mode": "neo",
+      "scenario": "no-op",
+      "rust": [
+        {
+          "processor": {
+            "index": 1,
+            "total": 1,
+            "name": "a:tool:1"
+          }
+        },
+        {
+          "error": "PatchedClientMissing"
+        }
+      ],
+      "zig": [
+        {
+          "error": "BadPathName"
+        }
+      ],
+      "rust_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      },
+      "zig_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      }
+    },
+    {
+      "mode": "neo",
+      "scenario": "unknown",
+      "rust": [
+        {
+          "processor": {
+            "index": 1,
+            "total": 2,
+            "name": "a:tool:1"
+          }
+        },
+        {
+          "error": "UnresolvedPlaceholder"
+        }
+      ],
+      "zig": [
+        {
+          "error": "BadPathName"
+        }
+      ],
+      "rust_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      },
+      "zig_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      }
+    },
+    {
+      "mode": "neo",
+      "scenario": "unclosed",
+      "rust": [
+        {
+          "processor": {
+            "index": 1,
+            "total": 2,
+            "name": "a:tool:1"
+          }
+        },
+        {
+          "error": "UnresolvedPlaceholder"
+        }
+      ],
+      "zig": [
+        {
+          "error": "BadPathName"
+        }
+      ],
+      "rust_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      },
+      "zig_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      }
+    },
+    {
+      "mode": "neo",
+      "scenario": "embedded-missing",
+      "rust": [
+        {
+          "error": "InstallerEmbeddedDataMissing"
+        }
+      ],
+      "zig": [
+        {
+          "error": "BadPathName"
+        }
+      ],
+      "rust_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      },
+      "zig_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      }
+    },
+    {
+      "mode": "neo",
+      "scenario": "dependency-missing",
+      "rust": [
+        {
+          "processor": {
+            "index": 1,
+            "total": 2,
+            "name": "a:tool:1"
+          }
+        },
+        {
+          "error": "ProcessorDependencyMissing"
+        }
+      ],
+      "zig": [
+        {
+          "error": "BadPathName"
+        }
+      ],
+      "rust_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      },
+      "zig_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      }
+    },
+    {
+      "mode": "neo",
+      "scenario": "jar-missing",
+      "rust": [
+        {
+          "processor": {
+            "index": 1,
+            "total": 2,
+            "name": "a:tool:1"
+          }
+        },
+        {
+          "error": "ProcessorDependencyMissing"
+        }
+      ],
+      "zig": [
+        {
+          "error": "BadPathName"
+        }
+      ],
+      "rust_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      },
+      "zig_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      }
+    },
+    {
+      "mode": "neo",
+      "scenario": "manifest-missing",
+      "rust": [
+        {
+          "processor": {
+            "index": 1,
+            "total": 2,
+            "name": "a:tool:1"
+          }
+        },
+        {
+          "error": "ProcessorManifestMissing"
+        }
+      ],
+      "zig": [
+        {
+          "error": "BadPathName"
+        }
+      ],
+      "rust_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      },
+      "zig_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      }
+    },
+    {
+      "mode": "neo",
+      "scenario": "main-missing",
+      "rust": [
+        {
+          "processor": {
+            "index": 1,
+            "total": 2,
+            "name": "a:tool:1"
+          }
+        },
+        {
+          "error": "ProcessorMainClassMissing"
+        }
+      ],
+      "zig": [
+        {
+          "error": "BadPathName"
+        }
+      ],
+      "rust_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      },
+      "zig_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      }
+    },
+    {
+      "mode": "neo",
+      "scenario": "main-invalid",
+      "rust": [
+        {
+          "processor": {
+            "index": 1,
+            "total": 2,
+            "name": "a:tool:1"
+          }
+        },
+        {
+          "error": "InvalidProcessorMainClass"
+        }
+      ],
+      "zig": [
+        {
+          "error": "BadPathName"
+        }
+      ],
+      "rust_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      },
+      "zig_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      }
+    },
+    {
+      "mode": "neo",
+      "scenario": "main-continuation",
+      "rust": [
+        {
+          "processor": {
+            "index": 1,
+            "total": 2,
+            "name": "a:tool:1"
+          }
+        },
+        {
+          "processor": {
+            "index": 2,
+            "total": 2,
+            "name": "a:tool:1"
+          }
+        },
+        {
+          "status": "patched",
+          "processors_run": 2,
+          "patched_sha1": "d2a04d71301a8915217dd5faf81d12cffd6cd958",
+          "patched_size": 6
+        }
+      ],
+      "zig": [
+        {
+          "error": "BadPathName"
+        }
+      ],
+      "rust_disk": {
+        "state": "{\"patched_sha1\":\"d2a04d71301a8915217dd5faf81d12cffd6cd958\",\"patched_size\":6}\n",
+        "order": "both\nclient\n",
+        "work_exists": false,
+        "patched": "client"
+      },
+      "zig_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      }
+    },
+    {
+      "mode": "neo",
+      "scenario": "hash-mismatch",
+      "rust": [
+        {
+          "processor": {
+            "index": 1,
+            "total": 2,
+            "name": "a:tool:1"
+          }
+        },
+        {
+          "processor": {
+            "index": 2,
+            "total": 2,
+            "name": "a:tool:1"
+          }
+        },
+        {
+          "status": "patched",
+          "processors_run": 2,
+          "patched_sha1": "d2a04d71301a8915217dd5faf81d12cffd6cd958",
+          "patched_size": 6
+        }
+      ],
+      "zig": [
+        {
+          "error": "BadPathName"
+        }
+      ],
+      "rust_disk": {
+        "state": "{\"patched_sha1\":\"d2a04d71301a8915217dd5faf81d12cffd6cd958\",\"patched_size\":6}\n",
+        "order": "both\nclient\n",
+        "work_exists": false,
+        "patched": "client"
+      },
+      "zig_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      }
+    },
+    {
+      "mode": "neo",
+      "scenario": "server-hash-missing",
+      "rust": [
+        {
+          "processor": {
+            "index": 1,
+            "total": 2,
+            "name": "a:tool:1"
+          }
+        },
+        {
+          "processor": {
+            "index": 2,
+            "total": 2,
+            "name": "a:tool:1"
+          }
+        },
+        {
+          "status": "patched",
+          "processors_run": 2,
+          "patched_sha1": "d2a04d71301a8915217dd5faf81d12cffd6cd958",
+          "patched_size": 6
+        }
+      ],
+      "zig": [
+        {
+          "error": "BadPathName"
+        }
+      ],
+      "rust_disk": {
+        "state": "{\"patched_sha1\":\"d2a04d71301a8915217dd5faf81d12cffd6cd958\",\"patched_size\":6}\n",
+        "order": "both\nclient\n",
+        "work_exists": false,
+        "patched": "client"
+      },
+      "zig_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      }
+    },
+    {
+      "mode": "neo",
+      "scenario": "state-stale",
+      "rust": [
+        {
+          "processor": {
+            "index": 1,
+            "total": 2,
+            "name": "a:tool:1"
+          }
+        },
+        {
+          "processor": {
+            "index": 2,
+            "total": 2,
+            "name": "a:tool:1"
+          }
+        },
+        {
+          "status": "patched",
+          "processors_run": 2,
+          "patched_sha1": "d2a04d71301a8915217dd5faf81d12cffd6cd958",
+          "patched_size": 6
+        }
+      ],
+      "zig": [
+        {
+          "error": "BadPathName"
+        }
+      ],
+      "rust_disk": {
+        "state": "{\"patched_sha1\":\"d2a04d71301a8915217dd5faf81d12cffd6cd958\",\"patched_size\":6}\n",
+        "order": "both\nclient\n",
+        "work_exists": false,
+        "patched": "client"
+      },
+      "zig_disk": {
+        "state": "{\"patched_sha1\":\"0c93713c1e43fccf897b7b4f02e822c65d557fdf\",\"patched_size\":6}\n",
+        "order": null,
+        "work_exists": false,
+        "patched": "stale"
+      }
+    },
+    {
+      "mode": "neo",
+      "scenario": "state-invalid",
+      "rust": [
+        {
+          "processor": {
+            "index": 1,
+            "total": 2,
+            "name": "a:tool:1"
+          }
+        },
+        {
+          "processor": {
+            "index": 2,
+            "total": 2,
+            "name": "a:tool:1"
+          }
+        },
+        {
+          "status": "patched",
+          "processors_run": 2,
+          "patched_sha1": "d2a04d71301a8915217dd5faf81d12cffd6cd958",
+          "patched_size": 6
+        }
+      ],
+      "zig": [
+        {
+          "error": "BadPathName"
+        }
+      ],
+      "rust_disk": {
+        "state": "{\"patched_sha1\":\"d2a04d71301a8915217dd5faf81d12cffd6cd958\",\"patched_size\":6}\n",
+        "order": "both\nclient\n",
+        "work_exists": false,
+        "patched": "client"
+      },
+      "zig_disk": {
+        "state": "not json",
+        "order": null,
+        "work_exists": false,
+        "patched": "cached"
+      }
+    },
+    {
+      "mode": "neo-server",
+      "scenario": "success",
+      "rust": [
+        {
+          "processor": {
+            "index": 1,
+            "total": 2,
+            "name": "a:tool:1"
+          }
+        },
+        {
+          "processor": {
+            "index": 2,
+            "total": 2,
+            "name": "a:tool:1"
+          }
+        },
+        {
+          "status": "patched",
+          "processors_run": 2,
+          "patched_sha1": "3de4f901fffb30ac720b0e7eb654b4faa2dd03fa",
+          "patched_size": 6
+        }
+      ],
+      "zig": [
+        {
+          "error": "BadPathName"
+        }
+      ],
+      "rust_disk": {
+        "state": "{\"patched_sha1\":\"3de4f901fffb30ac720b0e7eb654b4faa2dd03fa\",\"patched_size\":6}\n",
+        "order": "both\nserver\n",
+        "work_exists": false,
+        "patched": "server"
+      },
+      "zig_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      }
+    },
+    {
+      "mode": "neo-server",
+      "scenario": "failed",
+      "rust": [
+        {
+          "processor": {
+            "index": 1,
+            "total": 2,
+            "name": "a:tool:1"
+          }
+        },
+        {
+          "error": "ProcessorFailed"
+        }
+      ],
+      "zig": [
+        {
+          "error": "BadPathName"
+        }
+      ],
+      "rust_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      },
+      "zig_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      }
+    },
+    {
+      "mode": "neo-server",
+      "scenario": "stdout-large",
+      "rust": [
+        {
+          "processor": {
+            "index": 1,
+            "total": 2,
+            "name": "a:tool:1"
+          }
+        },
+        {
+          "error": "StreamTooLong"
+        }
+      ],
+      "zig": [
+        {
+          "error": "BadPathName"
+        }
+      ],
+      "rust_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      },
+      "zig_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      }
+    },
+    {
+      "mode": "neo-server",
+      "scenario": "stderr-large",
+      "rust": [
+        {
+          "processor": {
+            "index": 1,
+            "total": 2,
+            "name": "a:tool:1"
+          }
+        },
+        {
+          "error": "StreamTooLong"
+        }
+      ],
+      "zig": [
+        {
+          "error": "BadPathName"
+        }
+      ],
+      "rust_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      },
+      "zig_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      }
+    },
+    {
+      "mode": "neo-server",
+      "scenario": "missing-output",
+      "rust": [
+        {
+          "error": "PatchedClientMissing"
+        }
+      ],
+      "zig": [
+        {
+          "error": "BadPathName"
+        }
+      ],
+      "rust_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      },
+      "zig_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      }
+    },
+    {
+      "mode": "neo-server",
+      "scenario": "no-op",
+      "rust": [
+        {
+          "processor": {
+            "index": 1,
+            "total": 1,
+            "name": "a:tool:1"
+          }
+        },
+        {
+          "error": "PatchedClientMissing"
+        }
+      ],
+      "zig": [
+        {
+          "error": "BadPathName"
+        }
+      ],
+      "rust_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      },
+      "zig_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      }
+    },
+    {
+      "mode": "neo-server",
+      "scenario": "unknown",
+      "rust": [
+        {
+          "processor": {
+            "index": 1,
+            "total": 2,
+            "name": "a:tool:1"
+          }
+        },
+        {
+          "error": "UnresolvedPlaceholder"
+        }
+      ],
+      "zig": [
+        {
+          "error": "BadPathName"
+        }
+      ],
+      "rust_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      },
+      "zig_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      }
+    },
+    {
+      "mode": "neo-server",
+      "scenario": "unclosed",
+      "rust": [
+        {
+          "processor": {
+            "index": 1,
+            "total": 2,
+            "name": "a:tool:1"
+          }
+        },
+        {
+          "error": "UnresolvedPlaceholder"
+        }
+      ],
+      "zig": [
+        {
+          "error": "BadPathName"
+        }
+      ],
+      "rust_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      },
+      "zig_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      }
+    },
+    {
+      "mode": "neo-server",
+      "scenario": "embedded-missing",
+      "rust": [
+        {
+          "error": "InstallerEmbeddedDataMissing"
+        }
+      ],
+      "zig": [
+        {
+          "error": "BadPathName"
+        }
+      ],
+      "rust_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      },
+      "zig_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      }
+    },
+    {
+      "mode": "neo-server",
+      "scenario": "dependency-missing",
+      "rust": [
+        {
+          "processor": {
+            "index": 1,
+            "total": 2,
+            "name": "a:tool:1"
+          }
+        },
+        {
+          "error": "ProcessorDependencyMissing"
+        }
+      ],
+      "zig": [
+        {
+          "error": "BadPathName"
+        }
+      ],
+      "rust_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      },
+      "zig_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      }
+    },
+    {
+      "mode": "neo-server",
+      "scenario": "jar-missing",
+      "rust": [
+        {
+          "processor": {
+            "index": 1,
+            "total": 2,
+            "name": "a:tool:1"
+          }
+        },
+        {
+          "error": "ProcessorDependencyMissing"
+        }
+      ],
+      "zig": [
+        {
+          "error": "BadPathName"
+        }
+      ],
+      "rust_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      },
+      "zig_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      }
+    },
+    {
+      "mode": "neo-server",
+      "scenario": "manifest-missing",
+      "rust": [
+        {
+          "processor": {
+            "index": 1,
+            "total": 2,
+            "name": "a:tool:1"
+          }
+        },
+        {
+          "error": "ProcessorManifestMissing"
+        }
+      ],
+      "zig": [
+        {
+          "error": "BadPathName"
+        }
+      ],
+      "rust_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      },
+      "zig_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      }
+    },
+    {
+      "mode": "neo-server",
+      "scenario": "main-missing",
+      "rust": [
+        {
+          "processor": {
+            "index": 1,
+            "total": 2,
+            "name": "a:tool:1"
+          }
+        },
+        {
+          "error": "ProcessorMainClassMissing"
+        }
+      ],
+      "zig": [
+        {
+          "error": "BadPathName"
+        }
+      ],
+      "rust_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      },
+      "zig_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      }
+    },
+    {
+      "mode": "neo-server",
+      "scenario": "main-invalid",
+      "rust": [
+        {
+          "processor": {
+            "index": 1,
+            "total": 2,
+            "name": "a:tool:1"
+          }
+        },
+        {
+          "error": "InvalidProcessorMainClass"
+        }
+      ],
+      "zig": [
+        {
+          "error": "BadPathName"
+        }
+      ],
+      "rust_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      },
+      "zig_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      }
+    },
+    {
+      "mode": "neo-server",
+      "scenario": "main-continuation",
+      "rust": [
+        {
+          "processor": {
+            "index": 1,
+            "total": 2,
+            "name": "a:tool:1"
+          }
+        },
+        {
+          "processor": {
+            "index": 2,
+            "total": 2,
+            "name": "a:tool:1"
+          }
+        },
+        {
+          "status": "patched",
+          "processors_run": 2,
+          "patched_sha1": "3de4f901fffb30ac720b0e7eb654b4faa2dd03fa",
+          "patched_size": 6
+        }
+      ],
+      "zig": [
+        {
+          "error": "BadPathName"
+        }
+      ],
+      "rust_disk": {
+        "state": "{\"patched_sha1\":\"3de4f901fffb30ac720b0e7eb654b4faa2dd03fa\",\"patched_size\":6}\n",
+        "order": "both\nserver\n",
+        "work_exists": false,
+        "patched": "server"
+      },
+      "zig_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      }
+    },
+    {
+      "mode": "neo-server",
+      "scenario": "hash-mismatch",
+      "rust": [
+        {
+          "processor": {
+            "index": 1,
+            "total": 2,
+            "name": "a:tool:1"
+          }
+        },
+        {
+          "processor": {
+            "index": 2,
+            "total": 2,
+            "name": "a:tool:1"
+          }
+        },
+        {
+          "status": "patched",
+          "processors_run": 2,
+          "patched_sha1": "3de4f901fffb30ac720b0e7eb654b4faa2dd03fa",
+          "patched_size": 6
+        }
+      ],
+      "zig": [
+        {
+          "error": "BadPathName"
+        }
+      ],
+      "rust_disk": {
+        "state": "{\"patched_sha1\":\"3de4f901fffb30ac720b0e7eb654b4faa2dd03fa\",\"patched_size\":6}\n",
+        "order": "both\nserver\n",
+        "work_exists": false,
+        "patched": "server"
+      },
+      "zig_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      }
+    },
+    {
+      "mode": "neo-server",
+      "scenario": "server-hash-missing",
+      "rust": [
+        {
+          "processor": {
+            "index": 1,
+            "total": 2,
+            "name": "a:tool:1"
+          }
+        },
+        {
+          "processor": {
+            "index": 2,
+            "total": 2,
+            "name": "a:tool:1"
+          }
+        },
+        {
+          "status": "patched",
+          "processors_run": 2,
+          "patched_sha1": "3de4f901fffb30ac720b0e7eb654b4faa2dd03fa",
+          "patched_size": 6
+        }
+      ],
+      "zig": [
+        {
+          "error": "BadPathName"
+        }
+      ],
+      "rust_disk": {
+        "state": "{\"patched_sha1\":\"3de4f901fffb30ac720b0e7eb654b4faa2dd03fa\",\"patched_size\":6}\n",
+        "order": "both\nserver\n",
+        "work_exists": false,
+        "patched": "server"
+      },
+      "zig_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      }
+    },
+    {
+      "mode": "neo-server",
+      "scenario": "state-stale",
+      "rust": [
+        {
+          "processor": {
+            "index": 1,
+            "total": 2,
+            "name": "a:tool:1"
+          }
+        },
+        {
+          "processor": {
+            "index": 2,
+            "total": 2,
+            "name": "a:tool:1"
+          }
+        },
+        {
+          "status": "patched",
+          "processors_run": 2,
+          "patched_sha1": "3de4f901fffb30ac720b0e7eb654b4faa2dd03fa",
+          "patched_size": 6
+        }
+      ],
+      "zig": [
+        {
+          "error": "BadPathName"
+        }
+      ],
+      "rust_disk": {
+        "state": "{\"patched_sha1\":\"3de4f901fffb30ac720b0e7eb654b4faa2dd03fa\",\"patched_size\":6}\n",
+        "order": "both\nserver\n",
+        "work_exists": false,
+        "patched": "server"
+      },
+      "zig_disk": {
+        "state": "{\"patched_sha1\":\"0c93713c1e43fccf897b7b4f02e822c65d557fdf\",\"patched_size\":6}\n",
+        "order": null,
+        "work_exists": false,
+        "patched": "stale"
+      }
+    },
+    {
+      "mode": "neo-server",
+      "scenario": "state-invalid",
+      "rust": [
+        {
+          "processor": {
+            "index": 1,
+            "total": 2,
+            "name": "a:tool:1"
+          }
+        },
+        {
+          "processor": {
+            "index": 2,
+            "total": 2,
+            "name": "a:tool:1"
+          }
+        },
+        {
+          "status": "patched",
+          "processors_run": 2,
+          "patched_sha1": "3de4f901fffb30ac720b0e7eb654b4faa2dd03fa",
+          "patched_size": 6
+        }
+      ],
+      "zig": [
+        {
+          "error": "BadPathName"
+        }
+      ],
+      "rust_disk": {
+        "state": "{\"patched_sha1\":\"3de4f901fffb30ac720b0e7eb654b4faa2dd03fa\",\"patched_size\":6}\n",
+        "order": "both\nserver\n",
+        "work_exists": false,
+        "patched": "server"
+      },
+      "zig_disk": {
+        "state": "not json",
+        "order": null,
+        "work_exists": false,
+        "patched": "cached"
+      }
+    },
+    {
+      "mode": "forge",
+      "scenario": "success",
+      "rust": [
+        {
+          "processor": {
+            "index": 1,
+            "total": 2,
+            "name": "a:tool:1"
+          }
+        },
+        {
+          "processor": {
+            "index": 2,
+            "total": 2,
+            "name": "a:tool:1"
+          }
+        },
+        {
+          "status": "patched",
+          "processors_run": 2,
+          "patched_sha1": "d2a04d71301a8915217dd5faf81d12cffd6cd958",
+          "patched_size": 6
+        }
+      ],
+      "zig": [
+        {
+          "error": "BadPathName"
+        }
+      ],
+      "rust_disk": {
+        "state": "{\"patched_sha1\":\"d2a04d71301a8915217dd5faf81d12cffd6cd958\",\"patched_size\":6}\n",
+        "order": "both\nclient\n",
+        "work_exists": false,
+        "patched": "client"
+      },
+      "zig_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      }
+    },
+    {
+      "mode": "forge",
+      "scenario": "failed",
+      "rust": [
+        {
+          "processor": {
+            "index": 1,
+            "total": 2,
+            "name": "a:tool:1"
+          }
+        },
+        {
+          "error": "ProcessorFailed"
+        }
+      ],
+      "zig": [
+        {
+          "error": "BadPathName"
+        }
+      ],
+      "rust_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      },
+      "zig_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      }
+    },
+    {
+      "mode": "forge",
+      "scenario": "stdout-large",
+      "rust": [
+        {
+          "processor": {
+            "index": 1,
+            "total": 2,
+            "name": "a:tool:1"
+          }
+        },
+        {
+          "error": "StreamTooLong"
+        }
+      ],
+      "zig": [
+        {
+          "error": "BadPathName"
+        }
+      ],
+      "rust_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      },
+      "zig_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      }
+    },
+    {
+      "mode": "forge",
+      "scenario": "stderr-large",
+      "rust": [
+        {
+          "processor": {
+            "index": 1,
+            "total": 2,
+            "name": "a:tool:1"
+          }
+        },
+        {
+          "error": "StreamTooLong"
+        }
+      ],
+      "zig": [
+        {
+          "error": "BadPathName"
+        }
+      ],
+      "rust_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      },
+      "zig_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      }
+    },
+    {
+      "mode": "forge",
+      "scenario": "missing-output",
+      "rust": [
+        {
+          "error": "PatchedClientMissing"
+        }
+      ],
+      "zig": [
+        {
+          "error": "BadPathName"
+        }
+      ],
+      "rust_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      },
+      "zig_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      }
+    },
+    {
+      "mode": "forge",
+      "scenario": "no-op",
+      "rust": [
+        {
+          "processor": {
+            "index": 1,
+            "total": 1,
+            "name": "a:tool:1"
+          }
+        },
+        {
+          "error": "PatchedClientMissing"
+        }
+      ],
+      "zig": [
+        {
+          "error": "BadPathName"
+        }
+      ],
+      "rust_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      },
+      "zig_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      }
+    },
+    {
+      "mode": "forge",
+      "scenario": "unknown",
+      "rust": [
+        {
+          "processor": {
+            "index": 1,
+            "total": 2,
+            "name": "a:tool:1"
+          }
+        },
+        {
+          "error": "UnresolvedPlaceholder"
+        }
+      ],
+      "zig": [
+        {
+          "error": "BadPathName"
+        }
+      ],
+      "rust_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      },
+      "zig_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      }
+    },
+    {
+      "mode": "forge",
+      "scenario": "unclosed",
+      "rust": [
+        {
+          "processor": {
+            "index": 1,
+            "total": 2,
+            "name": "a:tool:1"
+          }
+        },
+        {
+          "error": "UnresolvedPlaceholder"
+        }
+      ],
+      "zig": [
+        {
+          "error": "BadPathName"
+        }
+      ],
+      "rust_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      },
+      "zig_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      }
+    },
+    {
+      "mode": "forge",
+      "scenario": "embedded-missing",
+      "rust": [
+        {
+          "error": "InstallerEmbeddedDataMissing"
+        }
+      ],
+      "zig": [
+        {
+          "error": "BadPathName"
+        }
+      ],
+      "rust_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      },
+      "zig_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      }
+    },
+    {
+      "mode": "forge",
+      "scenario": "dependency-missing",
+      "rust": [
+        {
+          "processor": {
+            "index": 1,
+            "total": 2,
+            "name": "a:tool:1"
+          }
+        },
+        {
+          "error": "ProcessorDependencyMissing"
+        }
+      ],
+      "zig": [
+        {
+          "error": "BadPathName"
+        }
+      ],
+      "rust_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      },
+      "zig_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      }
+    },
+    {
+      "mode": "forge",
+      "scenario": "jar-missing",
+      "rust": [
+        {
+          "processor": {
+            "index": 1,
+            "total": 2,
+            "name": "a:tool:1"
+          }
+        },
+        {
+          "error": "ProcessorDependencyMissing"
+        }
+      ],
+      "zig": [
+        {
+          "error": "BadPathName"
+        }
+      ],
+      "rust_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      },
+      "zig_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      }
+    },
+    {
+      "mode": "forge",
+      "scenario": "manifest-missing",
+      "rust": [
+        {
+          "processor": {
+            "index": 1,
+            "total": 2,
+            "name": "a:tool:1"
+          }
+        },
+        {
+          "error": "ProcessorManifestMissing"
+        }
+      ],
+      "zig": [
+        {
+          "error": "BadPathName"
+        }
+      ],
+      "rust_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      },
+      "zig_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      }
+    },
+    {
+      "mode": "forge",
+      "scenario": "main-missing",
+      "rust": [
+        {
+          "processor": {
+            "index": 1,
+            "total": 2,
+            "name": "a:tool:1"
+          }
+        },
+        {
+          "error": "ProcessorMainClassMissing"
+        }
+      ],
+      "zig": [
+        {
+          "error": "BadPathName"
+        }
+      ],
+      "rust_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      },
+      "zig_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      }
+    },
+    {
+      "mode": "forge",
+      "scenario": "main-invalid",
+      "rust": [
+        {
+          "processor": {
+            "index": 1,
+            "total": 2,
+            "name": "a:tool:1"
+          }
+        },
+        {
+          "error": "InvalidProcessorMainClass"
+        }
+      ],
+      "zig": [
+        {
+          "error": "BadPathName"
+        }
+      ],
+      "rust_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      },
+      "zig_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      }
+    },
+    {
+      "mode": "forge",
+      "scenario": "main-continuation",
+      "rust": [
+        {
+          "processor": {
+            "index": 1,
+            "total": 2,
+            "name": "a:tool:1"
+          }
+        },
+        {
+          "processor": {
+            "index": 2,
+            "total": 2,
+            "name": "a:tool:1"
+          }
+        },
+        {
+          "status": "patched",
+          "processors_run": 2,
+          "patched_sha1": "d2a04d71301a8915217dd5faf81d12cffd6cd958",
+          "patched_size": 6
+        }
+      ],
+      "zig": [
+        {
+          "error": "BadPathName"
+        }
+      ],
+      "rust_disk": {
+        "state": "{\"patched_sha1\":\"d2a04d71301a8915217dd5faf81d12cffd6cd958\",\"patched_size\":6}\n",
+        "order": "both\nclient\n",
+        "work_exists": false,
+        "patched": "client"
+      },
+      "zig_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      }
+    },
+    {
+      "mode": "forge",
+      "scenario": "hash-mismatch",
+      "rust": [
+        {
+          "processor": {
+            "index": 1,
+            "total": 2,
+            "name": "a:tool:1"
+          }
+        },
+        {
+          "processor": {
+            "index": 2,
+            "total": 2,
+            "name": "a:tool:1"
+          }
+        },
+        {
+          "error": "PatchedHashMismatch"
+        }
+      ],
+      "zig": [
+        {
+          "error": "BadPathName"
+        }
+      ],
+      "rust_disk": {
+        "state": null,
+        "order": "both\nclient\n",
+        "work_exists": false,
+        "patched": "client"
+      },
+      "zig_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      }
+    },
+    {
+      "mode": "forge",
+      "scenario": "server-hash-missing",
+      "rust": [
+        {
+          "processor": {
+            "index": 1,
+            "total": 2,
+            "name": "a:tool:1"
+          }
+        },
+        {
+          "processor": {
+            "index": 2,
+            "total": 2,
+            "name": "a:tool:1"
+          }
+        },
+        {
+          "status": "patched",
+          "processors_run": 2,
+          "patched_sha1": "d2a04d71301a8915217dd5faf81d12cffd6cd958",
+          "patched_size": 6
+        }
+      ],
+      "zig": [
+        {
+          "error": "BadPathName"
+        }
+      ],
+      "rust_disk": {
+        "state": "{\"patched_sha1\":\"d2a04d71301a8915217dd5faf81d12cffd6cd958\",\"patched_size\":6}\n",
+        "order": "both\nclient\n",
+        "work_exists": false,
+        "patched": "client"
+      },
+      "zig_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      }
+    },
+    {
+      "mode": "forge",
+      "scenario": "state-stale",
+      "rust": [
+        {
+          "processor": {
+            "index": 1,
+            "total": 2,
+            "name": "a:tool:1"
+          }
+        },
+        {
+          "processor": {
+            "index": 2,
+            "total": 2,
+            "name": "a:tool:1"
+          }
+        },
+        {
+          "status": "patched",
+          "processors_run": 2,
+          "patched_sha1": "d2a04d71301a8915217dd5faf81d12cffd6cd958",
+          "patched_size": 6
+        }
+      ],
+      "zig": [
+        {
+          "error": "BadPathName"
+        }
+      ],
+      "rust_disk": {
+        "state": "{\"patched_sha1\":\"d2a04d71301a8915217dd5faf81d12cffd6cd958\",\"patched_size\":6}\n",
+        "order": "both\nclient\n",
+        "work_exists": false,
+        "patched": "client"
+      },
+      "zig_disk": {
+        "state": "{\"patched_sha1\":\"0c93713c1e43fccf897b7b4f02e822c65d557fdf\",\"patched_size\":6}\n",
+        "order": null,
+        "work_exists": false,
+        "patched": "stale"
+      }
+    },
+    {
+      "mode": "forge",
+      "scenario": "state-invalid",
+      "rust": [
+        {
+          "processor": {
+            "index": 1,
+            "total": 2,
+            "name": "a:tool:1"
+          }
+        },
+        {
+          "processor": {
+            "index": 2,
+            "total": 2,
+            "name": "a:tool:1"
+          }
+        },
+        {
+          "status": "patched",
+          "processors_run": 2,
+          "patched_sha1": "d2a04d71301a8915217dd5faf81d12cffd6cd958",
+          "patched_size": 6
+        }
+      ],
+      "zig": [
+        {
+          "error": "BadPathName"
+        }
+      ],
+      "rust_disk": {
+        "state": "{\"patched_sha1\":\"d2a04d71301a8915217dd5faf81d12cffd6cd958\",\"patched_size\":6}\n",
+        "order": "both\nclient\n",
+        "work_exists": false,
+        "patched": "client"
+      },
+      "zig_disk": {
+        "state": "not json",
+        "order": null,
+        "work_exists": false,
+        "patched": "cached"
+      }
+    },
+    {
+      "mode": "forge-server",
+      "scenario": "success",
+      "rust": [
+        {
+          "processor": {
+            "index": 1,
+            "total": 2,
+            "name": "a:tool:1"
+          }
+        },
+        {
+          "processor": {
+            "index": 2,
+            "total": 2,
+            "name": "a:tool:1"
+          }
+        },
+        {
+          "status": "patched",
+          "processors_run": 2,
+          "patched_sha1": "3de4f901fffb30ac720b0e7eb654b4faa2dd03fa",
+          "patched_size": 6
+        }
+      ],
+      "zig": [
+        {
+          "error": "BadPathName"
+        }
+      ],
+      "rust_disk": {
+        "state": "{\"patched_sha1\":\"3de4f901fffb30ac720b0e7eb654b4faa2dd03fa\",\"patched_size\":6}\n",
+        "order": "both\nserver\n",
+        "work_exists": false,
+        "patched": "server"
+      },
+      "zig_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      }
+    },
+    {
+      "mode": "forge-server",
+      "scenario": "failed",
+      "rust": [
+        {
+          "processor": {
+            "index": 1,
+            "total": 2,
+            "name": "a:tool:1"
+          }
+        },
+        {
+          "error": "ProcessorFailed"
+        }
+      ],
+      "zig": [
+        {
+          "error": "BadPathName"
+        }
+      ],
+      "rust_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      },
+      "zig_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      }
+    },
+    {
+      "mode": "forge-server",
+      "scenario": "stdout-large",
+      "rust": [
+        {
+          "processor": {
+            "index": 1,
+            "total": 2,
+            "name": "a:tool:1"
+          }
+        },
+        {
+          "error": "StreamTooLong"
+        }
+      ],
+      "zig": [
+        {
+          "error": "BadPathName"
+        }
+      ],
+      "rust_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      },
+      "zig_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      }
+    },
+    {
+      "mode": "forge-server",
+      "scenario": "stderr-large",
+      "rust": [
+        {
+          "processor": {
+            "index": 1,
+            "total": 2,
+            "name": "a:tool:1"
+          }
+        },
+        {
+          "error": "StreamTooLong"
+        }
+      ],
+      "zig": [
+        {
+          "error": "BadPathName"
+        }
+      ],
+      "rust_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      },
+      "zig_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      }
+    },
+    {
+      "mode": "forge-server",
+      "scenario": "missing-output",
+      "rust": [
+        {
+          "error": "PatchedClientMissing"
+        }
+      ],
+      "zig": [
+        {
+          "error": "BadPathName"
+        }
+      ],
+      "rust_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      },
+      "zig_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      }
+    },
+    {
+      "mode": "forge-server",
+      "scenario": "no-op",
+      "rust": [
+        {
+          "processor": {
+            "index": 1,
+            "total": 1,
+            "name": "a:tool:1"
+          }
+        },
+        {
+          "error": "PatchedClientMissing"
+        }
+      ],
+      "zig": [
+        {
+          "error": "BadPathName"
+        }
+      ],
+      "rust_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      },
+      "zig_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      }
+    },
+    {
+      "mode": "forge-server",
+      "scenario": "unknown",
+      "rust": [
+        {
+          "processor": {
+            "index": 1,
+            "total": 2,
+            "name": "a:tool:1"
+          }
+        },
+        {
+          "error": "UnresolvedPlaceholder"
+        }
+      ],
+      "zig": [
+        {
+          "error": "BadPathName"
+        }
+      ],
+      "rust_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      },
+      "zig_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      }
+    },
+    {
+      "mode": "forge-server",
+      "scenario": "unclosed",
+      "rust": [
+        {
+          "processor": {
+            "index": 1,
+            "total": 2,
+            "name": "a:tool:1"
+          }
+        },
+        {
+          "error": "UnresolvedPlaceholder"
+        }
+      ],
+      "zig": [
+        {
+          "error": "BadPathName"
+        }
+      ],
+      "rust_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      },
+      "zig_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      }
+    },
+    {
+      "mode": "forge-server",
+      "scenario": "embedded-missing",
+      "rust": [
+        {
+          "error": "InstallerEmbeddedDataMissing"
+        }
+      ],
+      "zig": [
+        {
+          "error": "BadPathName"
+        }
+      ],
+      "rust_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      },
+      "zig_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      }
+    },
+    {
+      "mode": "forge-server",
+      "scenario": "dependency-missing",
+      "rust": [
+        {
+          "processor": {
+            "index": 1,
+            "total": 2,
+            "name": "a:tool:1"
+          }
+        },
+        {
+          "error": "ProcessorDependencyMissing"
+        }
+      ],
+      "zig": [
+        {
+          "error": "BadPathName"
+        }
+      ],
+      "rust_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      },
+      "zig_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      }
+    },
+    {
+      "mode": "forge-server",
+      "scenario": "jar-missing",
+      "rust": [
+        {
+          "processor": {
+            "index": 1,
+            "total": 2,
+            "name": "a:tool:1"
+          }
+        },
+        {
+          "error": "ProcessorDependencyMissing"
+        }
+      ],
+      "zig": [
+        {
+          "error": "BadPathName"
+        }
+      ],
+      "rust_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      },
+      "zig_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      }
+    },
+    {
+      "mode": "forge-server",
+      "scenario": "manifest-missing",
+      "rust": [
+        {
+          "processor": {
+            "index": 1,
+            "total": 2,
+            "name": "a:tool:1"
+          }
+        },
+        {
+          "error": "ProcessorManifestMissing"
+        }
+      ],
+      "zig": [
+        {
+          "error": "BadPathName"
+        }
+      ],
+      "rust_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      },
+      "zig_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      }
+    },
+    {
+      "mode": "forge-server",
+      "scenario": "main-missing",
+      "rust": [
+        {
+          "processor": {
+            "index": 1,
+            "total": 2,
+            "name": "a:tool:1"
+          }
+        },
+        {
+          "error": "ProcessorMainClassMissing"
+        }
+      ],
+      "zig": [
+        {
+          "error": "BadPathName"
+        }
+      ],
+      "rust_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      },
+      "zig_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      }
+    },
+    {
+      "mode": "forge-server",
+      "scenario": "main-invalid",
+      "rust": [
+        {
+          "processor": {
+            "index": 1,
+            "total": 2,
+            "name": "a:tool:1"
+          }
+        },
+        {
+          "error": "InvalidProcessorMainClass"
+        }
+      ],
+      "zig": [
+        {
+          "error": "BadPathName"
+        }
+      ],
+      "rust_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      },
+      "zig_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      }
+    },
+    {
+      "mode": "forge-server",
+      "scenario": "main-continuation",
+      "rust": [
+        {
+          "processor": {
+            "index": 1,
+            "total": 2,
+            "name": "a:tool:1"
+          }
+        },
+        {
+          "processor": {
+            "index": 2,
+            "total": 2,
+            "name": "a:tool:1"
+          }
+        },
+        {
+          "status": "patched",
+          "processors_run": 2,
+          "patched_sha1": "3de4f901fffb30ac720b0e7eb654b4faa2dd03fa",
+          "patched_size": 6
+        }
+      ],
+      "zig": [
+        {
+          "error": "BadPathName"
+        }
+      ],
+      "rust_disk": {
+        "state": "{\"patched_sha1\":\"3de4f901fffb30ac720b0e7eb654b4faa2dd03fa\",\"patched_size\":6}\n",
+        "order": "both\nserver\n",
+        "work_exists": false,
+        "patched": "server"
+      },
+      "zig_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      }
+    },
+    {
+      "mode": "forge-server",
+      "scenario": "hash-mismatch",
+      "rust": [
+        {
+          "processor": {
+            "index": 1,
+            "total": 2,
+            "name": "a:tool:1"
+          }
+        },
+        {
+          "processor": {
+            "index": 2,
+            "total": 2,
+            "name": "a:tool:1"
+          }
+        },
+        {
+          "error": "PatchedHashMismatch"
+        }
+      ],
+      "zig": [
+        {
+          "error": "BadPathName"
+        }
+      ],
+      "rust_disk": {
+        "state": null,
+        "order": "both\nserver\n",
+        "work_exists": false,
+        "patched": "server"
+      },
+      "zig_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      }
+    },
+    {
+      "mode": "forge-server",
+      "scenario": "state-stale",
+      "rust": [
+        {
+          "processor": {
+            "index": 1,
+            "total": 2,
+            "name": "a:tool:1"
+          }
+        },
+        {
+          "processor": {
+            "index": 2,
+            "total": 2,
+            "name": "a:tool:1"
+          }
+        },
+        {
+          "status": "patched",
+          "processors_run": 2,
+          "patched_sha1": "3de4f901fffb30ac720b0e7eb654b4faa2dd03fa",
+          "patched_size": 6
+        }
+      ],
+      "zig": [
+        {
+          "error": "BadPathName"
+        }
+      ],
+      "rust_disk": {
+        "state": "{\"patched_sha1\":\"3de4f901fffb30ac720b0e7eb654b4faa2dd03fa\",\"patched_size\":6}\n",
+        "order": "both\nserver\n",
+        "work_exists": false,
+        "patched": "server"
+      },
+      "zig_disk": {
+        "state": "{\"patched_sha1\":\"0c93713c1e43fccf897b7b4f02e822c65d557fdf\",\"patched_size\":6}\n",
+        "order": null,
+        "work_exists": false,
+        "patched": "stale"
+      }
+    },
+    {
+      "mode": "forge-server",
+      "scenario": "state-invalid",
+      "rust": [
+        {
+          "processor": {
+            "index": 1,
+            "total": 2,
+            "name": "a:tool:1"
+          }
+        },
+        {
+          "processor": {
+            "index": 2,
+            "total": 2,
+            "name": "a:tool:1"
+          }
+        },
+        {
+          "status": "patched",
+          "processors_run": 2,
+          "patched_sha1": "3de4f901fffb30ac720b0e7eb654b4faa2dd03fa",
+          "patched_size": 6
+        }
+      ],
+      "zig": [
+        {
+          "error": "BadPathName"
+        }
+      ],
+      "rust_disk": {
+        "state": "{\"patched_sha1\":\"3de4f901fffb30ac720b0e7eb654b4faa2dd03fa\",\"patched_size\":6}\n",
+        "order": "both\nserver\n",
+        "work_exists": false,
+        "patched": "server"
+      },
+      "zig_disk": {
+        "state": "not json",
+        "order": null,
+        "work_exists": false,
+        "patched": "cached"
+      }
+    }
+  ],
+  "rpc": [
+    {
+      "mode": "neo",
+      "scenario": "success",
+      "run": 0,
+      "rust": "{\"protocol\":1,\"id\":\"fixture\",\"event\":\"started\",\"source\":\"official\",\"started\":{\"stage\":\"download\",\"version_id\":\"neoforge-21.1.133\",\"files_total\":2,\"bytes_total\":1125}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"file\",\"source\":\"official\",\"file\":{\"path\":\"versions/neoforge-21.1.133/neoforge-21.1.133.jar\",\"status\":\"cached\",\"placement\":\"hard_link\",\"size\":3,\"attempts\":0}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"progress\",\"source\":\"official\",\"progress\":{\"files_completed\":1,\"files_total\":2,\"bytes_verified\":3,\"bytes_processed\":3,\"bytes_total\":1125,\"bytes_transferred\":0}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"file\",\"source\":\"official\",\"file\":{\"path\":\".jmcl/neoforge/21.1.133/installer.jar\",\"status\":\"cached\",\"placement\":\"hard_link\",\"size\":1122,\"attempts\":0}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"progress\",\"source\":\"official\",\"progress\":{\"files_completed\":2,\"files_total\":2,\"bytes_verified\":1125,\"bytes_processed\":1125,\"bytes_total\":1125,\"bytes_transferred\":0}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"processor_started\",\"source\":\"official\",\"processor_started\":{\"stage\":\"processor\",\"index\":1,\"total\":2,\"name\":\"a:tool:1\"}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"processor_started\",\"source\":\"official\",\"processor_started\":{\"stage\":\"processor\",\"index\":2,\"total\":2,\"name\":\"a:tool:1\"}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"result\",\"source\":\"official\",\"result\":{\"stage\":\"download\",\"version_id\":\"1.20.4\",\"files_total\":2,\"files_downloaded\":0,\"files_cached\":2,\"files_hard_linked\":2,\"files_copied\":0,\"bytes_verified\":1125,\"bytes_transferred\":0,\"processors_run\":2,\"patched_client\":\"d2a04d71301a8915217dd5faf81d12cffd6cd958\"}}\n",
+      "zig": "{\"protocol\":1,\"id\":\"fixture\",\"event\":\"started\",\"source\":\"official\",\"started\":{\"stage\":\"download\",\"version_id\":\"neoforge-21.1.133\",\"files_total\":2,\"bytes_total\":1125}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"file\",\"source\":\"official\",\"file\":{\"path\":\"versions/neoforge-21.1.133/neoforge-21.1.133.jar\",\"status\":\"cached\",\"placement\":\"hard_link\",\"size\":3,\"attempts\":0}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"progress\",\"source\":\"official\",\"progress\":{\"files_completed\":1,\"files_total\":2,\"bytes_verified\":3,\"bytes_processed\":3,\"bytes_total\":1125,\"bytes_transferred\":0}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"file\",\"source\":\"official\",\"file\":{\"path\":\".jmcl/neoforge/21.1.133/installer.jar\",\"status\":\"cached\",\"placement\":\"hard_link\",\"size\":1122,\"attempts\":0}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"progress\",\"source\":\"official\",\"progress\":{\"files_completed\":2,\"files_total\":2,\"bytes_verified\":1125,\"bytes_processed\":1125,\"bytes_total\":1125,\"bytes_transferred\":0}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"error\",\"error\":{\"code\":\"PROCESSOR_FAILED\",\"message\":\"The NeoForge processor chain failed\"}}\n",
+      "rust_disk": {
+        "state": "{\"patched_sha1\":\"d2a04d71301a8915217dd5faf81d12cffd6cd958\",\"patched_size\":6}\n",
+        "order": "both\nclient\n",
+        "work_exists": false,
+        "patched": "client"
+      },
+      "zig_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      },
+      "rust_receipt": "{\"schema_version\":1,\"version_id\":\"1.20.4\",\"fabric_loader\":null,\"neoforge_version\":\"21.1.133\",\"forge_version\":null,\"source\":\"official\",\"os\":\"windows\",\"arch\":\"x86_64\"}\n",
+      "zig_receipt": null
+    },
+    {
+      "mode": "neo",
+      "scenario": "success",
+      "run": 1,
+      "rust": "{\"protocol\":1,\"id\":\"fixture\",\"event\":\"started\",\"source\":\"official\",\"started\":{\"stage\":\"download\",\"version_id\":\"neoforge-21.1.133\",\"files_total\":2,\"bytes_total\":1125}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"file\",\"source\":\"official\",\"file\":{\"path\":\"versions/neoforge-21.1.133/neoforge-21.1.133.jar\",\"status\":\"cached\",\"placement\":\"hard_link\",\"size\":3,\"attempts\":0}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"progress\",\"source\":\"official\",\"progress\":{\"files_completed\":1,\"files_total\":2,\"bytes_verified\":3,\"bytes_processed\":3,\"bytes_total\":1125,\"bytes_transferred\":0}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"file\",\"source\":\"official\",\"file\":{\"path\":\".jmcl/neoforge/21.1.133/installer.jar\",\"status\":\"cached\",\"placement\":\"hard_link\",\"size\":1122,\"attempts\":0}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"progress\",\"source\":\"official\",\"progress\":{\"files_completed\":2,\"files_total\":2,\"bytes_verified\":1125,\"bytes_processed\":1125,\"bytes_total\":1125,\"bytes_transferred\":0}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"result\",\"source\":\"official\",\"result\":{\"stage\":\"download\",\"version_id\":\"1.20.4\",\"files_total\":2,\"files_downloaded\":0,\"files_cached\":2,\"files_hard_linked\":2,\"files_copied\":0,\"bytes_verified\":1125,\"bytes_transferred\":0,\"processors_run\":0,\"patched_client\":\"d2a04d71301a8915217dd5faf81d12cffd6cd958\"}}\n",
+      "zig": "{\"protocol\":1,\"id\":\"fixture\",\"event\":\"started\",\"source\":\"official\",\"started\":{\"stage\":\"download\",\"version_id\":\"neoforge-21.1.133\",\"files_total\":2,\"bytes_total\":1125}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"file\",\"source\":\"official\",\"file\":{\"path\":\"versions/neoforge-21.1.133/neoforge-21.1.133.jar\",\"status\":\"cached\",\"placement\":\"hard_link\",\"size\":3,\"attempts\":0}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"progress\",\"source\":\"official\",\"progress\":{\"files_completed\":1,\"files_total\":2,\"bytes_verified\":3,\"bytes_processed\":3,\"bytes_total\":1125,\"bytes_transferred\":0}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"file\",\"source\":\"official\",\"file\":{\"path\":\".jmcl/neoforge/21.1.133/installer.jar\",\"status\":\"cached\",\"placement\":\"hard_link\",\"size\":1122,\"attempts\":0}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"progress\",\"source\":\"official\",\"progress\":{\"files_completed\":2,\"files_total\":2,\"bytes_verified\":1125,\"bytes_processed\":1125,\"bytes_total\":1125,\"bytes_transferred\":0}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"error\",\"error\":{\"code\":\"PROCESSOR_FAILED\",\"message\":\"The NeoForge processor chain failed\"}}\n",
+      "rust_disk": {
+        "state": "{\"patched_sha1\":\"d2a04d71301a8915217dd5faf81d12cffd6cd958\",\"patched_size\":6}\n",
+        "order": "both\nclient\n",
+        "work_exists": false,
+        "patched": "client"
+      },
+      "zig_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      },
+      "rust_receipt": "{\"schema_version\":1,\"version_id\":\"1.20.4\",\"fabric_loader\":null,\"neoforge_version\":\"21.1.133\",\"forge_version\":null,\"source\":\"official\",\"os\":\"windows\",\"arch\":\"x86_64\"}\n",
+      "zig_receipt": null
+    },
+    {
+      "mode": "neo",
+      "scenario": "failed",
+      "run": 0,
+      "rust": "{\"protocol\":1,\"id\":\"fixture\",\"event\":\"started\",\"source\":\"official\",\"started\":{\"stage\":\"download\",\"version_id\":\"neoforge-21.1.133\",\"files_total\":2,\"bytes_total\":1125}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"file\",\"source\":\"official\",\"file\":{\"path\":\"versions/neoforge-21.1.133/neoforge-21.1.133.jar\",\"status\":\"cached\",\"placement\":\"hard_link\",\"size\":3,\"attempts\":0}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"progress\",\"source\":\"official\",\"progress\":{\"files_completed\":1,\"files_total\":2,\"bytes_verified\":3,\"bytes_processed\":3,\"bytes_total\":1125,\"bytes_transferred\":0}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"file\",\"source\":\"official\",\"file\":{\"path\":\".jmcl/neoforge/21.1.133/installer.jar\",\"status\":\"cached\",\"placement\":\"hard_link\",\"size\":1122,\"attempts\":0}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"progress\",\"source\":\"official\",\"progress\":{\"files_completed\":2,\"files_total\":2,\"bytes_verified\":1125,\"bytes_processed\":1125,\"bytes_total\":1125,\"bytes_transferred\":0}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"processor_started\",\"source\":\"official\",\"processor_started\":{\"stage\":\"processor\",\"index\":1,\"total\":2,\"name\":\"a:tool:1\"}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"error\",\"error\":{\"code\":\"PROCESSOR_FAILED\",\"message\":\"The NeoForge processor chain failed\"}}\n",
+      "zig": "{\"protocol\":1,\"id\":\"fixture\",\"event\":\"started\",\"source\":\"official\",\"started\":{\"stage\":\"download\",\"version_id\":\"neoforge-21.1.133\",\"files_total\":2,\"bytes_total\":1125}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"file\",\"source\":\"official\",\"file\":{\"path\":\"versions/neoforge-21.1.133/neoforge-21.1.133.jar\",\"status\":\"cached\",\"placement\":\"hard_link\",\"size\":3,\"attempts\":0}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"progress\",\"source\":\"official\",\"progress\":{\"files_completed\":1,\"files_total\":2,\"bytes_verified\":3,\"bytes_processed\":3,\"bytes_total\":1125,\"bytes_transferred\":0}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"file\",\"source\":\"official\",\"file\":{\"path\":\".jmcl/neoforge/21.1.133/installer.jar\",\"status\":\"cached\",\"placement\":\"hard_link\",\"size\":1122,\"attempts\":0}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"progress\",\"source\":\"official\",\"progress\":{\"files_completed\":2,\"files_total\":2,\"bytes_verified\":1125,\"bytes_processed\":1125,\"bytes_total\":1125,\"bytes_transferred\":0}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"error\",\"error\":{\"code\":\"PROCESSOR_FAILED\",\"message\":\"The NeoForge processor chain failed\"}}\n",
+      "rust_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      },
+      "zig_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      },
+      "rust_receipt": null,
+      "zig_receipt": null
+    },
+    {
+      "mode": "neo",
+      "scenario": "failed",
+      "run": 1,
+      "rust": "{\"protocol\":1,\"id\":\"fixture\",\"event\":\"started\",\"source\":\"official\",\"started\":{\"stage\":\"download\",\"version_id\":\"neoforge-21.1.133\",\"files_total\":2,\"bytes_total\":1125}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"file\",\"source\":\"official\",\"file\":{\"path\":\"versions/neoforge-21.1.133/neoforge-21.1.133.jar\",\"status\":\"cached\",\"placement\":\"hard_link\",\"size\":3,\"attempts\":0}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"progress\",\"source\":\"official\",\"progress\":{\"files_completed\":1,\"files_total\":2,\"bytes_verified\":3,\"bytes_processed\":3,\"bytes_total\":1125,\"bytes_transferred\":0}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"file\",\"source\":\"official\",\"file\":{\"path\":\".jmcl/neoforge/21.1.133/installer.jar\",\"status\":\"cached\",\"placement\":\"hard_link\",\"size\":1122,\"attempts\":0}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"progress\",\"source\":\"official\",\"progress\":{\"files_completed\":2,\"files_total\":2,\"bytes_verified\":1125,\"bytes_processed\":1125,\"bytes_total\":1125,\"bytes_transferred\":0}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"processor_started\",\"source\":\"official\",\"processor_started\":{\"stage\":\"processor\",\"index\":1,\"total\":2,\"name\":\"a:tool:1\"}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"error\",\"error\":{\"code\":\"PROCESSOR_FAILED\",\"message\":\"The NeoForge processor chain failed\"}}\n",
+      "zig": "{\"protocol\":1,\"id\":\"fixture\",\"event\":\"started\",\"source\":\"official\",\"started\":{\"stage\":\"download\",\"version_id\":\"neoforge-21.1.133\",\"files_total\":2,\"bytes_total\":1125}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"file\",\"source\":\"official\",\"file\":{\"path\":\"versions/neoforge-21.1.133/neoforge-21.1.133.jar\",\"status\":\"cached\",\"placement\":\"hard_link\",\"size\":3,\"attempts\":0}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"progress\",\"source\":\"official\",\"progress\":{\"files_completed\":1,\"files_total\":2,\"bytes_verified\":3,\"bytes_processed\":3,\"bytes_total\":1125,\"bytes_transferred\":0}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"file\",\"source\":\"official\",\"file\":{\"path\":\".jmcl/neoforge/21.1.133/installer.jar\",\"status\":\"cached\",\"placement\":\"hard_link\",\"size\":1122,\"attempts\":0}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"progress\",\"source\":\"official\",\"progress\":{\"files_completed\":2,\"files_total\":2,\"bytes_verified\":1125,\"bytes_processed\":1125,\"bytes_total\":1125,\"bytes_transferred\":0}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"error\",\"error\":{\"code\":\"PROCESSOR_FAILED\",\"message\":\"The NeoForge processor chain failed\"}}\n",
+      "rust_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      },
+      "zig_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      },
+      "rust_receipt": null,
+      "zig_receipt": null
+    },
+    {
+      "mode": "neo",
+      "scenario": "hash-mismatch",
+      "run": 0,
+      "rust": "{\"protocol\":1,\"id\":\"fixture\",\"event\":\"started\",\"source\":\"official\",\"started\":{\"stage\":\"download\",\"version_id\":\"neoforge-21.1.133\",\"files_total\":2,\"bytes_total\":1125}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"file\",\"source\":\"official\",\"file\":{\"path\":\"versions/neoforge-21.1.133/neoforge-21.1.133.jar\",\"status\":\"cached\",\"placement\":\"hard_link\",\"size\":3,\"attempts\":0}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"progress\",\"source\":\"official\",\"progress\":{\"files_completed\":1,\"files_total\":2,\"bytes_verified\":3,\"bytes_processed\":3,\"bytes_total\":1125,\"bytes_transferred\":0}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"file\",\"source\":\"official\",\"file\":{\"path\":\".jmcl/neoforge/21.1.133/installer.jar\",\"status\":\"cached\",\"placement\":\"hard_link\",\"size\":1122,\"attempts\":0}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"progress\",\"source\":\"official\",\"progress\":{\"files_completed\":2,\"files_total\":2,\"bytes_verified\":1125,\"bytes_processed\":1125,\"bytes_total\":1125,\"bytes_transferred\":0}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"processor_started\",\"source\":\"official\",\"processor_started\":{\"stage\":\"processor\",\"index\":1,\"total\":2,\"name\":\"a:tool:1\"}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"processor_started\",\"source\":\"official\",\"processor_started\":{\"stage\":\"processor\",\"index\":2,\"total\":2,\"name\":\"a:tool:1\"}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"result\",\"source\":\"official\",\"result\":{\"stage\":\"download\",\"version_id\":\"1.20.4\",\"files_total\":2,\"files_downloaded\":0,\"files_cached\":2,\"files_hard_linked\":2,\"files_copied\":0,\"bytes_verified\":1125,\"bytes_transferred\":0,\"processors_run\":2,\"patched_client\":\"d2a04d71301a8915217dd5faf81d12cffd6cd958\"}}\n",
+      "zig": "{\"protocol\":1,\"id\":\"fixture\",\"event\":\"started\",\"source\":\"official\",\"started\":{\"stage\":\"download\",\"version_id\":\"neoforge-21.1.133\",\"files_total\":2,\"bytes_total\":1125}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"file\",\"source\":\"official\",\"file\":{\"path\":\"versions/neoforge-21.1.133/neoforge-21.1.133.jar\",\"status\":\"cached\",\"placement\":\"hard_link\",\"size\":3,\"attempts\":0}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"progress\",\"source\":\"official\",\"progress\":{\"files_completed\":1,\"files_total\":2,\"bytes_verified\":3,\"bytes_processed\":3,\"bytes_total\":1125,\"bytes_transferred\":0}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"file\",\"source\":\"official\",\"file\":{\"path\":\".jmcl/neoforge/21.1.133/installer.jar\",\"status\":\"cached\",\"placement\":\"hard_link\",\"size\":1122,\"attempts\":0}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"progress\",\"source\":\"official\",\"progress\":{\"files_completed\":2,\"files_total\":2,\"bytes_verified\":1125,\"bytes_processed\":1125,\"bytes_total\":1125,\"bytes_transferred\":0}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"error\",\"error\":{\"code\":\"PROCESSOR_FAILED\",\"message\":\"The NeoForge processor chain failed\"}}\n",
+      "rust_disk": {
+        "state": "{\"patched_sha1\":\"d2a04d71301a8915217dd5faf81d12cffd6cd958\",\"patched_size\":6}\n",
+        "order": "both\nclient\n",
+        "work_exists": false,
+        "patched": "client"
+      },
+      "zig_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      },
+      "rust_receipt": "{\"schema_version\":1,\"version_id\":\"1.20.4\",\"fabric_loader\":null,\"neoforge_version\":\"21.1.133\",\"forge_version\":null,\"source\":\"official\",\"os\":\"windows\",\"arch\":\"x86_64\"}\n",
+      "zig_receipt": null
+    },
+    {
+      "mode": "neo",
+      "scenario": "hash-mismatch",
+      "run": 1,
+      "rust": "{\"protocol\":1,\"id\":\"fixture\",\"event\":\"started\",\"source\":\"official\",\"started\":{\"stage\":\"download\",\"version_id\":\"neoforge-21.1.133\",\"files_total\":2,\"bytes_total\":1125}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"file\",\"source\":\"official\",\"file\":{\"path\":\"versions/neoforge-21.1.133/neoforge-21.1.133.jar\",\"status\":\"cached\",\"placement\":\"hard_link\",\"size\":3,\"attempts\":0}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"progress\",\"source\":\"official\",\"progress\":{\"files_completed\":1,\"files_total\":2,\"bytes_verified\":3,\"bytes_processed\":3,\"bytes_total\":1125,\"bytes_transferred\":0}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"file\",\"source\":\"official\",\"file\":{\"path\":\".jmcl/neoforge/21.1.133/installer.jar\",\"status\":\"cached\",\"placement\":\"hard_link\",\"size\":1122,\"attempts\":0}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"progress\",\"source\":\"official\",\"progress\":{\"files_completed\":2,\"files_total\":2,\"bytes_verified\":1125,\"bytes_processed\":1125,\"bytes_total\":1125,\"bytes_transferred\":0}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"result\",\"source\":\"official\",\"result\":{\"stage\":\"download\",\"version_id\":\"1.20.4\",\"files_total\":2,\"files_downloaded\":0,\"files_cached\":2,\"files_hard_linked\":2,\"files_copied\":0,\"bytes_verified\":1125,\"bytes_transferred\":0,\"processors_run\":0,\"patched_client\":\"d2a04d71301a8915217dd5faf81d12cffd6cd958\"}}\n",
+      "zig": "{\"protocol\":1,\"id\":\"fixture\",\"event\":\"started\",\"source\":\"official\",\"started\":{\"stage\":\"download\",\"version_id\":\"neoforge-21.1.133\",\"files_total\":2,\"bytes_total\":1125}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"file\",\"source\":\"official\",\"file\":{\"path\":\"versions/neoforge-21.1.133/neoforge-21.1.133.jar\",\"status\":\"cached\",\"placement\":\"hard_link\",\"size\":3,\"attempts\":0}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"progress\",\"source\":\"official\",\"progress\":{\"files_completed\":1,\"files_total\":2,\"bytes_verified\":3,\"bytes_processed\":3,\"bytes_total\":1125,\"bytes_transferred\":0}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"file\",\"source\":\"official\",\"file\":{\"path\":\".jmcl/neoforge/21.1.133/installer.jar\",\"status\":\"cached\",\"placement\":\"hard_link\",\"size\":1122,\"attempts\":0}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"progress\",\"source\":\"official\",\"progress\":{\"files_completed\":2,\"files_total\":2,\"bytes_verified\":1125,\"bytes_processed\":1125,\"bytes_total\":1125,\"bytes_transferred\":0}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"error\",\"error\":{\"code\":\"PROCESSOR_FAILED\",\"message\":\"The NeoForge processor chain failed\"}}\n",
+      "rust_disk": {
+        "state": "{\"patched_sha1\":\"d2a04d71301a8915217dd5faf81d12cffd6cd958\",\"patched_size\":6}\n",
+        "order": "both\nclient\n",
+        "work_exists": false,
+        "patched": "client"
+      },
+      "zig_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      },
+      "rust_receipt": "{\"schema_version\":1,\"version_id\":\"1.20.4\",\"fabric_loader\":null,\"neoforge_version\":\"21.1.133\",\"forge_version\":null,\"source\":\"official\",\"os\":\"windows\",\"arch\":\"x86_64\"}\n",
+      "zig_receipt": null
+    },
+    {
+      "mode": "forge",
+      "scenario": "success",
+      "run": 0,
+      "rust": "{\"protocol\":1,\"id\":\"fixture\",\"event\":\"started\",\"source\":\"official\",\"started\":{\"stage\":\"download\",\"version_id\":\"1.20.4-forge-49.2.8\",\"files_total\":2,\"bytes_total\":1129}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"file\",\"source\":\"official\",\"file\":{\"path\":\"versions/1.20.4-forge-49.2.8/1.20.4-forge-49.2.8.jar\",\"status\":\"cached\",\"placement\":\"hard_link\",\"size\":3,\"attempts\":0}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"progress\",\"source\":\"official\",\"progress\":{\"files_completed\":1,\"files_total\":2,\"bytes_verified\":3,\"bytes_processed\":3,\"bytes_total\":1129,\"bytes_transferred\":0}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"file\",\"source\":\"official\",\"file\":{\"path\":\".jmcl/forge/1.20.4-49.2.8/installer.jar\",\"status\":\"cached\",\"placement\":\"hard_link\",\"size\":1126,\"attempts\":0}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"progress\",\"source\":\"official\",\"progress\":{\"files_completed\":2,\"files_total\":2,\"bytes_verified\":1129,\"bytes_processed\":1129,\"bytes_total\":1129,\"bytes_transferred\":0}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"processor_started\",\"source\":\"official\",\"processor_started\":{\"stage\":\"processor\",\"index\":1,\"total\":2,\"name\":\"a:tool:1\"}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"processor_started\",\"source\":\"official\",\"processor_started\":{\"stage\":\"processor\",\"index\":2,\"total\":2,\"name\":\"a:tool:1\"}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"result\",\"source\":\"official\",\"result\":{\"stage\":\"download\",\"version_id\":\"1.20.4\",\"files_total\":2,\"files_downloaded\":0,\"files_cached\":2,\"files_hard_linked\":2,\"files_copied\":0,\"bytes_verified\":1129,\"bytes_transferred\":0,\"processors_run\":2,\"patched_client\":\"d2a04d71301a8915217dd5faf81d12cffd6cd958\"}}\n",
+      "zig": "{\"protocol\":1,\"id\":\"fixture\",\"event\":\"started\",\"source\":\"official\",\"started\":{\"stage\":\"download\",\"version_id\":\"1.20.4-forge-49.2.8\",\"files_total\":2,\"bytes_total\":1129}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"file\",\"source\":\"official\",\"file\":{\"path\":\"versions/1.20.4-forge-49.2.8/1.20.4-forge-49.2.8.jar\",\"status\":\"cached\",\"placement\":\"hard_link\",\"size\":3,\"attempts\":0}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"progress\",\"source\":\"official\",\"progress\":{\"files_completed\":1,\"files_total\":2,\"bytes_verified\":3,\"bytes_processed\":3,\"bytes_total\":1129,\"bytes_transferred\":0}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"file\",\"source\":\"official\",\"file\":{\"path\":\".jmcl/forge/1.20.4-49.2.8/installer.jar\",\"status\":\"cached\",\"placement\":\"hard_link\",\"size\":1126,\"attempts\":0}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"progress\",\"source\":\"official\",\"progress\":{\"files_completed\":2,\"files_total\":2,\"bytes_verified\":1129,\"bytes_processed\":1129,\"bytes_total\":1129,\"bytes_transferred\":0}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"error\",\"error\":{\"code\":\"PROCESSOR_FAILED\",\"message\":\"The Forge processor chain failed\"}}\n",
+      "rust_disk": {
+        "state": "{\"patched_sha1\":\"d2a04d71301a8915217dd5faf81d12cffd6cd958\",\"patched_size\":6}\n",
+        "order": "both\nclient\n",
+        "work_exists": false,
+        "patched": "client"
+      },
+      "zig_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      },
+      "rust_receipt": "{\"schema_version\":1,\"version_id\":\"1.20.4\",\"fabric_loader\":null,\"neoforge_version\":null,\"forge_version\":\"49.2.8\",\"source\":\"official\",\"os\":\"windows\",\"arch\":\"x86_64\"}\n",
+      "zig_receipt": null
+    },
+    {
+      "mode": "forge",
+      "scenario": "success",
+      "run": 1,
+      "rust": "{\"protocol\":1,\"id\":\"fixture\",\"event\":\"started\",\"source\":\"official\",\"started\":{\"stage\":\"download\",\"version_id\":\"1.20.4-forge-49.2.8\",\"files_total\":2,\"bytes_total\":1129}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"file\",\"source\":\"official\",\"file\":{\"path\":\"versions/1.20.4-forge-49.2.8/1.20.4-forge-49.2.8.jar\",\"status\":\"cached\",\"placement\":\"hard_link\",\"size\":3,\"attempts\":0}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"progress\",\"source\":\"official\",\"progress\":{\"files_completed\":1,\"files_total\":2,\"bytes_verified\":3,\"bytes_processed\":3,\"bytes_total\":1129,\"bytes_transferred\":0}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"file\",\"source\":\"official\",\"file\":{\"path\":\".jmcl/forge/1.20.4-49.2.8/installer.jar\",\"status\":\"cached\",\"placement\":\"hard_link\",\"size\":1126,\"attempts\":0}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"progress\",\"source\":\"official\",\"progress\":{\"files_completed\":2,\"files_total\":2,\"bytes_verified\":1129,\"bytes_processed\":1129,\"bytes_total\":1129,\"bytes_transferred\":0}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"result\",\"source\":\"official\",\"result\":{\"stage\":\"download\",\"version_id\":\"1.20.4\",\"files_total\":2,\"files_downloaded\":0,\"files_cached\":2,\"files_hard_linked\":2,\"files_copied\":0,\"bytes_verified\":1129,\"bytes_transferred\":0,\"processors_run\":0,\"patched_client\":\"d2a04d71301a8915217dd5faf81d12cffd6cd958\"}}\n",
+      "zig": "{\"protocol\":1,\"id\":\"fixture\",\"event\":\"started\",\"source\":\"official\",\"started\":{\"stage\":\"download\",\"version_id\":\"1.20.4-forge-49.2.8\",\"files_total\":2,\"bytes_total\":1129}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"file\",\"source\":\"official\",\"file\":{\"path\":\"versions/1.20.4-forge-49.2.8/1.20.4-forge-49.2.8.jar\",\"status\":\"cached\",\"placement\":\"hard_link\",\"size\":3,\"attempts\":0}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"progress\",\"source\":\"official\",\"progress\":{\"files_completed\":1,\"files_total\":2,\"bytes_verified\":3,\"bytes_processed\":3,\"bytes_total\":1129,\"bytes_transferred\":0}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"file\",\"source\":\"official\",\"file\":{\"path\":\".jmcl/forge/1.20.4-49.2.8/installer.jar\",\"status\":\"cached\",\"placement\":\"hard_link\",\"size\":1126,\"attempts\":0}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"progress\",\"source\":\"official\",\"progress\":{\"files_completed\":2,\"files_total\":2,\"bytes_verified\":1129,\"bytes_processed\":1129,\"bytes_total\":1129,\"bytes_transferred\":0}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"error\",\"error\":{\"code\":\"PROCESSOR_FAILED\",\"message\":\"The Forge processor chain failed\"}}\n",
+      "rust_disk": {
+        "state": "{\"patched_sha1\":\"d2a04d71301a8915217dd5faf81d12cffd6cd958\",\"patched_size\":6}\n",
+        "order": "both\nclient\n",
+        "work_exists": false,
+        "patched": "client"
+      },
+      "zig_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      },
+      "rust_receipt": "{\"schema_version\":1,\"version_id\":\"1.20.4\",\"fabric_loader\":null,\"neoforge_version\":null,\"forge_version\":\"49.2.8\",\"source\":\"official\",\"os\":\"windows\",\"arch\":\"x86_64\"}\n",
+      "zig_receipt": null
+    },
+    {
+      "mode": "forge",
+      "scenario": "failed",
+      "run": 0,
+      "rust": "{\"protocol\":1,\"id\":\"fixture\",\"event\":\"started\",\"source\":\"official\",\"started\":{\"stage\":\"download\",\"version_id\":\"1.20.4-forge-49.2.8\",\"files_total\":2,\"bytes_total\":1129}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"file\",\"source\":\"official\",\"file\":{\"path\":\"versions/1.20.4-forge-49.2.8/1.20.4-forge-49.2.8.jar\",\"status\":\"cached\",\"placement\":\"hard_link\",\"size\":3,\"attempts\":0}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"progress\",\"source\":\"official\",\"progress\":{\"files_completed\":1,\"files_total\":2,\"bytes_verified\":3,\"bytes_processed\":3,\"bytes_total\":1129,\"bytes_transferred\":0}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"file\",\"source\":\"official\",\"file\":{\"path\":\".jmcl/forge/1.20.4-49.2.8/installer.jar\",\"status\":\"cached\",\"placement\":\"hard_link\",\"size\":1126,\"attempts\":0}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"progress\",\"source\":\"official\",\"progress\":{\"files_completed\":2,\"files_total\":2,\"bytes_verified\":1129,\"bytes_processed\":1129,\"bytes_total\":1129,\"bytes_transferred\":0}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"processor_started\",\"source\":\"official\",\"processor_started\":{\"stage\":\"processor\",\"index\":1,\"total\":2,\"name\":\"a:tool:1\"}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"error\",\"error\":{\"code\":\"PROCESSOR_FAILED\",\"message\":\"The Forge processor chain failed\"}}\n",
+      "zig": "{\"protocol\":1,\"id\":\"fixture\",\"event\":\"started\",\"source\":\"official\",\"started\":{\"stage\":\"download\",\"version_id\":\"1.20.4-forge-49.2.8\",\"files_total\":2,\"bytes_total\":1129}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"file\",\"source\":\"official\",\"file\":{\"path\":\"versions/1.20.4-forge-49.2.8/1.20.4-forge-49.2.8.jar\",\"status\":\"cached\",\"placement\":\"hard_link\",\"size\":3,\"attempts\":0}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"progress\",\"source\":\"official\",\"progress\":{\"files_completed\":1,\"files_total\":2,\"bytes_verified\":3,\"bytes_processed\":3,\"bytes_total\":1129,\"bytes_transferred\":0}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"file\",\"source\":\"official\",\"file\":{\"path\":\".jmcl/forge/1.20.4-49.2.8/installer.jar\",\"status\":\"cached\",\"placement\":\"hard_link\",\"size\":1126,\"attempts\":0}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"progress\",\"source\":\"official\",\"progress\":{\"files_completed\":2,\"files_total\":2,\"bytes_verified\":1129,\"bytes_processed\":1129,\"bytes_total\":1129,\"bytes_transferred\":0}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"error\",\"error\":{\"code\":\"PROCESSOR_FAILED\",\"message\":\"The Forge processor chain failed\"}}\n",
+      "rust_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      },
+      "zig_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      },
+      "rust_receipt": null,
+      "zig_receipt": null
+    },
+    {
+      "mode": "forge",
+      "scenario": "failed",
+      "run": 1,
+      "rust": "{\"protocol\":1,\"id\":\"fixture\",\"event\":\"started\",\"source\":\"official\",\"started\":{\"stage\":\"download\",\"version_id\":\"1.20.4-forge-49.2.8\",\"files_total\":2,\"bytes_total\":1129}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"file\",\"source\":\"official\",\"file\":{\"path\":\"versions/1.20.4-forge-49.2.8/1.20.4-forge-49.2.8.jar\",\"status\":\"cached\",\"placement\":\"hard_link\",\"size\":3,\"attempts\":0}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"progress\",\"source\":\"official\",\"progress\":{\"files_completed\":1,\"files_total\":2,\"bytes_verified\":3,\"bytes_processed\":3,\"bytes_total\":1129,\"bytes_transferred\":0}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"file\",\"source\":\"official\",\"file\":{\"path\":\".jmcl/forge/1.20.4-49.2.8/installer.jar\",\"status\":\"cached\",\"placement\":\"hard_link\",\"size\":1126,\"attempts\":0}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"progress\",\"source\":\"official\",\"progress\":{\"files_completed\":2,\"files_total\":2,\"bytes_verified\":1129,\"bytes_processed\":1129,\"bytes_total\":1129,\"bytes_transferred\":0}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"processor_started\",\"source\":\"official\",\"processor_started\":{\"stage\":\"processor\",\"index\":1,\"total\":2,\"name\":\"a:tool:1\"}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"error\",\"error\":{\"code\":\"PROCESSOR_FAILED\",\"message\":\"The Forge processor chain failed\"}}\n",
+      "zig": "{\"protocol\":1,\"id\":\"fixture\",\"event\":\"started\",\"source\":\"official\",\"started\":{\"stage\":\"download\",\"version_id\":\"1.20.4-forge-49.2.8\",\"files_total\":2,\"bytes_total\":1129}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"file\",\"source\":\"official\",\"file\":{\"path\":\"versions/1.20.4-forge-49.2.8/1.20.4-forge-49.2.8.jar\",\"status\":\"cached\",\"placement\":\"hard_link\",\"size\":3,\"attempts\":0}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"progress\",\"source\":\"official\",\"progress\":{\"files_completed\":1,\"files_total\":2,\"bytes_verified\":3,\"bytes_processed\":3,\"bytes_total\":1129,\"bytes_transferred\":0}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"file\",\"source\":\"official\",\"file\":{\"path\":\".jmcl/forge/1.20.4-49.2.8/installer.jar\",\"status\":\"cached\",\"placement\":\"hard_link\",\"size\":1126,\"attempts\":0}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"progress\",\"source\":\"official\",\"progress\":{\"files_completed\":2,\"files_total\":2,\"bytes_verified\":1129,\"bytes_processed\":1129,\"bytes_total\":1129,\"bytes_transferred\":0}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"error\",\"error\":{\"code\":\"PROCESSOR_FAILED\",\"message\":\"The Forge processor chain failed\"}}\n",
+      "rust_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      },
+      "zig_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      },
+      "rust_receipt": null,
+      "zig_receipt": null
+    },
+    {
+      "mode": "forge",
+      "scenario": "hash-mismatch",
+      "run": 0,
+      "rust": "{\"protocol\":1,\"id\":\"fixture\",\"event\":\"started\",\"source\":\"official\",\"started\":{\"stage\":\"download\",\"version_id\":\"1.20.4-forge-49.2.8\",\"files_total\":2,\"bytes_total\":1129}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"file\",\"source\":\"official\",\"file\":{\"path\":\"versions/1.20.4-forge-49.2.8/1.20.4-forge-49.2.8.jar\",\"status\":\"cached\",\"placement\":\"hard_link\",\"size\":3,\"attempts\":0}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"progress\",\"source\":\"official\",\"progress\":{\"files_completed\":1,\"files_total\":2,\"bytes_verified\":3,\"bytes_processed\":3,\"bytes_total\":1129,\"bytes_transferred\":0}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"file\",\"source\":\"official\",\"file\":{\"path\":\".jmcl/forge/1.20.4-49.2.8/installer.jar\",\"status\":\"cached\",\"placement\":\"hard_link\",\"size\":1126,\"attempts\":0}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"progress\",\"source\":\"official\",\"progress\":{\"files_completed\":2,\"files_total\":2,\"bytes_verified\":1129,\"bytes_processed\":1129,\"bytes_total\":1129,\"bytes_transferred\":0}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"processor_started\",\"source\":\"official\",\"processor_started\":{\"stage\":\"processor\",\"index\":1,\"total\":2,\"name\":\"a:tool:1\"}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"processor_started\",\"source\":\"official\",\"processor_started\":{\"stage\":\"processor\",\"index\":2,\"total\":2,\"name\":\"a:tool:1\"}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"error\",\"error\":{\"code\":\"PROCESSOR_FAILED\",\"message\":\"The Forge processor chain failed\"}}\n",
+      "zig": "{\"protocol\":1,\"id\":\"fixture\",\"event\":\"started\",\"source\":\"official\",\"started\":{\"stage\":\"download\",\"version_id\":\"1.20.4-forge-49.2.8\",\"files_total\":2,\"bytes_total\":1129}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"file\",\"source\":\"official\",\"file\":{\"path\":\"versions/1.20.4-forge-49.2.8/1.20.4-forge-49.2.8.jar\",\"status\":\"cached\",\"placement\":\"hard_link\",\"size\":3,\"attempts\":0}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"progress\",\"source\":\"official\",\"progress\":{\"files_completed\":1,\"files_total\":2,\"bytes_verified\":3,\"bytes_processed\":3,\"bytes_total\":1129,\"bytes_transferred\":0}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"file\",\"source\":\"official\",\"file\":{\"path\":\".jmcl/forge/1.20.4-49.2.8/installer.jar\",\"status\":\"cached\",\"placement\":\"hard_link\",\"size\":1126,\"attempts\":0}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"progress\",\"source\":\"official\",\"progress\":{\"files_completed\":2,\"files_total\":2,\"bytes_verified\":1129,\"bytes_processed\":1129,\"bytes_total\":1129,\"bytes_transferred\":0}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"error\",\"error\":{\"code\":\"PROCESSOR_FAILED\",\"message\":\"The Forge processor chain failed\"}}\n",
+      "rust_disk": {
+        "state": null,
+        "order": "both\nclient\n",
+        "work_exists": false,
+        "patched": "client"
+      },
+      "zig_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      },
+      "rust_receipt": null,
+      "zig_receipt": null
+    },
+    {
+      "mode": "forge",
+      "scenario": "hash-mismatch",
+      "run": 1,
+      "rust": "{\"protocol\":1,\"id\":\"fixture\",\"event\":\"started\",\"source\":\"official\",\"started\":{\"stage\":\"download\",\"version_id\":\"1.20.4-forge-49.2.8\",\"files_total\":2,\"bytes_total\":1129}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"file\",\"source\":\"official\",\"file\":{\"path\":\"versions/1.20.4-forge-49.2.8/1.20.4-forge-49.2.8.jar\",\"status\":\"cached\",\"placement\":\"hard_link\",\"size\":3,\"attempts\":0}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"progress\",\"source\":\"official\",\"progress\":{\"files_completed\":1,\"files_total\":2,\"bytes_verified\":3,\"bytes_processed\":3,\"bytes_total\":1129,\"bytes_transferred\":0}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"file\",\"source\":\"official\",\"file\":{\"path\":\".jmcl/forge/1.20.4-49.2.8/installer.jar\",\"status\":\"cached\",\"placement\":\"hard_link\",\"size\":1126,\"attempts\":0}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"progress\",\"source\":\"official\",\"progress\":{\"files_completed\":2,\"files_total\":2,\"bytes_verified\":1129,\"bytes_processed\":1129,\"bytes_total\":1129,\"bytes_transferred\":0}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"processor_started\",\"source\":\"official\",\"processor_started\":{\"stage\":\"processor\",\"index\":1,\"total\":2,\"name\":\"a:tool:1\"}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"processor_started\",\"source\":\"official\",\"processor_started\":{\"stage\":\"processor\",\"index\":2,\"total\":2,\"name\":\"a:tool:1\"}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"error\",\"error\":{\"code\":\"PROCESSOR_FAILED\",\"message\":\"The Forge processor chain failed\"}}\n",
+      "zig": "{\"protocol\":1,\"id\":\"fixture\",\"event\":\"started\",\"source\":\"official\",\"started\":{\"stage\":\"download\",\"version_id\":\"1.20.4-forge-49.2.8\",\"files_total\":2,\"bytes_total\":1129}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"file\",\"source\":\"official\",\"file\":{\"path\":\"versions/1.20.4-forge-49.2.8/1.20.4-forge-49.2.8.jar\",\"status\":\"cached\",\"placement\":\"hard_link\",\"size\":3,\"attempts\":0}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"progress\",\"source\":\"official\",\"progress\":{\"files_completed\":1,\"files_total\":2,\"bytes_verified\":3,\"bytes_processed\":3,\"bytes_total\":1129,\"bytes_transferred\":0}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"file\",\"source\":\"official\",\"file\":{\"path\":\".jmcl/forge/1.20.4-49.2.8/installer.jar\",\"status\":\"cached\",\"placement\":\"hard_link\",\"size\":1126,\"attempts\":0}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"progress\",\"source\":\"official\",\"progress\":{\"files_completed\":2,\"files_total\":2,\"bytes_verified\":1129,\"bytes_processed\":1129,\"bytes_total\":1129,\"bytes_transferred\":0}}\n{\"protocol\":1,\"id\":\"fixture\",\"event\":\"error\",\"error\":{\"code\":\"PROCESSOR_FAILED\",\"message\":\"The Forge processor chain failed\"}}\n",
+      "rust_disk": {
+        "state": null,
+        "order": "both\nclient\nboth\nclient\n",
+        "work_exists": false,
+        "patched": "client"
+      },
+      "zig_disk": {
+        "state": null,
+        "order": null,
+        "work_exists": false,
+        "patched": null
+      },
+      "rust_receipt": null,
+      "zig_receipt": null
+    }
+  ]
+}

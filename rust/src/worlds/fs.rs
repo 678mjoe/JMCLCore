@@ -41,6 +41,14 @@ impl Dir {
             Mode::empty(),
         ))?)))
     }
+    pub fn child_alias(&self, name: &str) -> Result<Self> {
+        Ok(Self(File::from(cv(fs::openat(
+            &self.0,
+            name,
+            OFlags::RDONLY | OFlags::DIRECTORY | OFlags::CLOEXEC,
+            Mode::empty(),
+        ))?)))
+    }
     pub fn new_child(&self, name: &str) -> Result<Self> {
         cv(fs::mkdirat(&self.0, name, Mode::from_raw_mode(0o755)))?;
         self.child(name, false)
@@ -73,18 +81,23 @@ impl Dir {
     pub fn exists(&self, name: &str) -> bool {
         fs::statat(&self.0, name, AtFlags::empty()).is_ok()
     }
-    // Metadata read aliases are part of the Zig disk contract. This opens for
-    // read only; atomic edits replace the directory entry, never this target.
-    pub fn read_alias(&self, name: &str, max: usize) -> Result<Vec<u8>> {
+    // Named compatibility aliases are opened without mutating their bytes.
+    pub fn file_alias(&self, name: &str, write: bool) -> Result<File> {
         let f = File::from(cv(fs::openat(
             &self.0,
             name,
-            OFlags::RDONLY | OFlags::NONBLOCK | OFlags::CLOEXEC,
+            (if write { OFlags::RDWR } else { OFlags::RDONLY })
+                | OFlags::NONBLOCK
+                | OFlags::CLOEXEC,
             Mode::empty(),
         ))?);
         if !f.metadata()?.is_file() {
             return Err(Error::UnsupportedEntry);
         }
+        Ok(f)
+    }
+    pub fn read_alias(&self, name: &str, max: usize) -> Result<Vec<u8>> {
+        let f = self.file_alias(name, false)?;
         let mut bytes = vec![];
         f.take(max as u64 + 1).read_to_end(&mut bytes)?;
         if bytes.len() > max {
@@ -92,6 +105,7 @@ impl Dir {
         }
         Ok(bytes)
     }
+    #[cfg(any(test, target_os = "linux"))]
     pub fn read(&self, name: &str, max: usize) -> Result<Vec<u8>> {
         let f = self.file(name, false)?;
         let mut bytes = vec![];
@@ -137,6 +151,10 @@ impl Dir {
     }
     pub fn remove_tree(&self, name: impl AsRef<OsStr>) -> Result<()> {
         let n = name.as_ref();
+        let stat = cv(fs::statat(&self.0, n, AtFlags::SYMLINK_NOFOLLOW))?;
+        if FileType::from_raw_mode(stat.st_mode) == FileType::Symlink {
+            return self.unlink(n);
+        }
         let child = self.child(n, false)?;
         for (e, kind) in child.names()? {
             if kind == FileType::Directory {
@@ -170,7 +188,7 @@ impl Dir {
         total
     }
     pub fn locked(&self) -> Result<bool> {
-        let f = match self.file("session.lock", true) {
+        let f = match self.file_alias("session.lock", true) {
             Ok(f) => f,
             Err(Error::Io(e)) if e.kind() == std::io::ErrorKind::NotFound => return Ok(false),
             Err(e) => return Err(e),

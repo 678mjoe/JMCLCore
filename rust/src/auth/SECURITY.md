@@ -3,10 +3,16 @@
 This module implements the five authentication RPC state machines against an
 injected `Transport`. It does not persist credentials, create an account vault,
 add a login CLI or add PKCE endpoints absent from the pinned Zig core. Its tests
-use only synthetic scripted responses; there is no production HTTP adapter here.
-A caller integrating an adapter must enforce the request's timeout and bounded
-response size while reading, not merely after an unbounded read, must not forward
-credentials on redirects, and must avoid logging request bodies/bearer values.
+use only synthetic scripted responses; the HTTPS adapter is implemented but is not live-service-tested.
+The production `HttpsTransport` binds only the official endpoint/method pairs,
+uses certificate-verified HTTPS, 30-second per-request total timeout, and bounded
+64 KiB response reads. It never sends fixture requests during tests. The exported
+`handle` is the direct typed writer binding for the shared protocol dispatcher.
+
+Pinned `src/auth/http.zig` explicitly uses `.redirect_behavior = .unhandled`;
+Rust uses `Policy::none`, not a new redirect-policy change. Both send
+`Accept: application/json` and `Accept-Encoding: identity`; bearer bytes must be
+printable ASCII. No cookies or persistent credential storage are introduced.
 
 ## Owned-secret handling
 
@@ -33,11 +39,28 @@ recoverable allocator-error model. A caller must also ensure its outer JSONL
 parser and input-buffer lifetime respect this boundary; wrapping the final
 string in Zeroizing does not erase a JSON decoder's earlier scratch allocation.
 
-## Compatibility work still required
+## Verified synthetic compatibility and remaining boundaries
 
-The pure state machines and scripted chains are tested, but these tests do not
-constitute a live Microsoft-service compatibility claim. A bounded HTTP adapter,
-outer dispatch wiring, and side-by-side injected-transport oracle fixtures are
-separate acceptance gates. Exact numerical coercion of extreme scientific-form
-u64 values needs differential coverage (Rust f64 versus Zig f128). No known
-incompatibility is silently counted as completion.
+`rust/compat/build_auth_oracle.py` extracts exactly
+`5a4310debbcee26b3d2391bab2339f79cd6ec52e` from Git. It changes only the two HTTP
+adapter imports to an injected fake; original auth and protocol code remain
+unchanged. The runner rejects non-auth methods. `tests/auth_oracle.rs` compares
+complete terminal responses and outbound requests: all five success flows,
+rotation failure at each downstream step, transport failures, Xbox restrictions,
+malformed/escaped parameters and response shapes, Unicode surrogate validation,
+and allocation-dependent OAuth error string limits. The latter is observable
+Zig behavior: unescaped borrowed error strings bypass its 128-byte allocation
+limit; escaped allocated strings do not. Rust preserves this within the overall
+64 KiB response ceiling.
+
+Run with `JMCL_AUTH_ORACLE=<built-path> cargo test --test auth_oracle -- --ignored`.
+Use a per-worktree target directory, debug=0 and incremental=0 in constrained CI.
+
+Still not proven: live-service behavior, native TLS/network-stack error equivalence,
+and extreme scientific-form numeric coercion (Rust f64 versus Zig f128). The
+HTTP library's HeaderValue and internal HTTP/TLS allocations do not offer wiping;
+the temporary header assembly buffer is wiped and the header is marked sensitive,
+but no universal erasure claim is made. No actual credentials or auth network
+requests are used by any test. Production dispatch integration belongs to the
+shared protocol owner; outer JSON syntax/Unicode errors must remain
+INVALID_REQUEST rather than auth-specific INVALID_PARAMS.

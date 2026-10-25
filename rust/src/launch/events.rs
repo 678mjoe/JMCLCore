@@ -24,7 +24,7 @@ struct StartedEnvelope<'a> {
 }
 #[derive(Serialize)]
 struct Log<'a> {
-    sequence: u64,
+    pub(crate) sequence: u64,
     encoding: &'static str,
     end: RecordEnd,
     data: &'a str,
@@ -51,8 +51,8 @@ pub struct EventWriter<'a, W: Write> {
     pub source: Source,
     pub version_id: &'a str,
     pub plan: &'a Plan,
-    sequence: u64,
-    failed: bool,
+    pub(crate) sequence: u64,
+    pub(crate) failed: bool,
 }
 impl<'a, W: Write> EventWriter<'a, W> {
     pub fn new(

@@ -1,6 +1,12 @@
 use crate::protocol::RpcError;
 use serde_json::{Value, value::RawValue};
 pub fn handle(method: &str, params: Option<&RawValue>) -> Option<Result<Value, RpcError>> {
+    if let Some(result) = super::creation::handle(method, params) {
+        return Some(result);
+    }
+    if let Some(result) = super::remote::handle(method, params) {
+        return Some(result);
+    }
     #[cfg(target_os = "linux")]
     if let Some(result) = crate::worlds::server::handle(method, params) {
         return Some(result);
@@ -83,7 +89,7 @@ mod linux {
         java_paths: Vec<String>,
         #[serde(
             default = "grace",
-            deserialize_with = "crate::instances::schema_number"
+            deserialize_with = "crate::instances::dynamic_schema_number"
         )]
         grace_ms: u32,
         #[serde(

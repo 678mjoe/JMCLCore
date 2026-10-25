@@ -26,6 +26,18 @@ fn yes() -> bool {
 }
 // Zig's integer schema parser also accepts integral JSON floats/numeric strings.
 pub(crate) fn schema_number<'de, D: serde::Deserializer<'de>>(d: D) -> Result<u32, D::Error> {
+    let raw = <&RawValue>::deserialize(d)?;
+    crate::json_number::typed_raw(raw.get(), 32)
+        .map(|n| n as u32)
+        .map_err(|e| serde::de::Error::custom(format!("Zig:{}", e.name())))
+}
+
+// Only dynamic Value callers may use this visitor: finite JSON floats have
+// already been rounded to binary64 by the original request params parser.
+#[cfg(any(test, target_os = "linux"))]
+pub(crate) fn dynamic_schema_number<'de, D: serde::Deserializer<'de>>(
+    d: D,
+) -> Result<u32, D::Error> {
     struct N;
     impl<'de> serde::de::Visitor<'de> for N {
         type Value = u32;
@@ -48,16 +60,9 @@ pub(crate) fn schema_number<'de, D: serde::Deserializer<'de>>(d: D) -> Result<u3
             Ok(v as u32)
         }
         fn visit_str<E: serde::de::Error>(self, v: &str) -> Result<u32, E> {
-            if v.is_empty()
-                || v.bytes()
-                    .any(|c| !matches!(c, b'0'..=b'9' | b'+' | b'-' | b'.' | b'e' | b'E'))
-            {
-                return Err(E::custom("Zig:InvalidCharacter"));
-            }
-            self.visit_f64(
-                v.parse::<f64>()
-                    .map_err(|_| E::custom("Zig:InvalidCharacter"))?,
-            )
+            crate::json_number::unsigned_text(v, 32)
+                .map(|n| n as u32)
+                .map_err(|e| E::custom(format!("Zig:{}", e.name())))
         }
     }
     d.deserialize_any(N)
@@ -85,8 +90,13 @@ pub(crate) fn parse_document<T: serde::de::DeserializeOwned>(
             "UnexpectedToken"
         }
     }
-    let v: Value = serde_json::from_slice(bytes).map_err(error)?;
-    if !v.is_object() {
+    // Shape/syntax validation must not round or reject numeric lexemes before
+    // the typed schema parser sees them (including ignored huge exponents).
+    let raw: &RawValue = serde_json::from_slice(bytes).map_err(error)?;
+    if crate::auth::json::Json::parse(raw.get()).is_err() {
+        return Err("SyntaxError");
+    }
+    if !raw.get().starts_with('{') {
         return Err("UnexpectedToken");
     }
     serde_json::from_slice(bytes).map_err(error)
@@ -220,6 +230,46 @@ struct Create {
     #[serde(default = "yes")]
     validate: bool,
 }
+/// Resolve before opening the instances root, matching Service.resolveMetadataPreferred.
+/// Validation never installs artifacts or creates an instance directory.
+fn validate_selection(
+    id: &str,
+    fabric: Option<&str>,
+    neoforge: Option<&str>,
+    forge: Option<&str>,
+    source: &str,
+) -> Result<(), crate::metadata::Error> {
+    use crate::{
+        metadata::Source,
+        version::{HttpTransport, Service},
+    };
+    let source = Source::parse(source).ok_or(crate::metadata::Error::Plan("InvalidSource"))?;
+    let service = Service::new(HttpTransport::new()?, ".jmclcore/metadata-cache");
+    if let Some(loader) = neoforge {
+        service
+            .resolve_neoforge_preferred(id, loader, source)
+            .map(|_| ())
+    } else if let Some(loader) = forge {
+        service
+            .resolve_forge_preferred(id, loader, source)
+            .map(|_| ())
+    } else {
+        service.resolve_preferred(id, fabric, source).map(|_| ())
+    }
+}
+fn resolution_error(error: crate::metadata::Error) -> RpcError {
+    if error == crate::metadata::Error::MetadataFetchTimeout {
+        fail(
+            "METADATA_TIMEOUT",
+            "Timed out while resolving the Minecraft version and loader",
+        )
+    } else {
+        fail(
+            "VERSION_RESOLUTION_FAILED",
+            "Failed to resolve the Minecraft version and loader",
+        )
+    }
+}
 fn invalid(message: &str) -> RpcError {
     RpcError::new("INVALID_PARAMS", message)
 }
@@ -283,10 +333,14 @@ fn handle_unix(method: &str, p: Option<&RawValue>) -> Result<Value, RpcError> {
                 return Err(invalid("only one loader field may be set"));
             }
             if c.validate {
-                return Err(fail(
-                    "NOT_IMPLEMENTED",
-                    "Rust rewrite metadata validation is not implemented; do not use as a replacement Core",
-                ));
+                validate_selection(
+                    &c.version_id,
+                    c.fabric_loader.as_deref(),
+                    c.neoforge_version.as_deref(),
+                    c.forge_version.as_deref(),
+                    &c.source,
+                )
+                .map_err(resolution_error)?;
             }
             let root = open(&c.directory)?;
             let m = Manifest {
@@ -480,5 +534,65 @@ mod tests {
             br#"{"version_id":"1.21","source":"bmclapi","os":"linux","arch":"x86_64"}"#,
             &m
         ));
+    }
+}
+
+#[cfg(test)]
+mod numeric_schema_edges {
+    use super::*;
+    #[test]
+    fn disk_schema_uses_binary128_but_dynamic_params_keep_binary64() {
+        for number in ["1.0000000000000001", "\"1.0000000000000001\""] {
+            let raw = format!(
+                r#"{{"schema_version":{number},"id":"demo","name":"Demo","version_id":"1.0"}}"#
+            );
+            assert_eq!(
+                parse_document::<Manifest>(raw.as_bytes()).unwrap_err(),
+                "InvalidNumber"
+            );
+            assert_eq!(
+                crate::servers::manifest::Manifest::parse(raw.as_bytes(), "demo").unwrap_err(),
+                "InvalidNumber"
+            );
+        }
+        #[derive(Deserialize)]
+        struct Dynamic {
+            #[serde(deserialize_with = "dynamic_schema_number")]
+            number: u32,
+        }
+        let raw = r#"{"number":1.0000000000000001}"#;
+        let value: Value = serde_json::from_str(raw).unwrap();
+        assert_eq!(serde_json::from_value::<Dynamic>(value).unwrap().number, 1);
+        let raw = r#"{"number":"1.0000000000000001"}"#;
+        let value: Value = serde_json::from_str(raw).unwrap();
+        assert!(serde_json::from_value::<Dynamic>(value).is_err());
+    }
+    #[test]
+    fn disk_numbers_and_ignored_fields_retain_their_lexemes() {
+        let raw = br#"{"schema_version":1e9999,"id":"demo","name":"Demo","version_id":"1.0"}"#;
+        assert_eq!(parse_document::<Manifest>(raw).unwrap_err(), "Overflow");
+        let raw =
+            br#"{"schema_version":1,"id":"demo","name":"Demo","version_id":"1.0","unused":1e9999}"#;
+        assert_eq!(parse_document::<Manifest>(raw).unwrap().schema_version, 1);
+    }
+}
+
+#[cfg(test)]
+mod validation_errors {
+    use super::*;
+    #[test]
+    fn resolution_timeout_remains_distinct() {
+        let timeout = resolution_error(crate::metadata::Error::MetadataFetchTimeout);
+        assert_eq!(timeout.code, "METADATA_TIMEOUT");
+        assert_eq!(
+            timeout.message,
+            "Timed out while resolving the Minecraft version and loader"
+        );
+        let missing = resolution_error(crate::metadata::Error::VersionNotFound);
+        assert_eq!(missing.code, "VERSION_RESOLUTION_FAILED");
+        assert_eq!(
+            missing.message,
+            "Failed to resolve the Minecraft version and loader"
+        );
     }
 }

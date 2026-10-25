@@ -18,14 +18,10 @@ Required fixture adapters use the pinned Zig modules, not a Rust fallback. The c
 The combined tree adds actual static install/prepare, lock-bound CAS publication, local content adoption, injected Modrinth resolution, modpack installation with private overrides and rollback, local/installed-runtime launch planning and a process engine, and Linux server lifecycle/world-set operations. Shared protocol dispatch remains explicit; helpers without a production dispatcher are not advertised as implemented methods.
 
 - Modern Forge/NeoForge processor execution remains explicitly unsupported before filesystem mutation.
-- Java runtime installation is not enabled or verified; the narrow archive safety policy is approved, but implementation and verification remain incomplete.
+- Java runtime installation is not enabled or verified; its separate archive-policy question is unresolved.
 - Auth has synthetic typed/wiping parser tests, not a complete production authentication acceptance claim. General allocation wiping and extreme numeric coercion remain separate limitations.
-- The exact Windows Zig lock-contention retention case is opt-in experimental evidence, not blocking parity. Strict replacement remains failing. Three oversized RPC buffering cases remain separately and exactly asserted; see [approved defect ledger](original-core-defects.md).
+- The exact Windows Zig lock-contention retention case is opt-in experimental evidence, not blocking parity. Strict replacement remains failing. Three oversized RPC buffering cases remain separately allowlisted.
 - World archive CRC acceptance and descendant-held launch pipe behavior remain documented differences, not silent normalizations.
 - Live provider/download behavior, native platforms, absent RPC/CLI methods and full negative-input coverage remain gates. `full_compatibility` and `replacement_allowed` remain false.
 
 Later documentation commits may record this checkpoint, but a changed implementation must be rebuilt and retested before publishing its evidence as current.
-
-## Prerequisite correction and publication verification
-
-The macOS direct-exec fix from milestone 2 was carried into implementation commit `cd3fdf3`. The combined Linux suite was rebuilt and rerun: **144 unit + 87 integration tests passed, zero ignored**; formatting and all-target Clippy passed. Subsequent changes only clarify documentation. Native CI must run this complete publication tree; prior checkpoint hashes above are historical, not hashes of the new executable.

@@ -1,0 +1,2396 @@
+[
+  {
+    "width": 8,
+    "raw": "0",
+    "expected": {
+      "value": 0
+    }
+  },
+  {
+    "width": 8,
+    "raw": "-0",
+    "expected": {
+      "value": 0
+    }
+  },
+  {
+    "width": 8,
+    "raw": "1",
+    "expected": {
+      "value": 1
+    }
+  },
+  {
+    "width": 8,
+    "raw": "1.0",
+    "expected": {
+      "value": 1
+    }
+  },
+  {
+    "width": 8,
+    "raw": "1e0",
+    "expected": {
+      "value": 1
+    }
+  },
+  {
+    "width": 8,
+    "raw": "1.0000000000000001",
+    "expected": {
+      "error": "InvalidNumber"
+    }
+  },
+  {
+    "width": 8,
+    "raw": "1.0000000000000000000000000000000001",
+    "expected": {
+      "error": "InvalidNumber"
+    }
+  },
+  {
+    "width": 8,
+    "raw": "1.00000000000000000000000000000000001",
+    "expected": {
+      "value": 1
+    }
+  },
+  {
+    "width": 8,
+    "raw": "0.99999999999999999",
+    "expected": {
+      "error": "InvalidNumber"
+    }
+  },
+  {
+    "width": 8,
+    "raw": "0.99999999999999999999999999999999999",
+    "expected": {
+      "value": 1
+    }
+  },
+  {
+    "width": 8,
+    "raw": "1e309",
+    "expected": {
+      "error": "Overflow"
+    }
+  },
+  {
+    "width": 8,
+    "raw": "1e9999",
+    "expected": {
+      "error": "Overflow"
+    }
+  },
+  {
+    "width": 8,
+    "raw": "1e-9999",
+    "expected": {
+      "value": 0
+    }
+  },
+  {
+    "width": 8,
+    "raw": "-1e-9999",
+    "expected": {
+      "value": 0
+    }
+  },
+  {
+    "width": 8,
+    "raw": "0e99999999999999999999999999999999",
+    "expected": {
+      "value": 0
+    }
+  },
+  {
+    "width": 8,
+    "raw": "1e-9999999999999999999999999999999999",
+    "expected": {
+      "value": 0
+    }
+  },
+  {
+    "width": 8,
+    "raw": "255",
+    "expected": {
+      "value": 255
+    }
+  },
+  {
+    "width": 8,
+    "raw": "256",
+    "expected": {
+      "error": "Overflow"
+    }
+  },
+  {
+    "width": 8,
+    "raw": "255.0",
+    "expected": {
+      "value": 255
+    }
+  },
+  {
+    "width": 8,
+    "raw": "255.000000000000000000000000000000001",
+    "expected": {
+      "value": 255
+    }
+  },
+  {
+    "width": 8,
+    "raw": "4294967295",
+    "expected": {
+      "error": "Overflow"
+    }
+  },
+  {
+    "width": 8,
+    "raw": "4294967296",
+    "expected": {
+      "error": "Overflow"
+    }
+  },
+  {
+    "width": 8,
+    "raw": "4294967295.00000001",
+    "expected": {
+      "error": "InvalidNumber"
+    }
+  },
+  {
+    "width": 8,
+    "raw": "4294967295.0",
+    "expected": {
+      "error": "Overflow"
+    }
+  },
+  {
+    "width": 8,
+    "raw": "18446744073709551615",
+    "expected": {
+      "error": "Overflow"
+    }
+  },
+  {
+    "width": 8,
+    "raw": "18446744073709551616",
+    "expected": {
+      "error": "Overflow"
+    }
+  },
+  {
+    "width": 8,
+    "raw": "18446744073709551615.0",
+    "expected": {
+      "error": "Overflow"
+    }
+  },
+  {
+    "width": 8,
+    "raw": "18446744073709551615.00000000000000001",
+    "expected": {
+      "error": "Overflow"
+    }
+  },
+  {
+    "width": 8,
+    "raw": "18446744073709551616.0",
+    "expected": {
+      "error": "Overflow"
+    }
+  },
+  {
+    "width": 8,
+    "raw": "9007199254740993.0",
+    "expected": {
+      "error": "Overflow"
+    }
+  },
+  {
+    "width": 8,
+    "raw": "9007199254740993.5",
+    "expected": {
+      "error": "InvalidNumber"
+    }
+  },
+  {
+    "width": 8,
+    "raw": "0.9999999999999999999999999999999998074070055612764146944022057415072681461898351784611804760061204433441162109375",
+    "expected": {
+      "error": "InvalidNumber"
+    }
+  },
+  {
+    "width": 8,
+    "raw": "1.0000000000000000000000000000000001925929944387235853055977942584927318538101648215388195239938795566558837890625",
+    "expected": {
+      "error": "InvalidNumber"
+    }
+  },
+  {
+    "width": 8,
+    "raw": "0.99999999999999999999999999999999990370350278063820734720110287075363407309491758923059023800306022167205810546875",
+    "expected": {
+      "error": "InvalidNumber"
+    }
+  },
+  {
+    "width": 8,
+    "raw": "1.00000000000000000000000000000000009629649721936179265279889712924636592690508241076940976199693977832794189453125",
+    "expected": {
+      "value": 1
+    }
+  },
+  {
+    "width": 8,
+    "raw": "0.999999999999999999999999999999999951851751390319103673600551435376817036547458794615295119001530110836029052734375",
+    "expected": {
+      "value": 1
+    }
+  },
+  {
+    "width": 8,
+    "raw": "1.000000000000000000000000000000000048148248609680896326399448564623182963452541205384704880998469889163970947265625",
+    "expected": {
+      "value": 1
+    }
+  },
+  {
+    "width": 8,
+    "raw": "0.9999999999999999999999999999999999759258756951595518368002757176884085182737293973076475595007650554180145263671875",
+    "expected": {
+      "value": 1
+    }
+  },
+  {
+    "width": 8,
+    "raw": "1.0000000000000000000000000000000000240741243048404481631997242823115914817262706026923524404992349445819854736328125",
+    "expected": {
+      "value": 1
+    }
+  },
+  {
+    "width": 8,
+    "raw": "\"0\"",
+    "expected": {
+      "value": 0
+    }
+  },
+  {
+    "width": 8,
+    "raw": "\"-0\"",
+    "expected": {
+      "value": 0
+    }
+  },
+  {
+    "width": 8,
+    "raw": "\"1\"",
+    "expected": {
+      "value": 1
+    }
+  },
+  {
+    "width": 8,
+    "raw": "\"1.0\"",
+    "expected": {
+      "value": 1
+    }
+  },
+  {
+    "width": 8,
+    "raw": "\"1e0\"",
+    "expected": {
+      "value": 1
+    }
+  },
+  {
+    "width": 8,
+    "raw": "\"1.0000000000000001\"",
+    "expected": {
+      "error": "InvalidNumber"
+    }
+  },
+  {
+    "width": 8,
+    "raw": "\"1.0000000000000000000000000000000001\"",
+    "expected": {
+      "error": "InvalidNumber"
+    }
+  },
+  {
+    "width": 8,
+    "raw": "\"1.00000000000000000000000000000000001\"",
+    "expected": {
+      "value": 1
+    }
+  },
+  {
+    "width": 8,
+    "raw": "\"0.99999999999999999\"",
+    "expected": {
+      "error": "InvalidNumber"
+    }
+  },
+  {
+    "width": 8,
+    "raw": "\"0.99999999999999999999999999999999999\"",
+    "expected": {
+      "value": 1
+    }
+  },
+  {
+    "width": 8,
+    "raw": "\"1e309\"",
+    "expected": {
+      "error": "Overflow"
+    }
+  },
+  {
+    "width": 8,
+    "raw": "\"1e9999\"",
+    "expected": {
+      "error": "Overflow"
+    }
+  },
+  {
+    "width": 8,
+    "raw": "\"1e-9999\"",
+    "expected": {
+      "value": 0
+    }
+  },
+  {
+    "width": 8,
+    "raw": "\"-1e-9999\"",
+    "expected": {
+      "value": 0
+    }
+  },
+  {
+    "width": 8,
+    "raw": "\"0e99999999999999999999999999999999\"",
+    "expected": {
+      "value": 0
+    }
+  },
+  {
+    "width": 8,
+    "raw": "\"1e-9999999999999999999999999999999999\"",
+    "expected": {
+      "value": 0
+    }
+  },
+  {
+    "width": 8,
+    "raw": "\"255\"",
+    "expected": {
+      "value": 255
+    }
+  },
+  {
+    "width": 8,
+    "raw": "\"256\"",
+    "expected": {
+      "error": "Overflow"
+    }
+  },
+  {
+    "width": 8,
+    "raw": "\"255.0\"",
+    "expected": {
+      "value": 255
+    }
+  },
+  {
+    "width": 8,
+    "raw": "\"255.000000000000000000000000000000001\"",
+    "expected": {
+      "value": 255
+    }
+  },
+  {
+    "width": 8,
+    "raw": "\"4294967295\"",
+    "expected": {
+      "error": "Overflow"
+    }
+  },
+  {
+    "width": 8,
+    "raw": "\"4294967296\"",
+    "expected": {
+      "error": "Overflow"
+    }
+  },
+  {
+    "width": 8,
+    "raw": "\"4294967295.00000001\"",
+    "expected": {
+      "error": "InvalidNumber"
+    }
+  },
+  {
+    "width": 8,
+    "raw": "\"4294967295.0\"",
+    "expected": {
+      "error": "Overflow"
+    }
+  },
+  {
+    "width": 8,
+    "raw": "\"18446744073709551615\"",
+    "expected": {
+      "error": "Overflow"
+    }
+  },
+  {
+    "width": 8,
+    "raw": "\"18446744073709551616\"",
+    "expected": {
+      "error": "Overflow"
+    }
+  },
+  {
+    "width": 8,
+    "raw": "\"18446744073709551615.0\"",
+    "expected": {
+      "error": "Overflow"
+    }
+  },
+  {
+    "width": 8,
+    "raw": "\"18446744073709551615.00000000000000001\"",
+    "expected": {
+      "error": "Overflow"
+    }
+  },
+  {
+    "width": 8,
+    "raw": "\"18446744073709551616.0\"",
+    "expected": {
+      "error": "Overflow"
+    }
+  },
+  {
+    "width": 8,
+    "raw": "\"9007199254740993.0\"",
+    "expected": {
+      "error": "Overflow"
+    }
+  },
+  {
+    "width": 8,
+    "raw": "\"9007199254740993.5\"",
+    "expected": {
+      "error": "InvalidNumber"
+    }
+  },
+  {
+    "width": 8,
+    "raw": "\"0.9999999999999999999999999999999998074070055612764146944022057415072681461898351784611804760061204433441162109375\"",
+    "expected": {
+      "error": "InvalidNumber"
+    }
+  },
+  {
+    "width": 8,
+    "raw": "\"1.0000000000000000000000000000000001925929944387235853055977942584927318538101648215388195239938795566558837890625\"",
+    "expected": {
+      "error": "InvalidNumber"
+    }
+  },
+  {
+    "width": 8,
+    "raw": "\"0.99999999999999999999999999999999990370350278063820734720110287075363407309491758923059023800306022167205810546875\"",
+    "expected": {
+      "error": "InvalidNumber"
+    }
+  },
+  {
+    "width": 8,
+    "raw": "\"1.00000000000000000000000000000000009629649721936179265279889712924636592690508241076940976199693977832794189453125\"",
+    "expected": {
+      "value": 1
+    }
+  },
+  {
+    "width": 8,
+    "raw": "\"0.999999999999999999999999999999999951851751390319103673600551435376817036547458794615295119001530110836029052734375\"",
+    "expected": {
+      "value": 1
+    }
+  },
+  {
+    "width": 8,
+    "raw": "\"1.000000000000000000000000000000000048148248609680896326399448564623182963452541205384704880998469889163970947265625\"",
+    "expected": {
+      "value": 1
+    }
+  },
+  {
+    "width": 8,
+    "raw": "\"0.9999999999999999999999999999999999759258756951595518368002757176884085182737293973076475595007650554180145263671875\"",
+    "expected": {
+      "value": 1
+    }
+  },
+  {
+    "width": 8,
+    "raw": "\"1.0000000000000000000000000000000000240741243048404481631997242823115914817262706026923524404992349445819854736328125\"",
+    "expected": {
+      "value": 1
+    }
+  },
+  {
+    "width": 8,
+    "raw": "\"+1\"",
+    "expected": {
+      "value": 1
+    }
+  },
+  {
+    "width": 8,
+    "raw": "\"01\"",
+    "expected": {
+      "value": 1
+    }
+  },
+  {
+    "width": 8,
+    "raw": "\"1_0\"",
+    "expected": {
+      "value": 10
+    }
+  },
+  {
+    "width": 8,
+    "raw": "\"1__0\"",
+    "expected": {
+      "value": 10
+    }
+  },
+  {
+    "width": 8,
+    "raw": "\"1_\"",
+    "expected": {
+      "error": "InvalidCharacter"
+    }
+  },
+  {
+    "width": 8,
+    "raw": "\"_1\"",
+    "expected": {
+      "error": "InvalidCharacter"
+    }
+  },
+  {
+    "width": 8,
+    "raw": "\"1e+0\"",
+    "expected": {
+      "value": 1
+    }
+  },
+  {
+    "width": 8,
+    "raw": "\"1_0.0\"",
+    "expected": {
+      "value": 10
+    }
+  },
+  {
+    "width": 8,
+    "raw": "\"1__0.0\"",
+    "expected": {
+      "error": "InvalidCharacter"
+    }
+  },
+  {
+    "width": 8,
+    "raw": "\"1e\"",
+    "expected": {
+      "error": "InvalidCharacter"
+    }
+  },
+  {
+    "width": 8,
+    "raw": "\"1e+\"",
+    "expected": {
+      "error": "InvalidCharacter"
+    }
+  },
+  {
+    "width": 8,
+    "raw": "\"1.e0\"",
+    "expected": {
+      "value": 1
+    }
+  },
+  {
+    "width": 8,
+    "raw": "\".0\"",
+    "expected": {
+      "value": 0
+    }
+  },
+  {
+    "width": 8,
+    "raw": "\"1.\"",
+    "expected": {
+      "value": 1
+    }
+  },
+  {
+    "width": 8,
+    "raw": "\" 1\"",
+    "expected": {
+      "error": "InvalidCharacter"
+    }
+  },
+  {
+    "width": 8,
+    "raw": "\"1 \"",
+    "expected": {
+      "error": "InvalidCharacter"
+    }
+  },
+  {
+    "width": 8,
+    "raw": "\"0x1\"",
+    "expected": {
+      "error": "InvalidCharacter"
+    }
+  },
+  {
+    "width": 8,
+    "raw": "\"0x1.0\"",
+    "expected": {
+      "value": 1
+    }
+  },
+  {
+    "width": 8,
+    "raw": "\"0X1.0p0\"",
+    "expected": {
+      "value": 1
+    }
+  },
+  {
+    "width": 8,
+    "raw": "\"0x1.ep1\"",
+    "expected": {
+      "error": "InvalidNumber"
+    }
+  },
+  {
+    "width": 8,
+    "raw": "\"0x1.0p\"",
+    "expected": {
+      "error": "InvalidCharacter"
+    }
+  },
+  {
+    "width": 8,
+    "raw": "\"0x1.0p+\"",
+    "expected": {
+      "error": "InvalidCharacter"
+    }
+  },
+  {
+    "width": 8,
+    "raw": "\"0x1_0.0\"",
+    "expected": {
+      "value": 16
+    }
+  },
+  {
+    "width": 8,
+    "raw": "\"0x1__0.0\"",
+    "expected": {
+      "error": "InvalidCharacter"
+    }
+  },
+  {
+    "width": 8,
+    "raw": "\"0x1.e_p1\"",
+    "expected": {
+      "error": "InvalidCharacter"
+    }
+  },
+  {
+    "width": 8,
+    "raw": "\"NaN\"",
+    "expected": {
+      "error": "InvalidCharacter"
+    }
+  },
+  {
+    "width": 8,
+    "raw": "\"nan\"",
+    "expected": {
+      "error": "InvalidCharacter"
+    }
+  },
+  {
+    "width": 8,
+    "raw": "\"inf\"",
+    "expected": {
+      "error": "InvalidCharacter"
+    }
+  },
+  {
+    "width": 8,
+    "raw": "\"infinity\"",
+    "expected": {
+      "error": "InvalidCharacter"
+    }
+  },
+  {
+    "width": 8,
+    "raw": "\"-1\"",
+    "expected": {
+      "error": "Overflow"
+    }
+  },
+  {
+    "width": 8,
+    "raw": "\"-0_0\"",
+    "expected": {
+      "value": 0
+    }
+  },
+  {
+    "width": 8,
+    "raw": "\"-1x\"",
+    "expected": {
+      "error": "Overflow"
+    }
+  },
+  {
+    "width": 8,
+    "raw": "true",
+    "expected": {
+      "error": "UnexpectedToken"
+    }
+  },
+  {
+    "width": 8,
+    "raw": "null",
+    "expected": {
+      "error": "UnexpectedToken"
+    }
+  },
+  {
+    "width": 8,
+    "raw": "{}",
+    "expected": {
+      "error": "UnexpectedToken"
+    }
+  },
+  {
+    "width": 8,
+    "raw": "[]",
+    "expected": {
+      "error": "UnexpectedToken"
+    }
+  },
+  {
+    "width": 32,
+    "raw": "0",
+    "expected": {
+      "value": 0
+    }
+  },
+  {
+    "width": 32,
+    "raw": "-0",
+    "expected": {
+      "value": 0
+    }
+  },
+  {
+    "width": 32,
+    "raw": "1",
+    "expected": {
+      "value": 1
+    }
+  },
+  {
+    "width": 32,
+    "raw": "1.0",
+    "expected": {
+      "value": 1
+    }
+  },
+  {
+    "width": 32,
+    "raw": "1e0",
+    "expected": {
+      "value": 1
+    }
+  },
+  {
+    "width": 32,
+    "raw": "1.0000000000000001",
+    "expected": {
+      "error": "InvalidNumber"
+    }
+  },
+  {
+    "width": 32,
+    "raw": "1.0000000000000000000000000000000001",
+    "expected": {
+      "error": "InvalidNumber"
+    }
+  },
+  {
+    "width": 32,
+    "raw": "1.00000000000000000000000000000000001",
+    "expected": {
+      "value": 1
+    }
+  },
+  {
+    "width": 32,
+    "raw": "0.99999999999999999",
+    "expected": {
+      "error": "InvalidNumber"
+    }
+  },
+  {
+    "width": 32,
+    "raw": "0.99999999999999999999999999999999999",
+    "expected": {
+      "value": 1
+    }
+  },
+  {
+    "width": 32,
+    "raw": "1e309",
+    "expected": {
+      "error": "Overflow"
+    }
+  },
+  {
+    "width": 32,
+    "raw": "1e9999",
+    "expected": {
+      "error": "Overflow"
+    }
+  },
+  {
+    "width": 32,
+    "raw": "1e-9999",
+    "expected": {
+      "value": 0
+    }
+  },
+  {
+    "width": 32,
+    "raw": "-1e-9999",
+    "expected": {
+      "value": 0
+    }
+  },
+  {
+    "width": 32,
+    "raw": "0e99999999999999999999999999999999",
+    "expected": {
+      "value": 0
+    }
+  },
+  {
+    "width": 32,
+    "raw": "1e-9999999999999999999999999999999999",
+    "expected": {
+      "value": 0
+    }
+  },
+  {
+    "width": 32,
+    "raw": "255",
+    "expected": {
+      "value": 255
+    }
+  },
+  {
+    "width": 32,
+    "raw": "256",
+    "expected": {
+      "value": 256
+    }
+  },
+  {
+    "width": 32,
+    "raw": "255.0",
+    "expected": {
+      "value": 255
+    }
+  },
+  {
+    "width": 32,
+    "raw": "255.000000000000000000000000000000001",
+    "expected": {
+      "value": 255
+    }
+  },
+  {
+    "width": 32,
+    "raw": "4294967295",
+    "expected": {
+      "value": 4294967295
+    }
+  },
+  {
+    "width": 32,
+    "raw": "4294967296",
+    "expected": {
+      "error": "Overflow"
+    }
+  },
+  {
+    "width": 32,
+    "raw": "4294967295.00000001",
+    "expected": {
+      "error": "InvalidNumber"
+    }
+  },
+  {
+    "width": 32,
+    "raw": "4294967295.0",
+    "expected": {
+      "value": 4294967295
+    }
+  },
+  {
+    "width": 32,
+    "raw": "18446744073709551615",
+    "expected": {
+      "error": "Overflow"
+    }
+  },
+  {
+    "width": 32,
+    "raw": "18446744073709551616",
+    "expected": {
+      "error": "Overflow"
+    }
+  },
+  {
+    "width": 32,
+    "raw": "18446744073709551615.0",
+    "expected": {
+      "error": "Overflow"
+    }
+  },
+  {
+    "width": 32,
+    "raw": "18446744073709551615.00000000000000001",
+    "expected": {
+      "error": "Overflow"
+    }
+  },
+  {
+    "width": 32,
+    "raw": "18446744073709551616.0",
+    "expected": {
+      "error": "Overflow"
+    }
+  },
+  {
+    "width": 32,
+    "raw": "9007199254740993.0",
+    "expected": {
+      "error": "Overflow"
+    }
+  },
+  {
+    "width": 32,
+    "raw": "9007199254740993.5",
+    "expected": {
+      "error": "InvalidNumber"
+    }
+  },
+  {
+    "width": 32,
+    "raw": "0.9999999999999999999999999999999998074070055612764146944022057415072681461898351784611804760061204433441162109375",
+    "expected": {
+      "error": "InvalidNumber"
+    }
+  },
+  {
+    "width": 32,
+    "raw": "1.0000000000000000000000000000000001925929944387235853055977942584927318538101648215388195239938795566558837890625",
+    "expected": {
+      "error": "InvalidNumber"
+    }
+  },
+  {
+    "width": 32,
+    "raw": "0.99999999999999999999999999999999990370350278063820734720110287075363407309491758923059023800306022167205810546875",
+    "expected": {
+      "error": "InvalidNumber"
+    }
+  },
+  {
+    "width": 32,
+    "raw": "1.00000000000000000000000000000000009629649721936179265279889712924636592690508241076940976199693977832794189453125",
+    "expected": {
+      "value": 1
+    }
+  },
+  {
+    "width": 32,
+    "raw": "0.999999999999999999999999999999999951851751390319103673600551435376817036547458794615295119001530110836029052734375",
+    "expected": {
+      "value": 1
+    }
+  },
+  {
+    "width": 32,
+    "raw": "1.000000000000000000000000000000000048148248609680896326399448564623182963452541205384704880998469889163970947265625",
+    "expected": {
+      "value": 1
+    }
+  },
+  {
+    "width": 32,
+    "raw": "0.9999999999999999999999999999999999759258756951595518368002757176884085182737293973076475595007650554180145263671875",
+    "expected": {
+      "value": 1
+    }
+  },
+  {
+    "width": 32,
+    "raw": "1.0000000000000000000000000000000000240741243048404481631997242823115914817262706026923524404992349445819854736328125",
+    "expected": {
+      "value": 1
+    }
+  },
+  {
+    "width": 32,
+    "raw": "\"0\"",
+    "expected": {
+      "value": 0
+    }
+  },
+  {
+    "width": 32,
+    "raw": "\"-0\"",
+    "expected": {
+      "value": 0
+    }
+  },
+  {
+    "width": 32,
+    "raw": "\"1\"",
+    "expected": {
+      "value": 1
+    }
+  },
+  {
+    "width": 32,
+    "raw": "\"1.0\"",
+    "expected": {
+      "value": 1
+    }
+  },
+  {
+    "width": 32,
+    "raw": "\"1e0\"",
+    "expected": {
+      "value": 1
+    }
+  },
+  {
+    "width": 32,
+    "raw": "\"1.0000000000000001\"",
+    "expected": {
+      "error": "InvalidNumber"
+    }
+  },
+  {
+    "width": 32,
+    "raw": "\"1.0000000000000000000000000000000001\"",
+    "expected": {
+      "error": "InvalidNumber"
+    }
+  },
+  {
+    "width": 32,
+    "raw": "\"1.00000000000000000000000000000000001\"",
+    "expected": {
+      "value": 1
+    }
+  },
+  {
+    "width": 32,
+    "raw": "\"0.99999999999999999\"",
+    "expected": {
+      "error": "InvalidNumber"
+    }
+  },
+  {
+    "width": 32,
+    "raw": "\"0.99999999999999999999999999999999999\"",
+    "expected": {
+      "value": 1
+    }
+  },
+  {
+    "width": 32,
+    "raw": "\"1e309\"",
+    "expected": {
+      "error": "Overflow"
+    }
+  },
+  {
+    "width": 32,
+    "raw": "\"1e9999\"",
+    "expected": {
+      "error": "Overflow"
+    }
+  },
+  {
+    "width": 32,
+    "raw": "\"1e-9999\"",
+    "expected": {
+      "value": 0
+    }
+  },
+  {
+    "width": 32,
+    "raw": "\"-1e-9999\"",
+    "expected": {
+      "value": 0
+    }
+  },
+  {
+    "width": 32,
+    "raw": "\"0e99999999999999999999999999999999\"",
+    "expected": {
+      "value": 0
+    }
+  },
+  {
+    "width": 32,
+    "raw": "\"1e-9999999999999999999999999999999999\"",
+    "expected": {
+      "value": 0
+    }
+  },
+  {
+    "width": 32,
+    "raw": "\"255\"",
+    "expected": {
+      "value": 255
+    }
+  },
+  {
+    "width": 32,
+    "raw": "\"256\"",
+    "expected": {
+      "value": 256
+    }
+  },
+  {
+    "width": 32,
+    "raw": "\"255.0\"",
+    "expected": {
+      "value": 255
+    }
+  },
+  {
+    "width": 32,
+    "raw": "\"255.000000000000000000000000000000001\"",
+    "expected": {
+      "value": 255
+    }
+  },
+  {
+    "width": 32,
+    "raw": "\"4294967295\"",
+    "expected": {
+      "value": 4294967295
+    }
+  },
+  {
+    "width": 32,
+    "raw": "\"4294967296\"",
+    "expected": {
+      "error": "Overflow"
+    }
+  },
+  {
+    "width": 32,
+    "raw": "\"4294967295.00000001\"",
+    "expected": {
+      "error": "InvalidNumber"
+    }
+  },
+  {
+    "width": 32,
+    "raw": "\"4294967295.0\"",
+    "expected": {
+      "value": 4294967295
+    }
+  },
+  {
+    "width": 32,
+    "raw": "\"18446744073709551615\"",
+    "expected": {
+      "error": "Overflow"
+    }
+  },
+  {
+    "width": 32,
+    "raw": "\"18446744073709551616\"",
+    "expected": {
+      "error": "Overflow"
+    }
+  },
+  {
+    "width": 32,
+    "raw": "\"18446744073709551615.0\"",
+    "expected": {
+      "error": "Overflow"
+    }
+  },
+  {
+    "width": 32,
+    "raw": "\"18446744073709551615.00000000000000001\"",
+    "expected": {
+      "error": "Overflow"
+    }
+  },
+  {
+    "width": 32,
+    "raw": "\"18446744073709551616.0\"",
+    "expected": {
+      "error": "Overflow"
+    }
+  },
+  {
+    "width": 32,
+    "raw": "\"9007199254740993.0\"",
+    "expected": {
+      "error": "Overflow"
+    }
+  },
+  {
+    "width": 32,
+    "raw": "\"9007199254740993.5\"",
+    "expected": {
+      "error": "InvalidNumber"
+    }
+  },
+  {
+    "width": 32,
+    "raw": "\"0.9999999999999999999999999999999998074070055612764146944022057415072681461898351784611804760061204433441162109375\"",
+    "expected": {
+      "error": "InvalidNumber"
+    }
+  },
+  {
+    "width": 32,
+    "raw": "\"1.0000000000000000000000000000000001925929944387235853055977942584927318538101648215388195239938795566558837890625\"",
+    "expected": {
+      "error": "InvalidNumber"
+    }
+  },
+  {
+    "width": 32,
+    "raw": "\"0.99999999999999999999999999999999990370350278063820734720110287075363407309491758923059023800306022167205810546875\"",
+    "expected": {
+      "error": "InvalidNumber"
+    }
+  },
+  {
+    "width": 32,
+    "raw": "\"1.00000000000000000000000000000000009629649721936179265279889712924636592690508241076940976199693977832794189453125\"",
+    "expected": {
+      "value": 1
+    }
+  },
+  {
+    "width": 32,
+    "raw": "\"0.999999999999999999999999999999999951851751390319103673600551435376817036547458794615295119001530110836029052734375\"",
+    "expected": {
+      "value": 1
+    }
+  },
+  {
+    "width": 32,
+    "raw": "\"1.000000000000000000000000000000000048148248609680896326399448564623182963452541205384704880998469889163970947265625\"",
+    "expected": {
+      "value": 1
+    }
+  },
+  {
+    "width": 32,
+    "raw": "\"0.9999999999999999999999999999999999759258756951595518368002757176884085182737293973076475595007650554180145263671875\"",
+    "expected": {
+      "value": 1
+    }
+  },
+  {
+    "width": 32,
+    "raw": "\"1.0000000000000000000000000000000000240741243048404481631997242823115914817262706026923524404992349445819854736328125\"",
+    "expected": {
+      "value": 1
+    }
+  },
+  {
+    "width": 32,
+    "raw": "\"+1\"",
+    "expected": {
+      "value": 1
+    }
+  },
+  {
+    "width": 32,
+    "raw": "\"01\"",
+    "expected": {
+      "value": 1
+    }
+  },
+  {
+    "width": 32,
+    "raw": "\"1_0\"",
+    "expected": {
+      "value": 10
+    }
+  },
+  {
+    "width": 32,
+    "raw": "\"1__0\"",
+    "expected": {
+      "value": 10
+    }
+  },
+  {
+    "width": 32,
+    "raw": "\"1_\"",
+    "expected": {
+      "error": "InvalidCharacter"
+    }
+  },
+  {
+    "width": 32,
+    "raw": "\"_1\"",
+    "expected": {
+      "error": "InvalidCharacter"
+    }
+  },
+  {
+    "width": 32,
+    "raw": "\"1e+0\"",
+    "expected": {
+      "value": 1
+    }
+  },
+  {
+    "width": 32,
+    "raw": "\"1_0.0\"",
+    "expected": {
+      "value": 10
+    }
+  },
+  {
+    "width": 32,
+    "raw": "\"1__0.0\"",
+    "expected": {
+      "error": "InvalidCharacter"
+    }
+  },
+  {
+    "width": 32,
+    "raw": "\"1e\"",
+    "expected": {
+      "error": "InvalidCharacter"
+    }
+  },
+  {
+    "width": 32,
+    "raw": "\"1e+\"",
+    "expected": {
+      "error": "InvalidCharacter"
+    }
+  },
+  {
+    "width": 32,
+    "raw": "\"1.e0\"",
+    "expected": {
+      "value": 1
+    }
+  },
+  {
+    "width": 32,
+    "raw": "\".0\"",
+    "expected": {
+      "value": 0
+    }
+  },
+  {
+    "width": 32,
+    "raw": "\"1.\"",
+    "expected": {
+      "value": 1
+    }
+  },
+  {
+    "width": 32,
+    "raw": "\" 1\"",
+    "expected": {
+      "error": "InvalidCharacter"
+    }
+  },
+  {
+    "width": 32,
+    "raw": "\"1 \"",
+    "expected": {
+      "error": "InvalidCharacter"
+    }
+  },
+  {
+    "width": 32,
+    "raw": "\"0x1\"",
+    "expected": {
+      "error": "InvalidCharacter"
+    }
+  },
+  {
+    "width": 32,
+    "raw": "\"0x1.0\"",
+    "expected": {
+      "value": 1
+    }
+  },
+  {
+    "width": 32,
+    "raw": "\"0X1.0p0\"",
+    "expected": {
+      "value": 1
+    }
+  },
+  {
+    "width": 32,
+    "raw": "\"0x1.ep1\"",
+    "expected": {
+      "error": "InvalidNumber"
+    }
+  },
+  {
+    "width": 32,
+    "raw": "\"0x1.0p\"",
+    "expected": {
+      "error": "InvalidCharacter"
+    }
+  },
+  {
+    "width": 32,
+    "raw": "\"0x1.0p+\"",
+    "expected": {
+      "error": "InvalidCharacter"
+    }
+  },
+  {
+    "width": 32,
+    "raw": "\"0x1_0.0\"",
+    "expected": {
+      "value": 16
+    }
+  },
+  {
+    "width": 32,
+    "raw": "\"0x1__0.0\"",
+    "expected": {
+      "error": "InvalidCharacter"
+    }
+  },
+  {
+    "width": 32,
+    "raw": "\"0x1.e_p1\"",
+    "expected": {
+      "error": "InvalidCharacter"
+    }
+  },
+  {
+    "width": 32,
+    "raw": "\"NaN\"",
+    "expected": {
+      "error": "InvalidCharacter"
+    }
+  },
+  {
+    "width": 32,
+    "raw": "\"nan\"",
+    "expected": {
+      "error": "InvalidCharacter"
+    }
+  },
+  {
+    "width": 32,
+    "raw": "\"inf\"",
+    "expected": {
+      "error": "InvalidCharacter"
+    }
+  },
+  {
+    "width": 32,
+    "raw": "\"infinity\"",
+    "expected": {
+      "error": "InvalidCharacter"
+    }
+  },
+  {
+    "width": 32,
+    "raw": "\"-1\"",
+    "expected": {
+      "error": "Overflow"
+    }
+  },
+  {
+    "width": 32,
+    "raw": "\"-0_0\"",
+    "expected": {
+      "value": 0
+    }
+  },
+  {
+    "width": 32,
+    "raw": "\"-1x\"",
+    "expected": {
+      "error": "Overflow"
+    }
+  },
+  {
+    "width": 32,
+    "raw": "true",
+    "expected": {
+      "error": "UnexpectedToken"
+    }
+  },
+  {
+    "width": 32,
+    "raw": "null",
+    "expected": {
+      "error": "UnexpectedToken"
+    }
+  },
+  {
+    "width": 32,
+    "raw": "{}",
+    "expected": {
+      "error": "UnexpectedToken"
+    }
+  },
+  {
+    "width": 32,
+    "raw": "[]",
+    "expected": {
+      "error": "UnexpectedToken"
+    }
+  },
+  {
+    "width": 64,
+    "raw": "0",
+    "expected": {
+      "value": 0
+    }
+  },
+  {
+    "width": 64,
+    "raw": "-0",
+    "expected": {
+      "value": 0
+    }
+  },
+  {
+    "width": 64,
+    "raw": "1",
+    "expected": {
+      "value": 1
+    }
+  },
+  {
+    "width": 64,
+    "raw": "1.0",
+    "expected": {
+      "value": 1
+    }
+  },
+  {
+    "width": 64,
+    "raw": "1e0",
+    "expected": {
+      "value": 1
+    }
+  },
+  {
+    "width": 64,
+    "raw": "1.0000000000000001",
+    "expected": {
+      "error": "InvalidNumber"
+    }
+  },
+  {
+    "width": 64,
+    "raw": "1.0000000000000000000000000000000001",
+    "expected": {
+      "error": "InvalidNumber"
+    }
+  },
+  {
+    "width": 64,
+    "raw": "1.00000000000000000000000000000000001",
+    "expected": {
+      "value": 1
+    }
+  },
+  {
+    "width": 64,
+    "raw": "0.99999999999999999",
+    "expected": {
+      "error": "InvalidNumber"
+    }
+  },
+  {
+    "width": 64,
+    "raw": "0.99999999999999999999999999999999999",
+    "expected": {
+      "value": 1
+    }
+  },
+  {
+    "width": 64,
+    "raw": "1e309",
+    "expected": {
+      "error": "Overflow"
+    }
+  },
+  {
+    "width": 64,
+    "raw": "1e9999",
+    "expected": {
+      "error": "Overflow"
+    }
+  },
+  {
+    "width": 64,
+    "raw": "1e-9999",
+    "expected": {
+      "value": 0
+    }
+  },
+  {
+    "width": 64,
+    "raw": "-1e-9999",
+    "expected": {
+      "value": 0
+    }
+  },
+  {
+    "width": 64,
+    "raw": "0e99999999999999999999999999999999",
+    "expected": {
+      "value": 0
+    }
+  },
+  {
+    "width": 64,
+    "raw": "1e-9999999999999999999999999999999999",
+    "expected": {
+      "value": 0
+    }
+  },
+  {
+    "width": 64,
+    "raw": "255",
+    "expected": {
+      "value": 255
+    }
+  },
+  {
+    "width": 64,
+    "raw": "256",
+    "expected": {
+      "value": 256
+    }
+  },
+  {
+    "width": 64,
+    "raw": "255.0",
+    "expected": {
+      "value": 255
+    }
+  },
+  {
+    "width": 64,
+    "raw": "255.000000000000000000000000000000001",
+    "expected": {
+      "value": 255
+    }
+  },
+  {
+    "width": 64,
+    "raw": "4294967295",
+    "expected": {
+      "value": 4294967295
+    }
+  },
+  {
+    "width": 64,
+    "raw": "4294967296",
+    "expected": {
+      "value": 4294967296
+    }
+  },
+  {
+    "width": 64,
+    "raw": "4294967295.00000001",
+    "expected": {
+      "error": "InvalidNumber"
+    }
+  },
+  {
+    "width": 64,
+    "raw": "4294967295.0",
+    "expected": {
+      "value": 4294967295
+    }
+  },
+  {
+    "width": 64,
+    "raw": "18446744073709551615",
+    "expected": {
+      "value": 18446744073709551615
+    }
+  },
+  {
+    "width": 64,
+    "raw": "18446744073709551616",
+    "expected": {
+      "error": "Overflow"
+    }
+  },
+  {
+    "width": 64,
+    "raw": "18446744073709551615.0",
+    "expected": {
+      "value": 18446744073709551615
+    }
+  },
+  {
+    "width": 64,
+    "raw": "18446744073709551615.00000000000000001",
+    "expected": {
+      "value": 18446744073709551615
+    }
+  },
+  {
+    "width": 64,
+    "raw": "18446744073709551616.0",
+    "expected": {
+      "error": "Overflow"
+    }
+  },
+  {
+    "width": 64,
+    "raw": "9007199254740993.0",
+    "expected": {
+      "value": 9007199254740993
+    }
+  },
+  {
+    "width": 64,
+    "raw": "9007199254740993.5",
+    "expected": {
+      "error": "InvalidNumber"
+    }
+  },
+  {
+    "width": 64,
+    "raw": "0.9999999999999999999999999999999998074070055612764146944022057415072681461898351784611804760061204433441162109375",
+    "expected": {
+      "error": "InvalidNumber"
+    }
+  },
+  {
+    "width": 64,
+    "raw": "1.0000000000000000000000000000000001925929944387235853055977942584927318538101648215388195239938795566558837890625",
+    "expected": {
+      "error": "InvalidNumber"
+    }
+  },
+  {
+    "width": 64,
+    "raw": "0.99999999999999999999999999999999990370350278063820734720110287075363407309491758923059023800306022167205810546875",
+    "expected": {
+      "error": "InvalidNumber"
+    }
+  },
+  {
+    "width": 64,
+    "raw": "1.00000000000000000000000000000000009629649721936179265279889712924636592690508241076940976199693977832794189453125",
+    "expected": {
+      "value": 1
+    }
+  },
+  {
+    "width": 64,
+    "raw": "0.999999999999999999999999999999999951851751390319103673600551435376817036547458794615295119001530110836029052734375",
+    "expected": {
+      "value": 1
+    }
+  },
+  {
+    "width": 64,
+    "raw": "1.000000000000000000000000000000000048148248609680896326399448564623182963452541205384704880998469889163970947265625",
+    "expected": {
+      "value": 1
+    }
+  },
+  {
+    "width": 64,
+    "raw": "0.9999999999999999999999999999999999759258756951595518368002757176884085182737293973076475595007650554180145263671875",
+    "expected": {
+      "value": 1
+    }
+  },
+  {
+    "width": 64,
+    "raw": "1.0000000000000000000000000000000000240741243048404481631997242823115914817262706026923524404992349445819854736328125",
+    "expected": {
+      "value": 1
+    }
+  },
+  {
+    "width": 64,
+    "raw": "\"0\"",
+    "expected": {
+      "value": 0
+    }
+  },
+  {
+    "width": 64,
+    "raw": "\"-0\"",
+    "expected": {
+      "value": 0
+    }
+  },
+  {
+    "width": 64,
+    "raw": "\"1\"",
+    "expected": {
+      "value": 1
+    }
+  },
+  {
+    "width": 64,
+    "raw": "\"1.0\"",
+    "expected": {
+      "value": 1
+    }
+  },
+  {
+    "width": 64,
+    "raw": "\"1e0\"",
+    "expected": {
+      "value": 1
+    }
+  },
+  {
+    "width": 64,
+    "raw": "\"1.0000000000000001\"",
+    "expected": {
+      "error": "InvalidNumber"
+    }
+  },
+  {
+    "width": 64,
+    "raw": "\"1.0000000000000000000000000000000001\"",
+    "expected": {
+      "error": "InvalidNumber"
+    }
+  },
+  {
+    "width": 64,
+    "raw": "\"1.00000000000000000000000000000000001\"",
+    "expected": {
+      "value": 1
+    }
+  },
+  {
+    "width": 64,
+    "raw": "\"0.99999999999999999\"",
+    "expected": {
+      "error": "InvalidNumber"
+    }
+  },
+  {
+    "width": 64,
+    "raw": "\"0.99999999999999999999999999999999999\"",
+    "expected": {
+      "value": 1
+    }
+  },
+  {
+    "width": 64,
+    "raw": "\"1e309\"",
+    "expected": {
+      "error": "Overflow"
+    }
+  },
+  {
+    "width": 64,
+    "raw": "\"1e9999\"",
+    "expected": {
+      "error": "Overflow"
+    }
+  },
+  {
+    "width": 64,
+    "raw": "\"1e-9999\"",
+    "expected": {
+      "value": 0
+    }
+  },
+  {
+    "width": 64,
+    "raw": "\"-1e-9999\"",
+    "expected": {
+      "value": 0
+    }
+  },
+  {
+    "width": 64,
+    "raw": "\"0e99999999999999999999999999999999\"",
+    "expected": {
+      "value": 0
+    }
+  },
+  {
+    "width": 64,
+    "raw": "\"1e-9999999999999999999999999999999999\"",
+    "expected": {
+      "value": 0
+    }
+  },
+  {
+    "width": 64,
+    "raw": "\"255\"",
+    "expected": {
+      "value": 255
+    }
+  },
+  {
+    "width": 64,
+    "raw": "\"256\"",
+    "expected": {
+      "value": 256
+    }
+  },
+  {
+    "width": 64,
+    "raw": "\"255.0\"",
+    "expected": {
+      "value": 255
+    }
+  },
+  {
+    "width": 64,
+    "raw": "\"255.000000000000000000000000000000001\"",
+    "expected": {
+      "value": 255
+    }
+  },
+  {
+    "width": 64,
+    "raw": "\"4294967295\"",
+    "expected": {
+      "value": 4294967295
+    }
+  },
+  {
+    "width": 64,
+    "raw": "\"4294967296\"",
+    "expected": {
+      "value": 4294967296
+    }
+  },
+  {
+    "width": 64,
+    "raw": "\"4294967295.00000001\"",
+    "expected": {
+      "error": "InvalidNumber"
+    }
+  },
+  {
+    "width": 64,
+    "raw": "\"4294967295.0\"",
+    "expected": {
+      "value": 4294967295
+    }
+  },
+  {
+    "width": 64,
+    "raw": "\"18446744073709551615\"",
+    "expected": {
+      "value": 18446744073709551615
+    }
+  },
+  {
+    "width": 64,
+    "raw": "\"18446744073709551616\"",
+    "expected": {
+      "error": "Overflow"
+    }
+  },
+  {
+    "width": 64,
+    "raw": "\"18446744073709551615.0\"",
+    "expected": {
+      "value": 18446744073709551615
+    }
+  },
+  {
+    "width": 64,
+    "raw": "\"18446744073709551615.00000000000000001\"",
+    "expected": {
+      "value": 18446744073709551615
+    }
+  },
+  {
+    "width": 64,
+    "raw": "\"18446744073709551616.0\"",
+    "expected": {
+      "error": "Overflow"
+    }
+  },
+  {
+    "width": 64,
+    "raw": "\"9007199254740993.0\"",
+    "expected": {
+      "value": 9007199254740993
+    }
+  },
+  {
+    "width": 64,
+    "raw": "\"9007199254740993.5\"",
+    "expected": {
+      "error": "InvalidNumber"
+    }
+  },
+  {
+    "width": 64,
+    "raw": "\"0.9999999999999999999999999999999998074070055612764146944022057415072681461898351784611804760061204433441162109375\"",
+    "expected": {
+      "error": "InvalidNumber"
+    }
+  },
+  {
+    "width": 64,
+    "raw": "\"1.0000000000000000000000000000000001925929944387235853055977942584927318538101648215388195239938795566558837890625\"",
+    "expected": {
+      "error": "InvalidNumber"
+    }
+  },
+  {
+    "width": 64,
+    "raw": "\"0.99999999999999999999999999999999990370350278063820734720110287075363407309491758923059023800306022167205810546875\"",
+    "expected": {
+      "error": "InvalidNumber"
+    }
+  },
+  {
+    "width": 64,
+    "raw": "\"1.00000000000000000000000000000000009629649721936179265279889712924636592690508241076940976199693977832794189453125\"",
+    "expected": {
+      "value": 1
+    }
+  },
+  {
+    "width": 64,
+    "raw": "\"0.999999999999999999999999999999999951851751390319103673600551435376817036547458794615295119001530110836029052734375\"",
+    "expected": {
+      "value": 1
+    }
+  },
+  {
+    "width": 64,
+    "raw": "\"1.000000000000000000000000000000000048148248609680896326399448564623182963452541205384704880998469889163970947265625\"",
+    "expected": {
+      "value": 1
+    }
+  },
+  {
+    "width": 64,
+    "raw": "\"0.9999999999999999999999999999999999759258756951595518368002757176884085182737293973076475595007650554180145263671875\"",
+    "expected": {
+      "value": 1
+    }
+  },
+  {
+    "width": 64,
+    "raw": "\"1.0000000000000000000000000000000000240741243048404481631997242823115914817262706026923524404992349445819854736328125\"",
+    "expected": {
+      "value": 1
+    }
+  },
+  {
+    "width": 64,
+    "raw": "\"+1\"",
+    "expected": {
+      "value": 1
+    }
+  },
+  {
+    "width": 64,
+    "raw": "\"01\"",
+    "expected": {
+      "value": 1
+    }
+  },
+  {
+    "width": 64,
+    "raw": "\"1_0\"",
+    "expected": {
+      "value": 10
+    }
+  },
+  {
+    "width": 64,
+    "raw": "\"1__0\"",
+    "expected": {
+      "value": 10
+    }
+  },
+  {
+    "width": 64,
+    "raw": "\"1_\"",
+    "expected": {
+      "error": "InvalidCharacter"
+    }
+  },
+  {
+    "width": 64,
+    "raw": "\"_1\"",
+    "expected": {
+      "error": "InvalidCharacter"
+    }
+  },
+  {
+    "width": 64,
+    "raw": "\"1e+0\"",
+    "expected": {
+      "value": 1
+    }
+  },
+  {
+    "width": 64,
+    "raw": "\"1_0.0\"",
+    "expected": {
+      "value": 10
+    }
+  },
+  {
+    "width": 64,
+    "raw": "\"1__0.0\"",
+    "expected": {
+      "error": "InvalidCharacter"
+    }
+  },
+  {
+    "width": 64,
+    "raw": "\"1e\"",
+    "expected": {
+      "error": "InvalidCharacter"
+    }
+  },
+  {
+    "width": 64,
+    "raw": "\"1e+\"",
+    "expected": {
+      "error": "InvalidCharacter"
+    }
+  },
+  {
+    "width": 64,
+    "raw": "\"1.e0\"",
+    "expected": {
+      "value": 1
+    }
+  },
+  {
+    "width": 64,
+    "raw": "\".0\"",
+    "expected": {
+      "value": 0
+    }
+  },
+  {
+    "width": 64,
+    "raw": "\"1.\"",
+    "expected": {
+      "value": 1
+    }
+  },
+  {
+    "width": 64,
+    "raw": "\" 1\"",
+    "expected": {
+      "error": "InvalidCharacter"
+    }
+  },
+  {
+    "width": 64,
+    "raw": "\"1 \"",
+    "expected": {
+      "error": "InvalidCharacter"
+    }
+  },
+  {
+    "width": 64,
+    "raw": "\"0x1\"",
+    "expected": {
+      "error": "InvalidCharacter"
+    }
+  },
+  {
+    "width": 64,
+    "raw": "\"0x1.0\"",
+    "expected": {
+      "value": 1
+    }
+  },
+  {
+    "width": 64,
+    "raw": "\"0X1.0p0\"",
+    "expected": {
+      "value": 1
+    }
+  },
+  {
+    "width": 64,
+    "raw": "\"0x1.ep1\"",
+    "expected": {
+      "error": "InvalidNumber"
+    }
+  },
+  {
+    "width": 64,
+    "raw": "\"0x1.0p\"",
+    "expected": {
+      "error": "InvalidCharacter"
+    }
+  },
+  {
+    "width": 64,
+    "raw": "\"0x1.0p+\"",
+    "expected": {
+      "error": "InvalidCharacter"
+    }
+  },
+  {
+    "width": 64,
+    "raw": "\"0x1_0.0\"",
+    "expected": {
+      "value": 16
+    }
+  },
+  {
+    "width": 64,
+    "raw": "\"0x1__0.0\"",
+    "expected": {
+      "error": "InvalidCharacter"
+    }
+  },
+  {
+    "width": 64,
+    "raw": "\"0x1.e_p1\"",
+    "expected": {
+      "error": "InvalidCharacter"
+    }
+  },
+  {
+    "width": 64,
+    "raw": "\"NaN\"",
+    "expected": {
+      "error": "InvalidCharacter"
+    }
+  },
+  {
+    "width": 64,
+    "raw": "\"nan\"",
+    "expected": {
+      "error": "InvalidCharacter"
+    }
+  },
+  {
+    "width": 64,
+    "raw": "\"inf\"",
+    "expected": {
+      "error": "InvalidCharacter"
+    }
+  },
+  {
+    "width": 64,
+    "raw": "\"infinity\"",
+    "expected": {
+      "error": "InvalidCharacter"
+    }
+  },
+  {
+    "width": 64,
+    "raw": "\"-1\"",
+    "expected": {
+      "error": "Overflow"
+    }
+  },
+  {
+    "width": 64,
+    "raw": "\"-0_0\"",
+    "expected": {
+      "value": 0
+    }
+  },
+  {
+    "width": 64,
+    "raw": "\"-1x\"",
+    "expected": {
+      "error": "Overflow"
+    }
+  },
+  {
+    "width": 64,
+    "raw": "true",
+    "expected": {
+      "error": "UnexpectedToken"
+    }
+  },
+  {
+    "width": 64,
+    "raw": "null",
+    "expected": {
+      "error": "UnexpectedToken"
+    }
+  },
+  {
+    "width": 64,
+    "raw": "{}",
+    "expected": {
+      "error": "UnexpectedToken"
+    }
+  },
+  {
+    "width": 64,
+    "raw": "[]",
+    "expected": {
+      "error": "UnexpectedToken"
+    }
+  }
+]

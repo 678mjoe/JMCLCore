@@ -213,9 +213,26 @@ impl Root {
         transport: &T,
         reporter: Option<&(dyn Fn(install::Event) -> Result<(), install::Error> + Sync)>,
     ) -> Result<Summary, install::Error> {
-        let mut registry = self
+        let registry = self
             .load()
             .map_err(|e| install::Error::named(&super::cli::name(&e)))?;
+        self.install_resolved_with_registry(
+            store, kind, game, provider, resolved, registry, options, transport, reporter,
+        )
+    }
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn install_resolved_with_registry<T: install::Transport>(
+        &self,
+        store: &Store,
+        kind: Kind,
+        game: &str,
+        provider: Provider,
+        resolved: Resolution,
+        mut registry: Registry,
+        options: install::Options,
+        transport: &T,
+        reporter: Option<&(dyn Fn(install::Event) -> Result<(), install::Error> + Sync)>,
+    ) -> Result<Summary, install::Error> {
         let mut files = vec![];
         let mut total = 0u64;
         for c in &resolved.files {
@@ -311,7 +328,7 @@ pub struct VersionChange {
 }
 impl Root {
     #[allow(clippy::too_many_arguments)]
-    pub fn set_modrinth_version<M: Metadata, T: install::Transport>(
+    pub fn set_version<M: Metadata + super::curseforge::Metadata, T: install::Transport>(
         &self,
         store: &Store,
         kind: Kind,
@@ -319,6 +336,7 @@ impl Root {
         loader: Option<&str>,
         project: &str,
         version: &str,
+        api_key: Option<&str>,
         metadata: &M,
         transport: &T,
         options: install::Options,
@@ -327,6 +345,10 @@ impl Root {
         let named = |e: mr::Error| install::Error::named(&e.0);
         mr::project_ref(project).map_err(named)?;
         mr::game_version(game).map_err(named)?;
+        if let Some(key) = api_key {
+            crate::modpack::provider::validate_key(key)
+                .map_err(|e| install::Error::named(e.name()))?;
+        }
         let effective = match kind {
             Kind::Mod => {
                 let l = loader.ok_or_else(|| install::Error::named("ModLoaderRequired"))?;
@@ -381,27 +403,78 @@ impl Root {
                 new_version_id: version.into(),
             });
         }
-        if old.source.provider != Provider::Modrinth {
-            return Err(install::Error::named("NOT_IMPLEMENTED"));
-        }
-        let url = mr::version_url(version).map_err(named)?;
-        let v = mr::parse_version(&metadata.get(&url, 4 * 1024 * 1024).map_err(named)?)
+        let f = if old.source.provider == Provider::Modrinth {
+            let url = mr::version_url(version).map_err(named)?;
+            let v =
+                mr::parse_version(&Metadata::get(metadata, &url, 4 * 1024 * 1024).map_err(named)?)
+                    .map_err(named)?;
+            if old.source.project_id.as_deref() != Some(&v.project_id) {
+                return Err(install::Error::named("ModrinthVersionProjectMismatch"));
+            }
+            if !mr::supports(&v, game, effective) {
+                return Err(install::Error::named("IncompatibleContentVersion"));
+            }
+            mr::select_file(
+                &v,
+                if kind == Kind::Datapack {
+                    Some(".zip")
+                } else {
+                    None
+                },
+            )
+            .ok_or_else(|| install::Error::named("ContentFileSelectionFailed"))?
+            .clone()
+        } else {
+            use super::curseforge as cf;
+            cf::id(version).map_err(named)?;
+            let key = api_key.ok_or_else(|| install::Error::named("CurseforgeApiKeyRequired"))?;
+            let project = old
+                .source
+                .project_id
+                .as_deref()
+                .ok_or_else(|| install::Error::named("InvalidContentSource"))?;
+            let url = cf::file_url(project, version).map_err(named)?;
+            let f = cf::parse_file(
+                &cf::Metadata::get(metadata, &url, key, 2 * 1024 * 1024).map_err(named)?,
+            )
             .map_err(named)?;
-        if old.source.project_id.as_deref() != Some(&v.project_id) {
-            return Err(install::Error::named("ModrinthVersionProjectMismatch"));
-        }
-        if !mr::supports(&v, game, effective) {
-            return Err(install::Error::named("IncompatibleContentVersion"));
-        }
-        let f = mr::select_file(
-            &v,
-            if kind == Kind::Datapack {
-                Some(".zip")
-            } else {
-                None
-            },
-        )
-        .ok_or_else(|| install::Error::named("ContentFileSelectionFailed"))?;
+            if f.project.to_string() != project {
+                return Err(install::Error::named("CurseforgeFileProjectMismatch"));
+            }
+            if !cf::supports(&f, game, effective) {
+                return Err(install::Error::named("IncompatibleContentVersion"));
+            }
+            if !f.available {
+                return Err(install::Error::named("CurseforgeDownloadUnavailable"));
+            }
+            if kind == Kind::Datapack && !f.name.ends_with(".zip") {
+                return Err(install::Error::named("ContentFileSelectionFailed"));
+            }
+            let url = match f.url {
+                Some(u) => u,
+                None => cf::download_url(
+                    &cf::Metadata::get(
+                        metadata,
+                        &format!("{url}/download-url"),
+                        key,
+                        2 * 1024 * 1024,
+                    )
+                    .map_err(named)?,
+                )
+                .map_err(named)?
+                .ok_or_else(|| install::Error::named("CurseforgeDownloadUnavailable"))?,
+            };
+            mr::File {
+                filename: f.name,
+                url,
+                size: f.size,
+                primary: true,
+                hashes: mr::Hashes {
+                    sha1: f.sha1,
+                    sha512: None,
+                },
+            }
+        };
         let path = format!("{}/{}", kind.directory(), f.filename);
         if registry
             .entries

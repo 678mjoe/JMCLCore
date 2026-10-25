@@ -102,7 +102,21 @@ fn text(v: &Value) -> String {
         .unwrap_or_else(|| v.to_string())
 }
 pub fn cli(args: &[String], out: &mut impl Write, err: &mut impl Write) -> io::Result<u8> {
-    #[cfg(target_os = "linux")]
+    if let Some(result) = crate::server_content::cli(args, out, err) {
+        return result;
+    }
+    if args.first().is_some_and(|a| a == "install") {
+        return super::installation_cli::cli(&args[1..], out, err);
+    }
+    if args.first().is_some_and(|a| a == "create") {
+        return super::creation_cli::cli(&args[1..], out, err);
+    }
+    if let Some(kind) = args
+        .first()
+        .filter(|a| matches!(a.as_str(), "rcon" | "query"))
+    {
+        return super::remote_cli::cli(kind, &args[1..], out, err);
+    }
     if args.first().is_some_and(|a| a == "worlds") {
         return crate::worlds::server_cli::cli(&args[1..], out, err);
     }

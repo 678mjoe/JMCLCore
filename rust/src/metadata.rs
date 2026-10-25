@@ -107,103 +107,140 @@ pub fn parse_json(bytes: &[u8]) -> Result<Value, Error> {
 // Track duplicate object members before serde_json::Value can overwrite them.
 // Zig ignores unknown fields, including their duplicates; only members retained
 // by the typed normalized schema participate in DuplicateField detection.
+// Typed schema nodes retain numeric tokens before serde can round them to f64.
+// This representation is private: dynamic RPC Values and strings remain unchanged.
+enum Node {
+    Scalar(Value),
+    Number(String),
+    Array(Vec<Node>),
+    Object(Vec<(String, Node)>),
+}
+impl Node {
+    fn as_str(&self) -> Option<&str> {
+        match self {
+            Self::Scalar(v) => v.as_str(),
+            _ => None,
+        }
+    }
+    fn as_bool(&self) -> Option<bool> {
+        match self {
+            Self::Scalar(v) => v.as_bool(),
+            _ => None,
+        }
+    }
+    fn is_string(&self) -> bool {
+        self.as_str().is_some()
+    }
+    fn is_null(&self) -> bool {
+        matches!(self, Self::Scalar(Value::Null))
+    }
+    fn as_array(&self) -> Option<&Vec<Node>> {
+        match self {
+            Self::Array(v) => Some(v),
+            _ => None,
+        }
+    }
+    fn as_object(&self) -> Option<&Vec<(String, Node)>> {
+        match self {
+            Self::Object(v) => Some(v),
+            _ => None,
+        }
+    }
+}
 struct Tracked {
-    value: Value,
+    value: Node,
     duplicates: Vec<Vec<String>>,
 }
 impl<'de> Deserialize<'de> for Tracked {
     fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
-        struct Visitor;
-        impl<'de> serde::de::Visitor<'de> for Visitor {
+        let raw = Box::<serde_json::value::RawValue>::deserialize(d)?;
+        Self::raw(raw.get()).map_err(serde::de::Error::custom)
+    }
+}
+impl Tracked {
+    fn raw(raw: &str) -> Result<Self, serde_json::Error> {
+        Self::raw_at(raw, 0)
+    }
+    fn raw_at(raw: &str, depth: usize) -> Result<Self, serde_json::Error> {
+        if depth >= 128 {
+            return Err(<serde_json::Error as serde::de::Error>::custom(
+                "recursion limit exceeded",
+            ));
+        }
+        struct ObjectVisitor {
+            depth: usize,
+        }
+        impl<'de> serde::de::Visitor<'de> for ObjectVisitor {
             type Value = Tracked;
             fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-                f.write_str("JSON metadata")
+                f.write_str("metadata object")
             }
-            fn visit_bool<E: serde::de::Error>(self, v: bool) -> Result<Tracked, E> {
-                Ok(Tracked {
-                    value: v.into(),
-                    duplicates: vec![],
-                })
-            }
-            fn visit_i64<E: serde::de::Error>(self, v: i64) -> Result<Tracked, E> {
-                Ok(Tracked {
-                    value: v.into(),
-                    duplicates: vec![],
-                })
-            }
-            fn visit_u64<E: serde::de::Error>(self, v: u64) -> Result<Tracked, E> {
-                Ok(Tracked {
-                    value: v.into(),
-                    duplicates: vec![],
-                })
-            }
-            fn visit_f64<E: serde::de::Error>(self, v: f64) -> Result<Tracked, E> {
-                Ok(Tracked {
-                    value: serde_json::Number::from_f64(v)
-                        .map(Value::Number)
-                        .ok_or_else(|| E::custom("invalid number"))?,
-                    duplicates: vec![],
-                })
-            }
-            fn visit_str<E: serde::de::Error>(self, v: &str) -> Result<Tracked, E> {
-                Ok(Tracked {
-                    value: v.into(),
-                    duplicates: vec![],
-                })
-            }
-            fn visit_string<E: serde::de::Error>(self, v: String) -> Result<Tracked, E> {
-                Ok(Tracked {
-                    value: v.into(),
-                    duplicates: vec![],
-                })
-            }
-            fn visit_unit<E: serde::de::Error>(self) -> Result<Tracked, E> {
-                Ok(Tracked {
-                    value: Value::Null,
-                    duplicates: vec![],
-                })
-            }
-            fn visit_seq<A: serde::de::SeqAccess<'de>>(
+            fn visit_map<A: serde::de::MapAccess<'de>>(
                 self,
-                mut seq: A,
+                mut map: A,
             ) -> Result<Tracked, A::Error> {
+                let mut values: Vec<(String, Node)> = vec![];
+                let mut indices: std::collections::HashMap<String, usize> =
+                    std::collections::HashMap::new();
+                let mut duplicates = vec![];
+                while let Some((key, raw)) =
+                    map.next_entry::<String, Box<serde_json::value::RawValue>>()?
+                {
+                    let mut item = Tracked::raw_at(raw.get(), self.depth + 1)
+                        .map_err(serde::de::Error::custom)?;
+                    if let Some(index) = indices.get(&key).copied() {
+                        duplicates.push(vec![key.clone()]);
+                        for path in &mut item.duplicates {
+                            path.insert(0, key.clone());
+                        }
+                        duplicates.extend(item.duplicates);
+                        values[index].1 = item.value;
+                    } else {
+                        for path in &mut item.duplicates {
+                            path.insert(0, key.clone());
+                        }
+                        duplicates.extend(item.duplicates);
+                        indices.insert(key.clone(), values.len());
+                        values.push((key, item.value));
+                    }
+                }
+                Ok(Tracked {
+                    value: Node::Object(values),
+                    duplicates,
+                })
+            }
+        }
+        match raw.as_bytes().first() {
+            Some(b'{') => serde::Deserializer::deserialize_map(
+                &mut serde_json::Deserializer::from_str(raw),
+                ObjectVisitor { depth },
+            ),
+            Some(b'[') => {
+                let items: Vec<Box<serde_json::value::RawValue>> = serde_json::from_str(raw)?;
                 let mut values = vec![];
                 let mut duplicates = vec![];
-                while let Some(mut item) = seq.next_element::<Tracked>()? {
+                for raw in items {
+                    let mut item = Self::raw_at(raw.get(), depth + 1)?;
                     for path in &mut item.duplicates {
                         path.insert(0, values.len().to_string());
                     }
                     duplicates.extend(item.duplicates);
                     values.push(item.value);
                 }
-                Ok(Tracked {
-                    value: Value::Array(values),
+                Ok(Self {
+                    value: Node::Array(values),
                     duplicates,
                 })
             }
-            fn visit_map<A: serde::de::MapAccess<'de>>(
-                self,
-                mut map: A,
-            ) -> Result<Tracked, A::Error> {
-                let mut values = Map::new();
-                let mut duplicates = vec![];
-                while let Some((key, mut item)) = map.next_entry::<String, Tracked>()? {
-                    if values.contains_key(&key) {
-                        duplicates.push(vec![key.clone()]);
-                    }
-                    for path in &mut item.duplicates {
-                        path.insert(0, key.clone());
-                    }
-                    duplicates.extend(item.duplicates);
-                    values.insert(key, item.value);
-                }
-                Ok(Tracked {
-                    value: Value::Object(values),
-                    duplicates,
-                })
-            }
+            Some(b'-' | b'0'..=b'9') => Ok(Self {
+                value: Node::Number(raw.into()),
+                duplicates: vec![],
+            }),
+            _ => Ok(Self {
+                value: Node::Scalar(serde_json::from_str(raw)?),
+                duplicates: vec![],
+            }),
         }
-        d.deserialize_any(Visitor)
     }
 }
 fn normalize(bytes: &[u8], schema: Norm) -> Result<Value, Error> {
@@ -225,13 +262,13 @@ fn normalize(bytes: &[u8], schema: Norm) -> Result<Value, Error> {
     Ok(value)
 }
 
-type Norm = fn(&Value) -> Result<Value, Error>;
-fn text(v: &Value) -> Result<Value, Error> {
+type Norm = fn(&Node) -> Result<Value, Error>;
+fn text(v: &Node) -> Result<Value, Error> {
     v.as_str()
         .map(|s| Value::String(s.into()))
         .ok_or(Error::Json("UnexpectedToken"))
 }
-fn boolean(v: &Value) -> Result<Value, Error> {
+fn boolean(v: &Node) -> Result<Value, Error> {
     v.as_bool()
         .map(Value::Bool)
         .ok_or(Error::Json("UnexpectedToken"))
@@ -272,19 +309,27 @@ pub fn unsigned(v: &Value, max: u64) -> Result<u64, Error> {
         Ok(n)
     }
 }
-fn u64v(v: &Value) -> Result<Value, Error> {
-    unsigned(v, u64::MAX).map(Value::from)
+fn typed_unsigned(v: &Node, width: usize) -> Result<u64, Error> {
+    let raw = match v {
+        Node::Number(s) => s.as_str(),
+        Node::Scalar(Value::String(s)) => s.as_str(),
+        _ => return Err(Error::Json("UnexpectedToken")),
+    };
+    crate::json_number::unsigned_text(raw, width).map_err(|e| Error::Json(e.name()))
 }
-fn u32v(v: &Value) -> Result<Value, Error> {
-    unsigned(v, u32::MAX.into()).map(Value::from)
+fn u64v(v: &Node) -> Result<Value, Error> {
+    typed_unsigned(v, 64).map(Value::from)
 }
-fn u16v(v: &Value) -> Result<Value, Error> {
-    unsigned(v, u16::MAX.into()).map(Value::from)
+fn u32v(v: &Node) -> Result<Value, Error> {
+    typed_unsigned(v, 32).map(Value::from)
 }
-fn u8v(v: &Value) -> Result<Value, Error> {
-    unsigned(v, u8::MAX.into()).map(Value::from)
+fn u16v(v: &Node) -> Result<Value, Error> {
+    typed_unsigned(v, 16).map(Value::from)
 }
-fn array(v: &Value, f: Norm) -> Result<Value, Error> {
+fn u8v(v: &Node) -> Result<Value, Error> {
+    typed_unsigned(v, 8).map(Value::from)
+}
+fn array(v: &Node, f: Norm) -> Result<Value, Error> {
     v.as_array()
         .ok_or(Error::Json("UnexpectedToken"))?
         .iter()
@@ -292,29 +337,29 @@ fn array(v: &Value, f: Norm) -> Result<Value, Error> {
         .collect::<Result<Vec<_>, _>>()
         .map(Value::Array)
 }
-fn strings(v: &Value) -> Result<Value, Error> {
+fn strings(v: &Node) -> Result<Value, Error> {
     array(v, text)
 }
-fn mapping(v: &Value, f: Norm) -> Result<Value, Error> {
+fn mapping(v: &Node, f: Norm) -> Result<Value, Error> {
     let mut result = Map::new();
     for (k, v) in v.as_object().ok_or(Error::Json("UnexpectedToken"))? {
         result.insert(k.clone(), f(v)?);
     }
     Ok(Value::Object(result))
 }
-fn string_map(v: &Value) -> Result<Value, Error> {
+fn string_map(v: &Node) -> Result<Value, Error> {
     mapping(v, text)
 }
-fn bool_map(v: &Value) -> Result<Value, Error> {
+fn bool_map(v: &Node) -> Result<Value, Error> {
     mapping(v, boolean)
 }
 struct Field(&'static str, Norm, Option<Value>);
-fn object(v: &Value, fields: &[Field]) -> Result<Value, Error> {
+fn object(v: &Node, fields: &[Field]) -> Result<Value, Error> {
     let input = v.as_object().ok_or(Error::Json("UnexpectedToken"))?;
     let mut out = Map::new();
     for Field(name, f, default) in fields {
-        let value = match input.get(*name) {
-            Some(Value::Null) if default.as_ref() == Some(&Value::Null) => Value::Null,
+        let value = match input.iter().find(|(key, _)| key == name).map(|(_, v)| v) {
+            Some(v) if v.is_null() && default.as_ref() == Some(&Value::Null) => Value::Null,
             Some(v) => f(v)?,
             None => default.clone().ok_or(Error::Json("MissingField"))?,
         };
@@ -322,15 +367,15 @@ fn object(v: &Value, fields: &[Field]) -> Result<Value, Error> {
     }
     Ok(Value::Object(out))
 }
-macro_rules! fields {($name:ident, $( $field:literal => $norm:ident $(= $default:expr)? ),* $(,)?)=>{fn $name(v:&Value)->Result<Value,Error>{object(v,&[$(Field($field,$norm,fields!(@default $($default)?))),*])}};(@default)=>{None};(@default $v:expr)=>{Some($v)};}
-fn version_type(v: &Value) -> Result<Value, Error> {
+macro_rules! fields {($name:ident, $( $field:literal => $norm:ident $(= $default:expr)? ),* $(,)?)=>{fn $name(v:&Node)->Result<Value,Error>{object(v,&[$(Field($field,$norm,fields!(@default $($default)?))),*])}};(@default)=>{None};(@default $v:expr)=>{Some($v)};}
+fn version_type(v: &Node) -> Result<Value, Error> {
     match v.as_str() {
         Some("release" | "snapshot" | "old_beta" | "old_alpha") => text(v),
         Some(_) => Err(Error::Json("InvalidEnumTag")),
         None => Err(Error::Json("UnexpectedToken")),
     }
 }
-fn action(v: &Value) -> Result<Value, Error> {
+fn action(v: &Node) -> Result<Value, Error> {
     match v.as_str() {
         Some("allow" | "disallow") => text(v),
         Some(_) => Err(Error::Json("InvalidEnumTag")),
@@ -339,7 +384,7 @@ fn action(v: &Value) -> Result<Value, Error> {
 }
 fields!(latest,"release"=>text,"snapshot"=>text);
 fields!(version,"id"=>text,"type"=>version_type,"url"=>text,"time"=>text,"releaseTime"=>text,"sha1"=>text=Value::Null,"complianceLevel"=>u8v=Value::Null);
-fn versions(v: &Value) -> Result<Value, Error> {
+fn versions(v: &Node) -> Result<Value, Error> {
     array(v, version)
 }
 fields!(manifest_value,"latest"=>latest,"versions"=>versions);
@@ -367,33 +412,33 @@ pub fn select(manifest: &Value, kind: Option<&str>, limit: usize) -> Value {
 fields!(range,"min"=>text=Value::Null,"max"=>text=Value::Null);
 fields!(os,"name"=>text=Value::Null,"version"=>text=Value::Null,"arch"=>text=Value::Null,"versionRange"=>range=Value::Null);
 fields!(rule,"action"=>action,"os"=>os=Value::Null,"features"=>bool_map=Value::Null);
-fn rules(v: &Value) -> Result<Value, Error> {
+fn rules(v: &Node) -> Result<Value, Error> {
     array(v, rule)
 }
-fn argument_value(v: &Value) -> Result<Value, Error> {
+fn argument_value(v: &Node) -> Result<Value, Error> {
     if v.is_string() { text(v) } else { strings(v) }
 }
 fields!(structured,"rules"=>rules=Value::Array(vec![]),"value"=>argument_value);
-fn argument(v: &Value) -> Result<Value, Error> {
+fn argument(v: &Node) -> Result<Value, Error> {
     if v.is_string() {
         text(v)
     } else {
         structured(v)
     }
 }
-fn argument_list(v: &Value) -> Result<Value, Error> {
+fn argument_list(v: &Node) -> Result<Value, Error> {
     array(v, argument)
 }
 fields!(arguments,"game"=>argument_list,"jvm"=>argument_list=Value::Array(vec![]),"default-user-jvm"=>argument_list=Value::Null);
 fields!(download,"sha1"=>text,"size"=>u64v,"url"=>text);
 fields!(artifact,"path"=>text,"sha1"=>text,"size"=>u64v,"url"=>text);
-fn artifacts(v: &Value) -> Result<Value, Error> {
+fn artifacts(v: &Node) -> Result<Value, Error> {
     mapping(v, artifact)
 }
 fields!(library_downloads,"artifact"=>artifact=Value::Null,"classifiers"=>artifacts=Value::Null);
 fields!(extract,"exclude"=>strings=Value::Array(vec![]));
 fields!(library,"name"=>text,"downloads"=>library_downloads=Value::Null,"rules"=>rules=Value::Null,"natives"=>string_map=Value::Null,"extract"=>extract=Value::Null,"url"=>text=Value::Null);
-fn libraries(v: &Value) -> Result<Value, Error> {
+fn libraries(v: &Node) -> Result<Value, Error> {
     array(v, library)
 }
 fields!(asset_descriptor,"id"=>text,"sha1"=>text,"size"=>u64v,"totalSize"=>u64v,"url"=>text);
@@ -407,7 +452,7 @@ pub fn metadata(bytes: &[u8]) -> Result<Value, Error> {
     normalize(bytes, metadata_value)
 }
 fields!(fabric_library,"name"=>text,"url"=>text,"sha1"=>text=Value::Null,"size"=>u64v=Value::Null);
-fn fabric_libraries(v: &Value) -> Result<Value, Error> {
+fn fabric_libraries(v: &Node) -> Result<Value, Error> {
     array(v, fabric_library)
 }
 fields!(fabric_profile_value,"id"=>text,"inheritsFrom"=>text,"mainClass"=>text,"libraries"=>fabric_libraries,"arguments"=>arguments=Value::Null,"releaseTime"=>text=Value::Null,"time"=>text=Value::Null,"type"=>text=Value::Null);
@@ -415,11 +460,11 @@ pub fn fabric_profile(bytes: &[u8]) -> Result<Value, Error> {
     normalize(bytes, fabric_profile_value)
 }
 fields!(neo_data_value,"client"=>text,"server"=>text=Value::Null);
-fn neo_data(v: &Value) -> Result<Value, Error> {
+fn neo_data(v: &Node) -> Result<Value, Error> {
     mapping(v, neo_data_value)
 }
 fields!(neo_processor,"jar"=>text,"sides"=>strings=Value::Null,"classpath"=>strings=Value::Array(vec![]),"args"=>strings=Value::Array(vec![]));
-fn neo_processors(v: &Value) -> Result<Value, Error> {
+fn neo_processors(v: &Node) -> Result<Value, Error> {
     array(v, neo_processor)
 }
 fields!(neo_install,"spec"=>u32v,"version"=>text,"minecraft"=>text,"data"=>neo_data,"processors"=>neo_processors=Value::Array(vec![]),"libraries"=>libraries=Value::Array(vec![]));
@@ -431,7 +476,7 @@ pub fn neoforge_version(bytes: &[u8]) -> Result<Value, Error> {
     normalize(bytes, neo_version)
 }
 fields!(forge_library,"name"=>text,"url"=>text=Value::Null,"checksums"=>strings=Value::Null,"serverreq"=>boolean=Value::Bool(false),"clientreq"=>boolean=Value::Bool(false));
-fn forge_libraries(v: &Value) -> Result<Value, Error> {
+fn forge_libraries(v: &Node) -> Result<Value, Error> {
     array(v, forge_library)
 }
 fields!(forge_install,"path"=>text,"minecraft"=>text,"filePath"=>text=Value::Null,"target"=>text=Value::Null,"version"=>text=Value::Null,"profileName"=>text=Value::Null);
@@ -441,7 +486,7 @@ pub fn forge_legacy(bytes: &[u8]) -> Result<Value, Error> {
     normalize(bytes, forge_legacy_value)
 }
 fields!(asset,"hash"=>text,"size"=>u64v);
-fn objects(v: &Value) -> Result<Value, Error> {
+fn objects(v: &Node) -> Result<Value, Error> {
     mapping(v, asset)
 }
 fields!(asset_index_value,"objects"=>objects,"virtual"=>boolean=Value::Bool(false),"map_to_resources"=>boolean=Value::Bool(false));
@@ -452,6 +497,9 @@ pub fn asset_index(bytes: &[u8]) -> Result<Value, Error> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn node(v: Value) -> Node {
+        Tracked::raw(&v.to_string()).unwrap().value
+    }
     #[test]
     fn normalized_defaults_and_unknown_fields() {
         let v=metadata(br#"{"id":"x","type":"release","mainClass":"Main","libraries":[],"downloads":{"client":{"sha1":"a","size":"12","url":"https://x"}},"unknown":true}"#).unwrap();
@@ -462,7 +510,10 @@ mod tests {
     }
     #[test]
     fn nested_arguments_normalize() {
-        let v = arguments(&serde_json::json!({"game":["literal",{"value":["a","b"]}]})).unwrap();
+        let v = arguments(&node(
+            serde_json::json!({"game":["literal",{"value":["a","b"]}]}),
+        ))
+        .unwrap();
         assert_eq!(v["game"][1]["rules"], serde_json::json!([]));
         assert_eq!(v["jvm"], serde_json::json!([]));
         assert!(v["default-user-jvm"].is_null());
@@ -491,20 +542,72 @@ mod tests {
     fn metadata_parse_errors_keep_zig_categories() {
         assert_eq!(metadata(b"{}"), Err(Error::Json("MissingField")));
         assert_eq!(metadata(b"[]"), Err(Error::Json("UnexpectedToken")));
-        assert_eq!(u8v(&serde_json::json!(256)), Err(Error::Json("Overflow")));
         assert_eq!(
-            u8v(&serde_json::json!(1.5)),
+            u8v(&node(serde_json::json!(256))),
+            Err(Error::Json("Overflow"))
+        );
+        assert_eq!(
+            u8v(&node(serde_json::json!(1.5))),
             Err(Error::Json("InvalidNumber"))
         );
         assert_eq!(
-            version_type(&serde_json::json!("unknown")),
+            version_type(&node(serde_json::json!("unknown"))),
             Err(Error::Json("InvalidEnumTag"))
         );
     }
     #[test]
     fn numbers_reject_out_of_range() {
-        assert!(u8v(&serde_json::json!(256)).is_err());
-        assert!(u64v(&serde_json::json!(18446744073709551616.0)).is_err());
-        assert!(u64v(&serde_json::json!(-1)).is_err());
+        assert!(u8v(&node(serde_json::json!(256))).is_err());
+        assert!(u64v(&node(serde_json::json!(18446744073709551616.0))).is_err());
+        assert!(u64v(&node(serde_json::json!(-1))).is_err());
+    }
+}
+#[cfg(test)]
+mod lexical_number_tests {
+    use super::*;
+    fn version(token: &str) -> String {
+        format!(
+            r#"{{"id":"demo","type":"release","mainClass":"Main","libraries":[],"downloads":{{"client":{{"sha1":"1111111111111111111111111111111111111111","size":{token},"url":"https://example.invalid/client"}}}}}}"#
+        )
+    }
+    #[test]
+    fn typed_numbers_do_not_round_through_f64() {
+        for token in ["1.0000000000000001", r#""1.0000000000000001""#] {
+            assert_eq!(
+                metadata(version(token).as_bytes()),
+                Err(Error::Json("InvalidNumber"))
+            );
+        }
+        for token in ["18446744073709551615.0", r#""18446744073709551615.0""#] {
+            assert_eq!(
+                metadata(version(token).as_bytes()).unwrap()["downloads"]["client"]["size"],
+                Value::from(u64::MAX)
+            );
+        }
+        // Dynamic RPC Values deliberately still take binary64, not this typed path.
+        let dynamic = parse_json(b"1.0000000000000001").unwrap();
+        assert_eq!(unsigned(&dynamic, u64::MAX), Ok(1));
+    }
+    #[test]
+    fn lexeme_tree_keeps_a_nesting_bound() {
+        let nested = format!("{}0{}", "[".repeat(256), "]".repeat(256));
+        let source = version("1").replace(
+            "\"mainClass\":\"Main\"",
+            &format!("\"mainClass\":\"Main\",\"unknown\":{nested}"),
+        );
+        assert_eq!(metadata(source.as_bytes()), Err(Error::InvalidJson));
+    }
+    #[test]
+    fn lexeme_storage_does_not_coerce_numbers_into_strings() {
+        let source = version("1").replace("\"Main\"", "123");
+        assert_eq!(
+            metadata(source.as_bytes()),
+            Err(Error::Json("UnexpectedToken"))
+        );
+        let source = version("1").replace(
+            "\"mainClass\":\"Main\"",
+            "\"mainClass\":\"Main\",\"unknown\":1e400",
+        );
+        assert!(metadata(source.as_bytes()).is_ok());
     }
 }

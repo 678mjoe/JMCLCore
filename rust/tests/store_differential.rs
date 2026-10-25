@@ -110,7 +110,7 @@ fn native_gc_and_digest_lock_match_zig() {
             );
             assert!(!shared.join(object_path(&hash).unwrap()).exists());
             eprintln!(
-                "KNOWN_ORACLE_GAP windows-gc-lock-contention: exact error/retention observed; fresh GC succeeds after release; blocking parity unresolved; full_compatibility=false"
+                "ZIG-005 observed Windows GC contention difference: exact error/retention observed; fresh GC succeeds after release; blocking parity unresolved; full_compatibility=false"
             );
             return;
         }

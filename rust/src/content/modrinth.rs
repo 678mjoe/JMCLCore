@@ -77,12 +77,13 @@ pub struct Version {
     #[serde(default)]
     pub dependencies: Vec<Dependency>,
 }
-fn number<'de, D: serde::Deserializer<'de>>(d: D) -> std::result::Result<u64, D::Error> {
+pub(super) fn number<'de, D: serde::Deserializer<'de>>(d: D) -> std::result::Result<u64, D::Error> {
     let v = serde_json::Value::deserialize(d)?;
     if let Some(s) = v.as_str()
         && !s.contains(['.', 'e', 'E'])
     {
-        let s = s.strip_prefix('+').unwrap_or(s);
+        let negative = s.starts_with('-');
+        let s = s.strip_prefix(['+', '-']).unwrap_or(s);
         if s.is_empty() || s.starts_with('_') || s.ends_with('_') {
             return Err(serde::de::Error::custom("InvalidCharacter"));
         }
@@ -99,11 +100,18 @@ fn number<'de, D: serde::Deserializer<'de>>(d: D) -> std::result::Result<u64, D:
                 .and_then(|n| n.checked_add((b - b'0') as u64))
                 .ok_or_else(|| serde::de::Error::custom("Overflow"))?;
         }
+        if negative && n != 0 {
+            return Err(serde::de::Error::custom("Overflow"));
+        }
         return Ok(n);
     }
     crate::metadata::unsigned(&v, u64::MAX).map_err(|e| serde::de::Error::custom(e.name()))
 }
-fn parse<T: serde::de::DeserializeOwned>(bytes: &[u8], max: usize, array: bool) -> Result<T> {
+pub(super) fn parse<T: serde::de::DeserializeOwned>(
+    bytes: &[u8],
+    max: usize,
+    array: bool,
+) -> Result<T> {
     if bytes.len() > max {
         return Err("ModrinthResponseTooLarge".into());
     }
@@ -316,7 +324,9 @@ pub fn versions_url(s: &str, g: &str, l: Option<&str>) -> Result<String> {
     Ok(u)
 }
 
-fn string<'de, D: serde::Deserializer<'de>>(d: D) -> std::result::Result<String, D::Error> {
+pub(super) fn string<'de, D: serde::Deserializer<'de>>(
+    d: D,
+) -> std::result::Result<String, D::Error> {
     struct V;
     impl<'de> serde::de::Visitor<'de> for V {
         type Value = String;
@@ -342,14 +352,16 @@ fn string<'de, D: serde::Deserializer<'de>>(d: D) -> std::result::Result<String,
     }
     d.deserialize_any(V)
 }
-fn optional_string<'de, D: serde::Deserializer<'de>>(
+pub(super) fn optional_string<'de, D: serde::Deserializer<'de>>(
     d: D,
 ) -> std::result::Result<Option<String>, D::Error> {
     #[derive(Deserialize)]
     struct S(#[serde(deserialize_with = "string")] String);
     Option::<S>::deserialize(d).map(|s| s.map(|s| s.0))
 }
-fn strings<'de, D: serde::Deserializer<'de>>(d: D) -> std::result::Result<Vec<String>, D::Error> {
+pub(super) fn strings<'de, D: serde::Deserializer<'de>>(
+    d: D,
+) -> std::result::Result<Vec<String>, D::Error> {
     #[derive(Deserialize)]
     struct S(#[serde(deserialize_with = "string")] String);
     Vec::<S>::deserialize(d).map(|s| s.into_iter().map(|s| s.0).collect())

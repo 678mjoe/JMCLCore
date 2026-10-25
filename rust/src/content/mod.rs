@@ -6,9 +6,13 @@ use serde_json::{Map, Value, value::RawValue};
 use std::io;
 pub mod adopt;
 mod cli;
+pub mod cli_remote;
+pub mod curseforge;
 mod fs;
+pub mod http;
 pub mod modrinth;
 pub mod remote;
+pub mod rpc;
 pub use cli::run as cli;
 pub mod registry;
 use registry::{Entry, Kind, Registry};
@@ -33,6 +37,10 @@ type Result<T> = std::result::Result<T, Error>;
 
 pub struct Root(fs::Dir);
 impl Root {
+    #[cfg(target_os = "linux")]
+    pub(crate) fn from_directory(dir: std::fs::File) -> Self {
+        Self(fs::Dir::from_directory(dir))
+    }
     pub fn open(path: &str) -> Result<Self> {
         Ok(Self(fs::Dir::root(path)?))
     }

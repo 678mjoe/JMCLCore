@@ -16,40 +16,10 @@ fn age() -> u64 {
     86400
 }
 fn number<'de, D: serde::Deserializer<'de>>(d: D) -> Result<u64, D::Error> {
-    struct N;
-    impl<'de> serde::de::Visitor<'de> for N {
-        type Value = u64;
-        fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-            f.write_str("u64-compatible number")
-        }
-        fn visit_u64<E: serde::de::Error>(self, v: u64) -> Result<u64, E> {
-            Ok(v)
-        }
-        fn visit_i64<E: serde::de::Error>(self, v: i64) -> Result<u64, E> {
-            v.try_into().map_err(E::custom)
-        }
-        fn visit_f64<E: serde::de::Error>(self, v: f64) -> Result<u64, E> {
-            if v.is_finite() && (0. ..18446744073709551616.).contains(&v) && v.fract() == 0. {
-                Ok(v as u64)
-            } else {
-                Err(E::custom("invalid integer"))
-            }
-        }
-        fn visit_str<E: serde::de::Error>(self, v: &str) -> Result<u64, E> {
-            if let Ok(n) = v.parse::<u64>() {
-                return Ok(n);
-            }
-            if v.is_empty()
-                || v.bytes()
-                    .any(|c| !matches!(c, b'0'..=b'9' | b'+' | b'-' | b'.' | b'e' | b'E'))
-            {
-                return Err(E::custom("invalid integer"));
-            }
-            self.visit_f64(v.parse::<f64>().map_err(E::custom)?)
-        }
-    }
-    d.deserialize_any(N)
+    let raw = <&RawValue>::deserialize(d)?;
+    crate::json_number::dynamic_raw(raw.get(), 64).map_err(|e| serde::de::Error::custom(e.name()))
 }
+
 #[derive(Deserialize)]
 struct Params {
     #[serde(default = "directory")]

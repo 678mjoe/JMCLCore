@@ -45,7 +45,7 @@ def main():
     parser.add_argument("--zig",type=Path,required=True)
     parser.add_argument("--rust",type=Path,required=True)
     parser.add_argument("--oracle-source",type=Path,required=True)
-    parser.add_argument("--allow-known-gaps",action="store_true",help="Explicit experimental gate, never a compatibility pass")
+    parser.add_argument("--allow-approved-deviations", "--allow-known-gaps", dest="allow_approved_deviations", action="store_true", help="Verify exact approved defect corrections; not complete replacement acceptance")
     args=parser.parse_args()
     commit=subprocess.check_output(["git","-C",str(args.oracle_source),"rev-parse","HEAD"],text=True).strip()
     if commit!=ORACLE_COMMIT:
@@ -59,12 +59,12 @@ def main():
             invalid=b'{"protocol":1,"id":null,"event":"error","error":{"code":"INVALID_REQUEST","message":"Request must be valid JSON with protocol, id, and method fields"}}\n'
             pong=b'{"protocol":1,"id":"fixture","event":"result","result":{"pong":true}}\n'
             known=(name in {"line boundary 65536","line boundary 65537","line boundary 131072"} and expected==(0,invalid+invalid,b"") and actual==(0,invalid+pong,b""))
-            if args.allow_known_gaps and known:
-                gaps.append(name)
+            if args.allow_approved_deviations and known:
+                gaps.append({"id":"ZIG-001","case":name,"assertion":"exact invalid-request error followed by intact valid ping result"})
                 continue
             print(f"FAIL {name}: expected {expected!r}; actual {actual!r}")
             raise SystemExit(1)
         count+=1
-    print(json.dumps({"oracle_commit":commit,"cases_passed":count,"known_unresolved_gaps":gaps,"full_compatibility":False,"normalization":"none","zig_binary_sha256":hashlib.sha256(args.zig.read_bytes()).hexdigest(),"rust_binary_sha256":hashlib.sha256(args.rust.read_bytes()).hexdigest()}))
+    print(json.dumps({"oracle_commit":commit,"cases_passed":count,"approved_deviations_verified":gaps,"known_unresolved_gaps":[],"full_compatibility":False,"normalization":"none","zig_binary_sha256":hashlib.sha256(args.zig.read_bytes()).hexdigest(),"rust_binary_sha256":hashlib.sha256(args.rust.read_bytes()).hexdigest()}))
 
 if __name__=="__main__":main()

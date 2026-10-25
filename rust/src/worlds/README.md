@@ -21,14 +21,22 @@ This is **not full worlds compatibility** yet:
   `instance worlds` CLI is oracle-tested for read/validation, rename, duplicate,
   deletion, import, restore, and backup deletion output. Export size and backup
   timestamp-bearing CLI output still require broader corpus coverage.
-- Unix descendants are opened descriptor-relatively without following symlinks.
-  Metadata `level.dat` read aliases are preserved, with atomic edits replacing
-  the alias entry rather than modifying its target; export still rejects links.
-  Other directory/file alias cases are not yet a parity claim. Ordinary
-  configured root paths may traverse ancestors just as before.
-- The ZIP dependency verifies CRCs. The original ZIP reader does not perform the
-  same check. Rejection of malformed CRC archives is a tracked compatibility
-  exception, not silently normalized by oracle tests.
+- Explicitly selected existing world-directory aliases follow the original
+  `openWorld`/`openMutable` contract: their resolved directory is the requested
+  world, including requested mutations. Listing does not enumerate aliases as
+  worlds. `level.dat` and `icon.png` reads and `session.lock` probes follow their
+  named leaf aliases. Atomic metadata edits replace the level.dat entry rather
+  than its target; a lock probe never writes lock bytes. Renaming/deleting a world
+  alias acts on that directory entry, not its target directory entry.
+  Recursive duplicate/export still reject symlink entries encountered inside a
+  world. Archive-created links are not followed: extraction uses private staging
+  and no-follow descendant opens. Ordinary configured root paths may traverse
+  ancestors just as before. Native Windows alias execution still needs CI.
+- CRC metadata is intentionally not an integrity gate in the source ZIP reader.
+  Stored/deflate world import preserves this acceptance (oracle tested with
+  unchanged payload and altered CRC fields), while retaining path/encryption,
+  declared and actual size, structural and decompression checks. This is source
+  compatibility, not a claim that CRC strictness itself was a source defect.
 - Running-world detection uses the original probe-and-release lock model. It
   rejects a lock held at the probe, but is not exclusion against a game starting
   afterwards. Callers must continue serializing mutations.

@@ -66,8 +66,15 @@ impl Root {
         if path.is_empty() {
             return Err(invalid("EmptyInstancesRoot"));
         }
+        // Match createDirPathOpen: an existing final file must reach the
+        // directory-open operation (NotDir), not stop at mkdir AlreadyExists.
+        match std::fs::create_dir_all(path) {
+            Ok(()) => {}
+            Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {}
+            Err(e) => return Err(e),
+        }
         Ok(Self {
-            dir: fs::walk(Path::new(path), true)?,
+            dir: fs::walk(Path::new(path), false)?,
         })
     }
     pub fn create(&self, m: &Manifest) -> io::Result<()> {
@@ -148,6 +155,19 @@ impl Root {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn existing_file_root_reports_not_dir_without_modification() {
+        let temporary = tempfile::tempdir().unwrap();
+        let path = temporary.path().join("blocked");
+        std::fs::write(&path, b"not a directory").unwrap();
+        let error = match Root::open(path.to_str().unwrap()) {
+            Ok(_) => panic!("file must not open as an instances directory"),
+            Err(error) => error,
+        };
+        assert_eq!(super::super::cli::zig_error(&error), "NotDir");
+        assert_eq!(std::fs::read(&path).unwrap(), b"not a directory");
+        assert_eq!(std::fs::read_dir(temporary.path()).unwrap().count(), 1);
+    }
     #[test]
     fn lifecycle_uses_existing_manifest_schema() {
         let t = tempfile::tempdir().unwrap();

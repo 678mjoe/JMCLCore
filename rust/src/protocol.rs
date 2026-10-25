@@ -1,7 +1,7 @@
 use crate::{NAME, PROTOCOL, VERSION};
 use serde::{
     Deserialize, Serialize,
-    de::{self, Visitor},
+    de::{self},
 };
 use serde_json::value::RawValue;
 use std::{
@@ -63,38 +63,12 @@ struct Request<'a> {
     params: Option<&'a RawValue>,
 }
 
-// Zig's typed JSON parser accepts integer-valued floats and decimal numeric strings.
+// Preserve the numeric lexeme: Zig's typed parser rounds floats to binary128.
 fn protocol_number<'de, D: de::Deserializer<'de>>(d: D) -> Result<u32, D::Error> {
-    struct Protocol;
-    impl<'de> Visitor<'de> for Protocol {
-        type Value = u32;
-        fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-            f.write_str("a u32-compatible number")
-        }
-        fn visit_u64<E: de::Error>(self, v: u64) -> Result<u32, E> {
-            u32::try_from(v).map_err(E::custom)
-        }
-        fn visit_i64<E: de::Error>(self, v: i64) -> Result<u32, E> {
-            u32::try_from(v).map_err(E::custom)
-        }
-        fn visit_f64<E: de::Error>(self, v: f64) -> Result<u32, E> {
-            if v.is_finite() && v >= 0.0 && v <= u32::MAX as f64 && v.fract() == 0.0 {
-                Ok(v as u32)
-            } else {
-                Err(E::custom("not an integral u32"))
-            }
-        }
-        fn visit_str<E: de::Error>(self, v: &str) -> Result<u32, E> {
-            if v.is_empty()
-                || v.bytes()
-                    .any(|c| !matches!(c, b'0'..=b'9' | b'+' | b'-' | b'.' | b'e' | b'E'))
-            {
-                return Err(E::custom("invalid number"));
-            }
-            self.visit_f64(v.parse::<f64>().map_err(E::custom)?)
-        }
-    }
-    d.deserialize_any(Protocol)
+    let raw = <&RawValue>::deserialize(d)?;
+    crate::json_number::typed_raw(raw.get(), 32)
+        .map(|n| n as u32)
+        .map_err(|e| de::Error::custom(e.name()))
 }
 
 #[derive(Serialize)]
@@ -230,6 +204,13 @@ fn params_unique(raw: &RawValue) -> bool {
 }
 
 pub fn handle_line(line: &[u8], out: &mut impl Write) -> io::Result<()> {
+    if std::str::from_utf8(line)
+        .ok()
+        .and_then(|s| crate::auth::json::Json::parse(s).ok())
+        .is_none()
+    {
+        return error(out, None, "INVALID_REQUEST", INVALID);
+    }
     let request: Request<'_> = match serde_json::from_slice(line) {
         Ok(v) => v,
         Err(_) => return error(out, None, "INVALID_REQUEST", INVALID),
@@ -247,6 +228,24 @@ pub fn handle_line(line: &[u8], out: &mut impl Write) -> io::Result<()> {
             "UNSUPPORTED_PROTOCOL",
             "Unsupported protocol version",
         );
+    }
+    if let Some(result) = crate::auth::handle(out, &request.id, &request.method, request.params) {
+        return result;
+    }
+    if let Some(result) =
+        crate::content::rpc::handle(&request.method, request.params, &request.id, out)
+    {
+        return result;
+    }
+    if let Some(result) =
+        crate::server_content::handle(&request.method, request.params, &request.id, out)
+    {
+        return result;
+    }
+    if let Some(result) =
+        crate::servers::installation::handle(out, &request.id, &request.method, request.params)
+    {
+        return result;
     }
     if let Some(result) =
         crate::install::rpc::handle(out, &request.id, &request.method, request.params)
@@ -454,5 +453,37 @@ mod additional_tests {
         handle_line(&line, &mut out).unwrap();
         let event: serde_json::Value = serde_json::from_slice(&out).unwrap();
         assert_eq!(event["result"]["pong"], true);
+    }
+}
+
+#[cfg(test)]
+mod unicode_validation_tests {
+    #[test]
+    fn unknown_unpaired_surrogate_is_invalid_request_before_dispatch() {
+        for raw in [br#"{"protocol":1,"id":"x","method":"ping","params":{"unknown":"\uD800"}}"#.as_slice(),br#"{"protocol":1,"id":"x","method":"auth.microsoft.begin","params":{"unknown":"\uDC00"}}"#.as_slice()] {
+            let mut out=Vec::new(); super::handle_line(raw,&mut out).unwrap();
+            let value:serde_json::Value=serde_json::from_slice(&out).unwrap();
+            assert_eq!(value["error"]["code"],"INVALID_REQUEST");
+        }
+    }
+}
+
+#[cfg(test)]
+mod numeric_string_tests {
+    #[test]
+    fn underscores_follow_zig_string_grammar() {
+        for (number, expected) in [
+            ("1_0", "UNSUPPORTED_PROTOCOL"),
+            ("1__0", "UNSUPPORTED_PROTOCOL"),
+            ("1_0.0", "UNSUPPORTED_PROTOCOL"),
+            ("1__0.0", "INVALID_REQUEST"),
+            ("1_", "INVALID_REQUEST"),
+        ] {
+            let line = format!(r#"{{"protocol":"{number}","id":"n","method":"ping"}}"#);
+            let mut out = Vec::new();
+            super::handle_line(line.as_bytes(), &mut out).unwrap();
+            let value: serde_json::Value = serde_json::from_slice(&out).unwrap();
+            assert_eq!(value["error"]["code"], expected, "{number}");
+        }
     }
 }

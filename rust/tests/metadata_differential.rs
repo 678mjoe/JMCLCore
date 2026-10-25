@@ -297,3 +297,54 @@ fn forge_profiles_match_zig() {
         oracle("forge-modern", &fixture, None, Source::Official, &target())
     );
 }
+#[test]
+#[ignore = "requires pinned Zig metadata oracle adapter"]
+fn metadata_typed_numbers_preserve_lexemes() {
+    let executable = std::env::var("JMCL_ZIG_METADATA_ORACLE").unwrap();
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("numeric-metadata.json");
+    let cases = [
+        ("downloads.client.size", "1.0000000000000001"),
+        ("downloads.client.size", "\"1.0000000000000001\""),
+        ("downloads.client.size", "18446744073709551615.0"),
+        ("downloads.client.size", "\"18446744073709551615.0\""),
+        (
+            "downloads.client.size",
+            "1.00000000000000000000000000000000001",
+        ),
+        ("downloads.client.size", "18446744073709551616.0"),
+        ("downloads.client.size", "1e400"),
+        ("downloads.client.size", "\"1_0.0\""),
+        ("downloads.client.size", "-0.0"),
+        ("minimumLauncherVersion", "4294967295.0"),
+        ("minimumLauncherVersion", "4294967296.0"),
+        ("complianceLevel", "255.0"),
+        ("complianceLevel", "256.0"),
+        ("javaVersion.majorVersion", "65535.0"),
+        ("javaVersion.majorVersion", "65536.0"),
+        ("javaVersion.majorVersion", "1.0000000000000001"),
+    ];
+    for (field, token) in cases {
+        let mut v = base();
+        let marker = Value::String("NUMERIC_LEXEME".into());
+        match field {
+            "downloads.client.size" => v["downloads"]["client"]["size"] = marker,
+            "javaVersion.majorVersion" => {
+                v["javaVersion"] = json!({"component":"runtime","majorVersion":marker})
+            }
+            field => v[field] = marker,
+        }
+        let source = v.to_string().replace("\"NUMERIC_LEXEME\"", token);
+        fs::write(&path, &source).unwrap();
+        let output = Command::new(&executable)
+            .arg("metadata")
+            .arg(&path)
+            .output()
+            .unwrap();
+        assert!(output.status.success());
+        let expected = String::from_utf8(output.stdout).unwrap();
+        let actual =
+            metadata::metadata(source.as_bytes()).unwrap_or_else(|e| json!({"error":e.name()}));
+        assert_eq!(actual.to_string(), expected.trim_end(), "{field}={token}");
+    }
+}
