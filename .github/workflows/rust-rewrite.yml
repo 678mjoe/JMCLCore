@@ -119,6 +119,7 @@ jobs:
           binary = Path(".ci-oracle/zig-out/bin") / ("jmcl-core.exe" if os.name == "nt" else "jmcl-core")
           with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as output:
               output.write(f"JMCL_ZIG_ORACLE={binary.resolve()}\n")
+              output.write(f"JMCL_ZIG_SOURCE={Path('.ci-oracle').resolve()}\n")
           PYTHON
       - name: Build pinned domain differential adapters
         run: |

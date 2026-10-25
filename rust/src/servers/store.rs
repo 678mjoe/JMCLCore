@@ -67,14 +67,14 @@ pub struct Installation {
     #[serde(default = "official")]
     pub source: String,
     pub server_sha1: String,
-    #[serde(deserialize_with = "super::numbers::u64_number")]
+    #[serde(deserialize_with = "super::numbers::persisted_u64")]
     pub server_size: u64,
-    #[serde(deserialize_with = "super::numbers::u16_number")]
+    #[serde(deserialize_with = "super::numbers::persisted_u16")]
     pub java_major_version: u16,
     pub launch_mode: LaunchMode,
     pub launch_file: String,
     pub launch_sha1: String,
-    #[serde(deserialize_with = "super::numbers::u64_number")]
+    #[serde(deserialize_with = "super::numbers::persisted_u64")]
     pub launch_size: u64,
 }
 impl Installation {
