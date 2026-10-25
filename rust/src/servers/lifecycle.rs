@@ -30,7 +30,7 @@ pub struct State {
     pub supervisor_pid: u32,
     pub identity: String,
     pub java_path: String,
-    #[serde(deserialize_with = "super::numbers::i64_number")]
+    #[serde(deserialize_with = "super::numbers::persisted_i64")]
     pub started_at_ms: i64,
 }
 impl State {

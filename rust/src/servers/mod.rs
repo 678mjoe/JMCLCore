@@ -13,7 +13,7 @@ pub use cli::cli;
 
 pub mod creation;
 mod creation_cli;
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", test))]
 mod numbers;
 #[cfg(target_os = "linux")]
 pub mod planning;
