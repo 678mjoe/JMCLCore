@@ -11,7 +11,7 @@ const DEFAULT_ROOT: &str = "accounts";
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Account {
-    #[serde(default = "default_schema", deserialize_with = "deserialize_u32")]
+    #[serde(default = "default_schema", deserialize_with = "deserialize_param_u32")]
     pub schema_version: u32,
     pub id: String,
     pub player_name: String,
@@ -31,7 +31,18 @@ struct DiskAccount {
     xuid: Option<String>,
 }
 fn deserialize_u32<'de, D: serde::Deserializer<'de>>(d: D) -> Result<u32, D::Error> {
-    parse_u32(&Value::deserialize(d)?).ok_or_else(|| serde::de::Error::custom("invalid u32"))
+    let raw = <&RawValue>::deserialize(d)?;
+    crate::json_number::typed_raw(raw.get(), 32)
+        .map(|n| n as u32)
+        .map_err(|_| serde::de::Error::custom("invalid u32"))
+}
+// RPC parameters first pass through Zig's dynamic Value representation, whereas
+// the on-disk document is parsed directly into its typed schema. Preserve both.
+fn deserialize_param_u32<'de, D: serde::Deserializer<'de>>(d: D) -> Result<u32, D::Error> {
+    let raw = <&RawValue>::deserialize(d)?;
+    crate::json_number::dynamic_raw(raw.get(), 32)
+        .map(|n| n as u32)
+        .map_err(|_| serde::de::Error::custom("invalid u32"))
 }
 
 #[derive(Debug)]
@@ -114,22 +125,6 @@ fn validate(account: &Account) -> Result<(), Error> {
         return Err(Error::InvalidMetadata);
     }
     Ok(())
-}
-fn parse_u32(value: &Value) -> Option<u32> {
-    match value {
-        Value::String(s) => s.parse::<u32>().ok().or_else(|| {
-            s.parse::<f64>()
-                .ok()
-                .filter(|n| n.is_finite() && *n >= 0.0 && *n <= u32::MAX as f64 && n.fract() == 0.0)
-                .map(|n| n as u32)
-        }),
-        Value::Number(n) => n.as_u64().and_then(|n| u32::try_from(n).ok()).or_else(|| {
-            n.as_f64()
-                .filter(|n| n.is_finite() && *n >= 0.0 && *n <= u32::MAX as f64 && n.fract() == 0.0)
-                .map(|n| n as u32)
-        }),
-        _ => None,
-    }
 }
 struct ObjectOnly<T>(T);
 impl<'de, T: Deserialize<'de>> Deserialize<'de> for ObjectOnly<T> {
@@ -537,13 +532,50 @@ mod tests {
     }
     #[test]
     fn validation_and_numeric_schema_coercion() {
+        assert_eq!(
+            deserialize_param_u32(&mut serde_json::Deserializer::from_str(
+                "1.0000000000000001"
+            ))
+            .unwrap(),
+            1
+        );
+        assert!(
+            deserialize_param_u32(&mut serde_json::Deserializer::from_str(
+                "\"1.0000000000000001\""
+            ))
+            .is_err()
+        );
         for text in [
-            "1", "1.0", "\"1\"", "\"1.0\"", "\"1e0\"", "\"+1\"", "\"01\"",
+            "1",
+            "1.0",
+            "\"1\"",
+            "\"1.0\"",
+            "\"1e0\"",
+            "\"+1\"",
+            "\"01\"",
+            "\"0_1\"",
+            "\"0x1.0p0\"",
+            "1.0000000000000000000000000000000000000001",
         ] {
-            assert_eq!(parse_u32(&serde_json::from_str(text).unwrap()), Some(1));
+            assert_eq!(
+                deserialize_u32(&mut serde_json::Deserializer::from_str(text)).unwrap(),
+                1
+            );
         }
-        for text in ["null", "true", "-1", "1.5", "\" 1\"", "\"0x1\""] {
-            assert!(parse_u32(&serde_json::from_str(text).unwrap()).is_none());
+        for text in [
+            "null",
+            "true",
+            "-1",
+            "1.5",
+            "\" 1\"",
+            "\"0x1\"",
+            "1.0000000000000001",
+            "\"1.0000000000000001\"",
+            "4294967296",
+            "[]",
+            "{}",
+        ] {
+            assert!(deserialize_u32(&mut serde_json::Deserializer::from_str(text)).is_err());
         }
         for root in ["", ".", "..", "/tmp/accounts", "a/b", "a\\b", "a:b", "☃"] {
             assert!(!valid_root(root));

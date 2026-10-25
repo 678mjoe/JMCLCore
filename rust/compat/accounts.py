@@ -29,6 +29,71 @@ def run(binary, cwd, requests, raw=False):
     return completed.stdout if raw else result
 
 
+def typed_schema_cases(zig, rust, root):
+    # Keep the original number token: json.loads/dumps would round through f64
+    # before either Core sees the fixture. Account schemas use Zig's typed path.
+    cases = [(value, True) for value in [
+        "1", "1.0", '"1"', '"+1"', '"01"', '"0_1"', '"1e0"',
+        '"1_0e-1"', '"0x1.0p0"',
+        "1.0000000000000000000000000000000000000001",
+    ]] + [(value, False) for value in [
+        "1.0000000000000001", '"1.0000000000000001"',
+        "0.99999999999999999", '"0.99999999999999999"',
+        "4294967295", "4294967296", '"4294967296"', "-1", "2",
+        '"1_"', '"_1"', '"0x1"', '" 1"', "1e9999", "null", "true", "[]", "{}",
+    ]]
+    for index, (token, disk_accepted) in enumerate(cases):
+        # RPC finite number tokens first round through Zig dynamic binary64;
+        # quoted numbers and directly parsed disk fields retain typed binary128.
+        save_accepted = disk_accepted or token in ["1.0000000000000001", "0.99999999999999999"]
+        # Unknown fields stay ignored, including a nested synthetic token-shaped
+        # value; the repair must not introduce a stricter metadata schema.
+        document = json.dumps(dict(ACCOUNT, ignored={"token": "synthetic-not-a-secret"}))[:-1]
+        document += ',"schema_version":' + token + '}'
+        save = ('{"protocol":1,"id":"typed","method":"account.microsoft.save",'
+                '"params":{"account":' + document + '}}\n')
+        outputs = []
+        for side, binary in [("zig", zig), ("rust", rust)]:
+            directory = root / f"typed-{index}-{side}"
+            directory.mkdir()
+            result = subprocess.run([binary, "rpc"], input=save, text=True,
+                                    capture_output=True, cwd=directory, timeout=30)
+            assert result.returncode == 0 and not result.stderr, result
+            response = json.loads(result.stdout)
+            path = directory / "accounts" / (ACCOUNT["id"] + ".json")
+            assert ("result" in response) == save_accepted, (token, side, response)
+            if save_accepted:
+                assert json.loads(path.read_text()) == dict(ACCOUNT, schema_version=1, xuid=None)
+                assert "synthetic-not-a-secret" not in path.read_text()
+            else:
+                assert not path.exists(), (token, side, "invalid save wrote metadata")
+                path.parent.mkdir(exist_ok=True)
+                existing = json.dumps(dict(ACCOUNT, schema_version=1, xuid=None))
+                path.write_text(existing)
+                retry = subprocess.run([binary, "rpc"], input=save, text=True,
+                                       capture_output=True, cwd=directory, timeout=30)
+                assert (retry.returncode, retry.stdout, retry.stderr) == (
+                    result.returncode, result.stdout, result.stderr)
+                assert path.read_text() == existing, (token, side, "invalid save replaced metadata")
+            # Exercise typed disk parsing independently of save serialization.
+            path.parent.mkdir(exist_ok=True)
+            path.write_text(document)
+            reads = run(binary, directory, [request("get", {"id": ACCOUNT["id"]}),
+                                           request("list"), request("delete", {"id": ACCOUNT["id"]})], raw=True)
+            records = [json.loads(line) for line in reads.splitlines()]
+            assert ("result" in records[0]) == disk_accepted, (token, side, records)
+            assert len(records[1]["result"]["accounts"]) == int(disk_accepted)
+            if disk_accepted:
+                assert records[2]["result"]["deleted"] is True and not path.exists()
+            else:
+                assert records[0]["error"]["code"] == "ACCOUNT_STORE_ERROR"
+                assert records[2]["error"]["code"] == "ACCOUNT_STORE_ERROR"
+                assert path.read_text() == document, (token, side, "invalid disk record mutated")
+            outputs.append((result.stdout, reads))
+        assert outputs[0] == outputs[1], (token, outputs)
+    return len(cases)
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--zig", required=True)
@@ -43,6 +108,7 @@ def main():
     cases += [request("delete", {"id": ACCOUNT["id"]}), request("delete", {"id": ACCOUNT["id"]}), request("list")]
     with tempfile.TemporaryDirectory(prefix="jmcl-accounts-parity-") as directory:
         root = Path(directory)
+        typed_count = typed_schema_cases(zig, rust, root)
         (root / "zig").mkdir(); (root / "rust").mkdir()
         expected, actual = run(zig, root / "zig", cases), run(rust, root / "rust", cases)
         for index, (left, right) in enumerate(zip(expected, actual)):
@@ -68,6 +134,7 @@ def main():
             assert run(zig, shared, checks) == run(rust, shared, checks)
             assert (shared / "accounts" / (ACCOUNT["id"] + ".json")).read_text() == bad
     print(f"PASS: {len(cases)} account RPC cases, bidirectional shared-directory takeover, and 5 corrupt-manifest cases")
+    print(f"PASS: {typed_count} raw typed schema fixtures across save/get/list/delete and disk preservation")
 
 
 if __name__ == "__main__":
