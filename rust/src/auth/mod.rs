@@ -758,6 +758,47 @@ fn result(out: &mut impl Write, id: &str, stage: &str, data: &impl Serialize) ->
     )?;
     out.write_all(b"\n")
 }
+// Request strings use dynamic JSON byte-element coercion. Response schemas
+// keep their existing decoders. Allocate once before writing decoded bytes so
+// secret-bearing data is never stranded in a superseded Vec allocation.
+fn request_text(j: Json<'_>) -> Result<Secret, Error> {
+    if j.0.starts_with('[') {
+        let items = j.array()?;
+        let mut bytes = Zeroizing::new(Vec::with_capacity(items.len()));
+        for item in items {
+            bytes.push(
+                crate::json_number::dynamic_raw(item.0, 8).map_err(|_| Error::InvalidResponse)?
+                    as u8,
+            );
+        }
+        let text = std::str::from_utf8(&bytes).map_err(|_| Error::InvalidResponse)?;
+        Ok(Secret::new(Zeroizing::new(text.to_owned())))
+    } else {
+        j.string().map(Secret::new).map_err(Error::from)
+    }
+}
+type DecodedRpcParams = (Secret, Option<Secret>, Option<Secret>);
+fn parse_rpc_params(
+    params: &serde_json::value::RawValue,
+    secret_field: Option<&str>,
+    stage: &str,
+) -> Result<DecodedRpcParams, Error> {
+    let j = Json::parse(params.get())?;
+    let client = request_text(j.required("client_id")?)?;
+    let secret = secret_field
+        .map(|key| request_text(j.required(key)?))
+        .transpose()?;
+    let locale = if stage == "device_authorization" {
+        j.field("locale")?
+            .filter(|v| !v.null())
+            .map(request_text)
+            .transpose()?
+    } else {
+        None
+    };
+    Ok((client, secret, locale))
+}
+
 /// Recognized methods return Some, allowing centralized dispatch to continue for others.
 /// The caller supplies a transport; this module never initiates a live login itself.
 pub fn handle_with_transport(
@@ -804,19 +845,7 @@ pub fn handle_with_transport(
         let Some(params) = params else {
             return crate::protocol::error(out, Some(id), "INVALID_PARAMS", missing);
         };
-        let parsed_params = (|| -> Result<_, Error> {
-            let j = Json::parse(params.get())?;
-            let client = Secret::new(j.required("client_id")?.string()?);
-            let secret = secret_field
-                .map(|key| j.required(key)?.string().map(Secret::new))
-                .transpose()?;
-            let locale = if stage == "device_authorization" {
-                optional(j, "locale")?
-            } else {
-                None
-            };
-            Ok((client, secret, locale))
-        })();
+        let parsed_params = parse_rpc_params(params, secret_field, stage);
         let (client, secret, locale) = match parsed_params {
             Ok(v) => v,
             Err(_) => return crate::protocol::error(out, Some(id), "INVALID_PARAMS", invalid),
@@ -875,3 +904,7 @@ pub fn handle(
 ) -> Option<io::Result<()>> {
     handle_with_transport(out, id, method, params, &mut http::HttpsTransport)
 }
+
+#[cfg(test)]
+#[path = "../../tests/support/auth_rpc_params.rs"]
+mod request_param_tests;

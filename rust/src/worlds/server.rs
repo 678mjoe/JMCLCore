@@ -6,6 +6,8 @@ use crate::{
     servers::{lifecycle, properties, store},
 };
 use serde_json::value::RawValue;
+#[path = "server_read.rs"]
+mod read_params;
 fn error(code: &str, message: &str) -> RpcError {
     RpcError::new(code, message)
 }
@@ -23,6 +25,9 @@ pub fn handle(
     method: &str,
     params: Option<&RawValue>,
 ) -> Option<std::result::Result<Value, RpcError>> {
+    if matches!(method, "server.worlds.list" | "server.worlds.get") {
+        return Some(read_params::handle(method, params));
+    }
     let (what, code, message) = match method {
         "server.worlds.list" => (
             "server worlds listing",
@@ -174,7 +179,12 @@ pub fn handle(
                 error("SERVER_NOT_FOUND", "No server matches the given id")
             }
         })?;
-        store::load(&root, &id).map_err(|e| {
+        let loaded = if readonly {
+            store::load_read(&root, &id).map(|_| ())
+        } else {
+            store::load(&root, &id).map(|_| ())
+        };
+        loaded.map_err(|e| {
             if e.kind() == io::ErrorKind::NotFound || e.to_string() == "InvalidServerId" {
                 error("SERVER_NOT_FOUND", "No server matches the given id")
             } else if readonly {

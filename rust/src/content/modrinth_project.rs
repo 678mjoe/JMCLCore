@@ -4,7 +4,7 @@
 use super::{Error, MetadataBytes, Result, WireProject};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub(in crate::content) enum Token<'a> {
+pub(crate) enum Token<'a> {
     String(&'a str),
     Number(&'a str),
     Null,
@@ -17,18 +17,18 @@ pub(in crate::content) enum Token<'a> {
     Comma,
     End,
 }
-pub(in crate::content) struct Cursor<'a> {
+pub(crate) struct Cursor<'a> {
     bytes: &'a [u8],
     at: usize,
 }
 impl<'a> Cursor<'a> {
-    pub(in crate::content) fn error<T>(&self) -> Result<T> {
+    pub(crate) fn error<T>(&self) -> Result<T> {
         Err("SyntaxError".into())
     }
-    pub(in crate::content) fn new(bytes: &'a [u8]) -> Self {
+    pub(crate) fn new(bytes: &'a [u8]) -> Self {
         Self { bytes, at: 0 }
     }
-    pub(in crate::content) fn finish(&self) -> Result<()> {
+    pub(crate) fn finish(&self) -> Result<()> {
         if self.bytes[self.at..]
             .iter()
             .any(|b| !matches!(b, b' ' | b'\n' | b'\r' | b'\t'))
@@ -132,7 +132,7 @@ impl<'a> Cursor<'a> {
             }
         }
     }
-    pub(in crate::content) fn next(&mut self) -> Result<Token<'a>> {
+    pub(crate) fn next(&mut self) -> Result<Token<'a>> {
         while self
             .bytes
             .get(self.at)
@@ -227,11 +227,7 @@ impl<'a> Cursor<'a> {
     }
     // Slice children peek a wrong closing token; numeric children ask the
     // scanner to consume it and receive SyntaxError instead.
-    pub(in crate::content) fn separator(
-        &mut self,
-        close: Token<'a>,
-        child_peeks: bool,
-    ) -> Result<Token<'a>> {
+    pub(crate) fn separator(&mut self, close: Token<'a>, child_peeks: bool) -> Result<Token<'a>> {
         while self
             .bytes
             .get(self.at)
@@ -254,7 +250,7 @@ impl<'a> Cursor<'a> {
             _ => self.error(),
         }
     }
-    pub(in crate::content) fn expect(&mut self, t: Token<'_>) -> Result<()> {
+    pub(crate) fn expect(&mut self, t: Token<'_>) -> Result<()> {
         debug_assert!(t == Token::Colon);
         while self
             .bytes
@@ -272,7 +268,7 @@ impl<'a> Cursor<'a> {
             _ => self.error(),
         }
     }
-    pub(in crate::content) fn object_key(&mut self, allow_end: bool) -> Result<Token<'a>> {
+    pub(crate) fn object_key(&mut self, allow_end: bool) -> Result<Token<'a>> {
         while self
             .bytes
             .get(self.at)
@@ -287,7 +283,7 @@ impl<'a> Cursor<'a> {
             _ => self.error(),
         }
     }
-    pub(in crate::content) fn peek_value(&mut self) -> Result<u8> {
+    pub(crate) fn peek_value(&mut self) -> Result<u8> {
         while self
             .bytes
             .get(self.at)
@@ -307,7 +303,7 @@ impl<'a> Cursor<'a> {
         }
         Ok(b)
     }
-    pub(in crate::content) fn value_bytes(&mut self) -> Result<MetadataBytes> {
+    pub(crate) fn value_bytes(&mut self) -> Result<MetadataBytes> {
         if !matches!(self.peek_value()?, b'"' | b'[') {
             return Err("UnexpectedToken".into());
         }
@@ -346,7 +342,7 @@ impl<'a> Cursor<'a> {
             _ => Err("UnexpectedToken".into()),
         }
     }
-    pub(in crate::content) fn skip(&mut self) -> Result<()> {
+    pub(crate) fn skip(&mut self) -> Result<()> {
         #[derive(Clone, Copy, PartialEq, Eq)]
         enum State {
             ArrayStart,
@@ -447,7 +443,7 @@ impl<'a> Cursor<'a> {
         Ok(())
     }
 }
-pub(in crate::content) fn decode(raw: &str) -> Result<Vec<u8>> {
+pub(crate) fn decode(raw: &str) -> Result<Vec<u8>> {
     crate::auth::json::Json(raw)
         .string()
         .map(|s| s.as_bytes().to_vec())

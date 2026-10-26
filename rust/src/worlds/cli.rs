@@ -218,7 +218,12 @@ fn run(args: &[String], out: &mut impl Write, err: &mut impl Write) -> io::Resul
             return Ok(1);
         }
     };
-    let manifest = match root.load(o.id) {
+    let loaded_version = if matches!(command, "list" | "show") {
+        root.load_read(o.id).map(|manifest| manifest.version_id)
+    } else {
+        root.load(o.id).map(|manifest| manifest.version_id)
+    };
+    let version_id = match loaded_version {
         Ok(m) => m,
         Err(e) => {
             writeln!(
@@ -230,7 +235,7 @@ fn run(args: &[String], out: &mut impl Write, err: &mut impl Write) -> io::Resul
         }
     };
     let path = crate::instances::minecraft_path(o.directory, o.id);
-    let version = Some(manifest.version_id.as_str());
+    let version = Some(version_id.as_str());
     let name = o.world.unwrap_or("");
     let operation = match command {
         "show" => "inspect",

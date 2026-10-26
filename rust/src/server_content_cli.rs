@@ -500,7 +500,7 @@ fn write_content_file(out: &mut impl Write, file: &Value) -> io::Result<()> {
 struct LocalCliParams {
     id: String,
     directory: Vec<u8>,
-    project: Option<String>,
+    project: Option<Vec<u8>>,
     file: Option<Vec<u8>>,
     json: bool,
 }
@@ -517,7 +517,7 @@ pub(super) fn cli_local_bytes(family:&str,op:&str,args:&[crate::content::LocalAr
             if v.bytes().is_empty() && op!="list" {return Err(());}
             match key {
                 "--servers-directory"=>p.directory=v.bytes().to_vec(),
-                "--project" if op!="list"=>p.project=Some(v.text().ok_or(())?.to_owned()),
+                "--project" if op!="list"=>p.project=Some(v.bytes().to_vec()),
                 "--file" if op!="list"=>p.file=Some(v.bytes().to_vec()),
                 _=>return Err(()),
             }
@@ -541,7 +541,7 @@ pub(super) fn cli_local_bytes(family:&str,op:&str,args:&[crate::content::LocalAr
     let kind=if family=="mods" {Kind::Mod} else {Kind::Datapack};
     let fields=match root.as_ref() {
         Some(root) if op=="list"=>list_fields(Some(root),kind),
-        Some(root)=>content::local_project(p.project.as_deref().map(str::as_bytes))
+        Some(root)=>content::local_project(p.project.as_deref())
             .and_then(|project|selected_fields(root,op,kind,project,p.file.as_deref())),
         None=>Ok(json!({"entries":[],"unmanaged":[]})),
     }.map_err(local_name);

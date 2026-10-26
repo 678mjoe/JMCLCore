@@ -3,6 +3,7 @@ use crate::protocol::RpcError;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json, value::RawValue};
 mod cli;
+mod manifest_ordered;
 #[cfg(unix)]
 mod unix;
 #[cfg(unix)]
@@ -37,17 +38,24 @@ pub(crate) fn schema_source<'de, D: serde::Deserializer<'de>>(d: D) -> Result<St
     } else {
         return Err(serde::de::Error::custom("Zig:UnexpectedToken"));
     };
-    if matches!(value.as_str(), "official" | "bmclapi") {
-        return Ok(value);
+    source_tag(&value)
+        .map(str::to_owned)
+        .ok_or_else(|| serde::de::Error::custom("Zig:InvalidEnumTag"))
+}
+fn source_tag(value: &str) -> Option<&'static str> {
+    match value {
+        "official" => return Some("official"),
+        "bmclapi" => return Some("bmclapi"),
+        _ => {}
     }
-    // Zig sliceToEnum accepts integer-shaped ordinal tags, never float coercion.
+    // Shared with the ordered persisted schema; the public serde path is unchanged.
     if value != "-0"
         && !value.bytes().any(|b| matches!(b, b'.' | b'e' | b'E'))
-        && let Ok(tag) = crate::json_number::unsigned_text(&value, 1)
+        && let Ok(tag) = crate::json_number::unsigned_text(value, 1)
     {
-        return Ok(if tag == 0 { "official" } else { "bmclapi" }.into());
+        return Some(if tag == 0 { "official" } else { "bmclapi" });
     }
-    Err(serde::de::Error::custom("Zig:InvalidEnumTag"))
+    None
 }
 // Zig's integer schema parser also accepts integral JSON floats/numeric strings.
 pub(crate) fn schema_number<'de, D: serde::Deserializer<'de>>(d: D) -> Result<u32, D::Error> {
@@ -92,41 +100,10 @@ pub(crate) fn dynamic_schema_number<'de, D: serde::Deserializer<'de>>(
     }
     d.deserialize_any(N)
 }
-pub(crate) fn parse_document<T: serde::de::DeserializeOwned>(
+pub(crate) fn parse_document<T: manifest_ordered::Document>(
     bytes: &[u8],
 ) -> Result<T, &'static str> {
-    fn error(e: serde_json::Error) -> &'static str {
-        let message = e.to_string();
-        if message.contains("Zig:InvalidEnumTag") {
-            "InvalidEnumTag"
-        } else if message.contains("Zig:Overflow") {
-            "Overflow"
-        } else if message.contains("Zig:InvalidNumber") {
-            "InvalidNumber"
-        } else if message.contains("Zig:InvalidCharacter") {
-            "InvalidCharacter"
-        } else if e.is_eof() {
-            "UnexpectedEndOfInput"
-        } else if e.is_syntax() {
-            "SyntaxError"
-        } else if message.starts_with("missing field") {
-            "MissingField"
-        } else if message.starts_with("duplicate field") {
-            "DuplicateField"
-        } else {
-            "UnexpectedToken"
-        }
-    }
-    // Shape/syntax validation must not round or reject numeric lexemes before
-    // the typed schema parser sees them (including ignored huge exponents).
-    let raw: &RawValue = serde_json::from_slice(bytes).map_err(error)?;
-    if crate::auth::json::Json::parse(raw.get()).is_err() {
-        return Err("SyntaxError");
-    }
-    if !raw.get().starts_with('{') {
-        return Err("UnexpectedToken");
-    }
-    serde_json::from_slice(bytes).map_err(error)
+    manifest_ordered::parse(bytes)
 }
 // Display names are byte slices in the persisted Zig schemas. Only read views
 // use this representation; operational Manifest construction remains String-based.

@@ -2,6 +2,8 @@
 //! Platform adapters preserve private mutable copies and bounded metadata parsing.
 mod archive;
 mod cli;
+mod cli_read;
+pub use cli_read::read_cli_os;
 #[cfg(unix)]
 pub(crate) mod fs;
 #[cfg(windows)]

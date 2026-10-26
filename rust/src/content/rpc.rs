@@ -27,7 +27,7 @@ fn text(j: Json<'_>) -> Result<Zeroizing<String>, ()> {
     if j.0.starts_with('[') {
         let mut bytes = Zeroizing::new(Vec::new());
         for b in j.array()? {
-            bytes.push(u8::try_from(b.u64()?).map_err(|_| ())?)
+            bytes.push(crate::json_number::dynamic_raw(b.0, 8).map_err(|_| ())? as u8)
         }
         let s = std::str::from_utf8(&bytes).map_err(|_| ())?;
         Ok(Zeroizing::new(s.to_owned()))
@@ -574,3 +574,7 @@ pub(crate) fn write_byte_event(
     out.write_all(b"\n")?;
     out.flush()
 }
+
+#[cfg(test)]
+#[path = "../../tests/support/content_rpc_params.rs"]
+mod params_number_tests;

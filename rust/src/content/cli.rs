@@ -456,6 +456,26 @@ pub fn local_cli_os(
             .map(|_| 1),
         );
     }
+    // Invalid IDs precede all option parsing, including uninterpreted raw tails.
+    // Forward the genuine argument alone to the existing rejecting parser.
+    #[cfg(target_os = "linux")]
+    if server
+        && let Some(id) = args.get(3).filter(|id| {
+            id.to_str()
+                .is_none_or(|text| crate::instances::validate_id(text).is_err())
+        })
+    {
+        return Some(crate::server_content::local_cli_bytes(
+            family,
+            op,
+            &[match id.to_str() {
+                Some(text) => LocalArg::Text(text),
+                None => LocalArg::File(super::fs::argument_bytes(id)),
+            }],
+            out,
+            errors,
+        ));
+    }
     let mut has_raw = false;
     let mut local = Vec::new();
     for (i, arg) in args.iter().enumerate().skip(3) {
@@ -464,7 +484,7 @@ pub fn local_cli_os(
         } else {
             let previous = args.get(i.wrapping_sub(1))?.to_str();
             let allowed = previous == Some("--file") && op != "list"
-                || server && previous == Some("--servers-directory")
+                || server && matches!(previous, Some("--servers-directory" | "--project"))
                 || !server
                     && (previous == Some("--instances-directory")
                         || kind == Kind::Datapack && previous == Some("--world"));

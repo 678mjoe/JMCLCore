@@ -1,6 +1,6 @@
 //! Typed Modrinth content metadata and deterministic selection, without credentials.
 #[path = "modrinth_project.rs"]
-pub(super) mod project_ordered;
+pub(crate) mod project_ordered;
 #[path = "modrinth_version.rs"]
 mod version_ordered;
 use serde::{Deserialize, Serialize};
@@ -347,7 +347,7 @@ impl MetadataBytes {
     pub(super) fn as_bytes(&self) -> &[u8] {
         &self.0
     }
-    pub(super) fn into_bytes(self) -> Vec<u8> {
+    pub(crate) fn into_bytes(self) -> Vec<u8> {
         self.0
     }
 }

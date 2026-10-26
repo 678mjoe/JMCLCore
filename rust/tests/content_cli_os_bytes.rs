@@ -200,7 +200,7 @@ fn interception_does_not_claim_other_raw_routes_or_fields() {
             "mods".into(),
             "remove".into(),
             "demo".into(),
-            "--project".into(),
+            "--version".into(),
         ],
         vec![
             "instance".into(),

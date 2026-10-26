@@ -4,7 +4,7 @@ use crate::protocol::RpcError;
 use serde::Deserialize;
 use serde_json::value::RawValue;
 
-struct Bytes(Vec<u8>);
+pub(super) struct Bytes(pub(super) Vec<u8>);
 impl<'de> Deserialize<'de> for Bytes {
     fn deserialize<D: serde::Deserializer<'de>>(d: D) -> std::result::Result<Self, D::Error> {
         let raw = <&RawValue>::deserialize(d)?;
@@ -89,7 +89,7 @@ pub(super) fn handle(
     })();
     result.map_err(|e| rpc::map(e, code, message))
 }
-fn saves_read(path: &Path) -> Result<fs::Dir> {
+pub(super) fn saves_read(path: &Path) -> Result<fs::Dir> {
     fs::Dir::root(path)?.child("saves", false).map_err(absent)
 }
 fn validate_read_name(name: &[u8]) -> Result<()> {
@@ -169,7 +169,7 @@ pub(super) fn world_read(parent: &fs::Dir, name: &[u8], version: Option<&[u8]>) 
     obj.insert("version_relation".into(), json!(relation));
     Ok(Value::Object(obj))
 }
-fn listed_name_bytes(name: &std::ffi::OsStr) -> Vec<u8> {
+pub(super) fn listed_name_bytes(name: &std::ffi::OsStr) -> Vec<u8> {
     #[cfg(unix)]
     {
         use std::os::unix::ffi::OsStrExt;

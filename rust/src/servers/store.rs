@@ -40,14 +40,23 @@ pub fn open_server(root: &File, id: &str) -> io::Result<File> {
         0,
     )
 }
+// This error is specific to the server manifest, not every bounded metadata read.
+fn read_manifest_bytes(dir: &File) -> io::Result<Vec<u8>> {
+    read(dir, "server.json", 64 * 1024).map_err(|error| {
+        if error.kind() == io::ErrorKind::InvalidData && error.to_string() == "TooLarge" {
+            invalid("ServerManifestTooLarge")
+        } else {
+            error
+        }
+    })
+}
 pub fn load(root: &File, id: &str) -> io::Result<Manifest> {
     let dir = open_server(root, id)?;
-    Manifest::parse(&read(&dir, "server.json", 64 * 1024)?, id).map_err(invalid)
+    Manifest::parse(&read_manifest_bytes(&dir)?, id).map_err(invalid)
 }
 pub(crate) fn load_read(root: &File, id: &str) -> io::Result<super::manifest::ReadManifest> {
     let dir = open_server(root, id)?;
-    super::manifest::ReadManifest::parse(&read(&dir, "server.json", 64 * 1024)?, id)
-        .map_err(invalid)
+    super::manifest::ReadManifest::parse(&read_manifest_bytes(&dir)?, id).map_err(invalid)
 }
 pub fn write_manifest(dir: &File, manifest: &Manifest) -> io::Result<()> {
     atomic_write(dir, "server.json", &manifest.encode().map_err(invalid)?)
@@ -229,5 +238,84 @@ mod root_tests {
         );
         assert!(alias.is_symlink());
         assert_eq!(open_root("").unwrap_err().to_string(), "EmptyServersRoot");
+    }
+}
+
+#[cfg(test)]
+mod manifest_read_limit_tests {
+    #[test]
+    fn owned_manifest_read_limit_names_do_not_change_other_errors() {
+        use super::{load, load_read};
+        use std::{fs, io};
+        let valid = br#"{"id":"demo","name":"Demo","version_id":"fake"}"#;
+        for (size, malformed) in [
+            (65535, false),
+            (65536, false),
+            (65537, false),
+            (131072, false),
+            (65537, true),
+            (32, true),
+        ] {
+            let t = tempfile::tempdir().unwrap();
+            let directory = t.path().join("demo");
+            fs::create_dir(&directory).unwrap();
+            let mut bytes = if malformed {
+                br#"{"source":"bad","#.to_vec()
+            } else {
+                valid.to_vec()
+            };
+            bytes.resize(size, b' ');
+            let path = directory.join("server.json");
+            fs::write(&path, &bytes).unwrap();
+            let peer = t.path().join("peer");
+            fs::hard_link(&path, &peer).unwrap();
+            let root = fs::File::open(t.path()).unwrap();
+            let results = [
+                load(&root, "demo").map(|m| m.name.into_bytes()),
+                load_read(&root, "demo").map(|m| m.name.0),
+            ];
+            for result in results {
+                if size > 65536 || malformed {
+                    let error = result.unwrap_err();
+                    assert_eq!(error.kind(), io::ErrorKind::InvalidData);
+                    assert_eq!(
+                        error.to_string(),
+                        if size > 65536 {
+                            "ServerManifestTooLarge"
+                        } else {
+                            "InvalidEnumTag"
+                        }
+                    );
+                } else {
+                    assert_eq!(result.unwrap(), b"Demo");
+                }
+            }
+            assert_eq!(fs::read(path).unwrap(), bytes);
+            assert_eq!(fs::read(peer).unwrap(), bytes);
+            assert!(!directory.join(".jmcl").exists());
+        }
+        let t = tempfile::tempdir().unwrap();
+        let directory = t.path().join("demo");
+        fs::create_dir(&directory).unwrap();
+        let root = fs::File::open(t.path()).unwrap();
+        for result in [
+            load(&root, "demo").map(|_| ()),
+            load_read(&root, "demo").map(|_| ()),
+        ] {
+            assert_eq!(result.unwrap_err().kind(), io::ErrorKind::NotFound);
+        }
+        fs::create_dir(directory.join("server.json")).unwrap();
+        for result in [
+            load(&root, "demo").map(|_| ()),
+            load_read(&root, "demo").map(|_| ()),
+        ] {
+            assert_eq!(result.unwrap_err().to_string(), "NotFile");
+        }
+        for result in [
+            load(&root, "../bad").map(|_| ()),
+            load_read(&root, "../bad").map(|_| ()),
+        ] {
+            assert_eq!(result.unwrap_err().to_string(), "InvalidServerId");
+        }
     }
 }

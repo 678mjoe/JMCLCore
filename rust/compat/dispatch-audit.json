@@ -4,8 +4,8 @@
   "oracle_commit": "5a4310debbcee26b3d2391bab2339f79cd6ec52e",
   "source_digest_encoding": "utf8_crlf_to_lf",
   "source_sha256": {
-    "rust/src/auth/mod.rs": "8f866931b0ffcdfa256049ac95c8b9b8d0eec7e810e001767fbf9977390b4eb5",
-    "rust/src/content/rpc.rs": "ee4decfd5d04e25804fd4afbdb17969360004f1bd62ba6308cbea04a9eef6ab5",
+    "rust/src/auth/mod.rs": "cf5858b113ded1cbf6d63e2d4965ba8d4e2f0144c1fcba131767a197becaf6d9",
+    "rust/src/content/rpc.rs": "305ef2ed5f8cadd7ea0aabc0d24696cc261199014024d1a42c25c780c00a0257",
     "rust/src/content/registry.rs": "3aaac2096515b10eced77ee2b0c890cf3d06926ab49f537a8947eca50724a9b9",
     "rust/src/server_content.rs": "08f47b123e4e2147ab3a3564faaccad1f8c0cf03f84487393b262036c5ea762f",
     "rust/src/servers/installation.rs": "2f97795eaec4020b0f9ac278600ebda2f8c7745afa5c84aec2711efd745b00e6",
@@ -15,9 +15,9 @@
     "rust/src/version.rs": "12b1d3c85a1a8ee364b1e9382ac1269a921b596abc5dda1025e79527d4862868",
     "rust/src/java/select.rs": "e8e9c0f07ad7eaad106d998489af240ff089079118ead7a3055a8fd2c43fec6e",
     "rust/src/accounts.rs": "f1efb49ca4cc61a7f5a3fb6859a9d0e91aff6d4d66178dc4fa5795e8f0867117",
-    "rust/src/instances.rs": "34033a235b52b7438a92051e0fbf5b81393ae70e4d726e4d32debb5e84f8514d",
+    "rust/src/instances.rs": "e59c4acb289a50123be79179bf5824c4d5c17d88567873749f542500983a4067",
     "rust/src/worlds/rpc.rs": "c2d852a361b99ce13246a8c74b4c11c7943d6a684b4730f13b2bc061d0d86f83",
-    "rust/src/worlds/mod.rs": "f9b44469b1cf540b102c15127efc786b693d659eff9050d2094a8b1aa47ac0ee",
+    "rust/src/worlds/mod.rs": "4ba808be41ea28d5965ed01f5d2e88b60045212ccba0a7fab4ccc372692d7b95",
     "rust/src/content/mod.rs": "b2f4a5ad98e611e016f9cecc4a004543253950142cd3535fe68791476e25ad04",
     "rust/src/content/adopt.rs": "2d1292208ed8db1a49c1a5131770898d36f1a28e8fd425a4511f21d83285c094",
     "rust/src/java/mod.rs": "c682b1b918f24c599c3bd726115d0bbf37ebe4da4460f9a2825996906f7351d1",
@@ -27,9 +27,11 @@
     "rust/src/servers/mod.rs": "21b312a4e2717b1c7f7f736698bb3f731da27e7cb4c588e0646d12f1913995b7",
     "rust/src/servers/rpc.rs": "e3799d267b4e237f923ba58b91c67ec9ff8ae2ca603a97107826951b378519a7",
     "rust/src/servers/remote.rs": "b50b0b2e7ced8f5972a5695b4778cae1b9317311d1417f9fd46c936cd023b819",
-    "rust/src/worlds/server.rs": "1d4a34e7ec4cef13e7a6dd4e3e7597b12350151bf9d6ae400a9d87ecc9be11a2",
+    "rust/src/worlds/server.rs": "a697ad2741a3da5406cf3e271fa44c08737b42b5312d08b25dd8fe94515f7d61",
     "rust/src/protocol.rs": "a65e5405caf015d1eb9f3052df2df44fea6e0ff29003b69c5ddb28d4d8a10007",
-    "rust/src/worlds/read.rs": "5d0e0eef0846312fc7baef3edebaa96b4f1bc0a49eb7b4f51174ff13695f7cf5"
+    "rust/src/worlds/read.rs": "c1441d1113c8fd11c44e1e9573dc88f51ebafbe1077c7b6edb60d1df1f2eb22e",
+    "rust/src/worlds/server_read.rs": "4efb5e0a4aad0c70f31b78751b9c2e13ea305b0b3a06b495d14ed0ee749aa2c2",
+    "rust/src/instances/manifest_ordered.rs": "4e3157409b2784e718256aaac506986994d88a7169cc2ab8aa960f10b8bd7fef"
   },
   "routes": [
     {
@@ -383,6 +385,10 @@
         {
           "path": "rust/src/instances.rs",
           "anchor": "pub fn handle"
+        },
+        {
+          "path": "rust/src/instances/manifest_ordered.rs",
+          "anchor": "pub(super) fn parse<T: Document>"
         }
       ],
       "selector": {
@@ -396,7 +402,8 @@
         "scope": "related_group_fixtures_not_per_method_or_platform_completion",
         "paths": [
           "rust/tests/instance_differential.rs",
-          "rust/compat/instance_validation_check.py"
+          "rust/compat/instance_validation_check.py",
+          "rust/compat/manifest_ordered.py"
         ]
       }
     },
@@ -690,6 +697,10 @@
         {
           "path": "rust/src/servers/rpc.rs",
           "anchor": "crate::worlds::server::handle(method, params)"
+        },
+        {
+          "path": "rust/src/worlds/server_read.rs",
+          "anchor": "pub(super) fn handle("
         }
       ],
       "selector": {
@@ -702,7 +713,8 @@
         "status": "referenced_not_run",
         "scope": "related_group_fixtures_not_per_method_or_platform_completion",
         "paths": [
-          "rust/tests/server_worlds_portable.rs"
+          "rust/tests/server_worlds_portable.rs",
+          "rust/compat/server_world_read_params.py"
         ]
       }
     },

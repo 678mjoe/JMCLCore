@@ -9,6 +9,9 @@ fn named(s: &str) -> Error {
     Error::Io(io::Error::new(io::ErrorKind::InvalidData, s.to_owned()))
 }
 fn root(path: &str) -> Result<fs::Dir> {
+    root_native(std::ffi::OsStr::new(path))
+}
+pub(super) fn root_native(path: &std::ffi::OsStr) -> Result<fs::Dir> {
     if path.is_empty() {
         return Err(named("EmptyServersRoot"));
     }
@@ -36,7 +39,11 @@ fn root(path: &str) -> Result<fs::Dir> {
         Ok(fs::Dir(crate::store::windows::walk(Path::new(path), true)?))
     }
 }
-fn load(root: &fs::Dir, id: &str) -> Result<fs::Dir> {
+fn load_with(
+    root: &fs::Dir,
+    id: &str,
+    parse: impl FnOnce(&[u8], &str) -> std::result::Result<(), &'static str>,
+) -> Result<fs::Dir> {
     crate::instances::validate_id(id).map_err(|_| named("InvalidServerId"))?;
     let dir = root.child(id, false)?;
     let bytes = dir.read_alias("server.json", 64 * 1024).map_err(|e| {
@@ -46,10 +53,18 @@ fn load(root: &fs::Dir, id: &str) -> Result<fs::Dir> {
             e
         }
     })?;
-    Manifest::parse(&bytes, id).map_err(named)?;
+    parse(&bytes, id).map_err(named)?;
     Ok(dir)
 }
-fn name(e: Error) -> String {
+fn load(root: &fs::Dir, id: &str) -> Result<fs::Dir> {
+    load_with(root, id, |bytes, id| Manifest::parse(bytes, id).map(|_| ()))
+}
+pub(super) fn load_read(root: &fs::Dir, id: &str) -> Result<fs::Dir> {
+    load_with(root, id, |bytes, id| {
+        crate::servers::manifest::ReadManifest::parse(bytes, id).map(|_| ())
+    })
+}
+pub(super) fn name(e: Error) -> String {
     match e {
         Error::Io(e) => crate::instances::cli_error_name(&e),
         Error::UnsupportedEntry => "NotFile".into(),
@@ -67,7 +82,7 @@ fn checked(path: &str, id: &str) -> Result<fs::Dir> {
         _ => e,
     })
 }
-fn report(out: &mut impl Write, operation: &str, e: Error) -> io::Result<u8> {
+pub(super) fn report(out: &mut impl Write, operation: &str, e: Error) -> io::Result<u8> {
     if let Error::Io(ref io) = e
         && io.to_string() == "ServerNotFound"
     {
@@ -106,7 +121,7 @@ pub(super) fn run(
                 return Ok(1);
             }
         };
-        match load(&r, id) {
+        match load_read(&r, id) {
             Ok(d) => d,
             Err(e) => {
                 writeln!(err, "failed to load server: {}", name(e))?;
@@ -121,31 +136,7 @@ pub(super) fn run(
     };
     let result = (|| -> Result<Value> {
         match command {
-            "list" => {
-                let level = dir
-                    .read_alias("server.properties", properties::MAX_FILE_BYTES)
-                    .ok()
-                    .and_then(|b| properties::parse(&b).ok())
-                    .and_then(|d| d.get("level-name").map(str::to_owned))
-                    .unwrap_or_else(|| "world".into());
-                let mut worlds = vec![];
-                for n in [
-                    level.clone(),
-                    format!("{level}_nether"),
-                    format!("{level}_the_end"),
-                ] {
-                    if validate_name(&n).is_err() {
-                        continue;
-                    }
-                    match super::read::world_read(&dir, n.as_bytes(), None) {
-                        Ok(w) => worlds.push(w),
-                        Err(Error::WorldNotFound) => {}
-                        Err(Error::Io(e)) if e.kind() == io::ErrorKind::NotADirectory => {}
-                        Err(e) => return Err(e),
-                    }
-                }
-                Ok(json!({"worlds":worlds}))
-            }
+            "list" => list_read(&dir),
             "show" => Ok(
                 json!({"world":super::read::world_read(&dir,world_name.unwrap().as_bytes(),None)?}),
             ),
@@ -226,6 +217,33 @@ pub(super) fn run(
     }
     Ok(0)
 }
+
+pub(super) fn list_read(dir: &fs::Dir) -> Result<Value> {
+    let level = dir
+        .read_alias("server.properties", properties::MAX_FILE_BYTES)
+        .ok()
+        .and_then(|b| properties::parse(&b).ok())
+        .and_then(|d| d.get("level-name").map(str::to_owned))
+        .unwrap_or_else(|| "world".into());
+    let mut worlds = vec![];
+    for n in [
+        level.clone(),
+        format!("{level}_nether"),
+        format!("{level}_the_end"),
+    ] {
+        if validate_name(&n).is_err() {
+            continue;
+        }
+        match super::read::world_read(dir, n.as_bytes(), None) {
+            Ok(w) => worlds.push(w),
+            Err(Error::WorldNotFound) => {}
+            Err(Error::Io(e)) if e.kind() == io::ErrorKind::NotADirectory => {}
+            Err(e) => return Err(e),
+        }
+    }
+    Ok(json!({"worlds":worlds}))
+}
+
 #[cfg(test)]
 mod tests {
     #[cfg(unix)]

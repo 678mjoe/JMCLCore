@@ -41,12 +41,12 @@ cd rust
 cargo test --locked --lib instances::manifest_enum_tests
 ```
 
-## Remaining separate syntax-order observation
+## Ordered syntax follow-up
 
-The shared `parse_document` still validates whole-document syntax before typed
-parsing. For `{"source":"bad",` the pinned parser reports `InvalidEnumTag`
-immediately, while Rust reports `UnexpectedEndOfInput`; a later illegal `!`
-token similarly produces Rust `SyntaxError`. These two compound malformed-input
-cases are not claimed fixed or normalized. A follow-up must preserve strict
-Unicode/shape validation and ignored-number behavior while examining streaming
-first-error order. General manifest byte-string representation is also separate.
+The two originally deferred cases (`{"source":"bad",` and an invalid later `!`
+token) are covered by the private four-manifest ordered schema described in
+[manifest-ordered.md](manifest-ordered.md). It also preserves earlier malformed
+ignored strings ahead of later enum errors; a typed-serde-first reorder alone
+would not be sufficient. Public serde construction and encoding remain unchanged.
+The separately recorded oversized server CLI diagnostic is not part of that
+parser correction. General operational byte-string representation remains separate.

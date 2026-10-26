@@ -261,3 +261,41 @@ ordered lexical/type errors are covered by pure pinned-source fixtures.
 The `56a6b2b8` server world read change substitutes only the list/get
 metadata reader. Platform, parameter, target and lifecycle guards remain
 unchanged; no mutation route is widened. Its reviewed handler digest is updated.
+
+The `5b8ae84d` read-only server worlds branch uses the existing persisted
+display-name read validator. The exact list/get guard remains unchanged;
+operational loaders and mutation branches retain their prior validation.
+The handler fingerprint is refreshed after reviewing this selected branch.
+
+The `5dc1068c` remote-content parameter change uses existing dynamic u8
+coercion for array elements only. Handler bodies, route/parameter ordering,
+UTF8 conversion and zeroization are unchanged. Reviewed source digest updated;
+pure Params tests do not invoke handlers or establish runtime compatibility.
+
+The `c1b6bfab` private server world read parameter module is selected only
+for list/get inside the existing Linux dispatch. Complete selected-field parsing
+and root-before-ID validation preserve source order; old mutation decoding and
+platform guards are unchanged. Both read modules and handler digests are reviewed.
+
+The `e5d54619` server get icon expression reuses existing explicit named-alias
+helpers and suppresses optional icon errors only after successful world metadata.
+Method guards and directory traversal policies elsewhere are unchanged; the
+private read-handler fingerprint is refreshed after this bounded source review.
+
+The `31ac81b1`/`70ef2d67` auth request decoding seam retains all handlers,
+method guards, later semantic validation and transport flow. A private wiping
+dynamic-byte decoder changes only request value parsing; response helpers remain
+unchanged. Reviewed source digest updated. Pure buffer tests are not auth or
+transport acceptance, and opaque nonUTF8 representation remains separate.
+
+The `6c12841d` sealed four-manifest ordered parser changes persisted-field
+error order, not dispatcher names or method guards. Existing public serde,
+size/semantic wrappers and String/display-name boundaries remain. The new private
+parser dependency and instance handler digest are reviewed; helper cursor changes
+are visibility-only. Pure/read fixtures are not mutation/lifecycle acceptance.
+
+The `131dbdc0` native CLI hook handles only raw-argument world list/show
+routes; all-UTF8, mutation, archive and hidden routes fall through unchanged.
+RPC source links/guards are unchanged. Module/read helper digests change for
+private helper visibility and CLI export only, reviewed alongside native flag
+preservation and actual version fields.
