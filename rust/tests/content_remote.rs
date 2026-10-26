@@ -48,6 +48,10 @@ fn metadata_oracle() {
     }
     let v = version();
     check("version", serde_json::to_vec(&v).unwrap());
+    let raw = serde_json::to_string(&v)
+        .unwrap()
+        .replace("\"size\":7", "\"size\":\"7.0000000000000001\"");
+    check("version", raw.into_bytes());
     for field in [
         "id",
         "project_id",
@@ -506,4 +510,200 @@ fn curseforge_schema_oracle() {
         check(v)
     }
     eprintln!("{count} CurseForge schema fixtures matched");
+}
+
+#[test]
+#[ignore = "requires pinned JMCL_CONTENT_METADATA_ORACLE; pure JSON only"]
+fn provider_numeric_lexemes_match_pinned_typed_grammar() {
+    use jmcl_core_rust::content::curseforge as cf;
+    let exe = std::env::var_os("JMCL_CONTENT_METADATA_ORACLE").unwrap();
+    let t = tempfile::tempdir().unwrap();
+    let path = t.path().join("numeric.json");
+    let tokens = [
+        "7",
+        "7.0",
+        "7e0",
+        "7.0000000000000001",
+        "\"7.0000000000000001\"",
+        "\"7.0\"",
+        "\"+7\"",
+        "\"7__0\"",
+        "\"0x7.0p0\"",
+        "\"7e+\"",
+        "\"7_.0\"",
+        "-0",
+        "\"-0\"",
+        "-1",
+        "\"-1\"",
+        "255",
+        "256",
+        "255.0000000000000001",
+        "4294967295",
+        "4294967296",
+        "4294967295.0000000001",
+        "18446744073709551615",
+        "\"18446744073709551615.0\"",
+        "18446744073709551616",
+        "1e400",
+        "null",
+        "true",
+        "[]",
+        "{}",
+        "\"\"",
+        "\"+_7\"",
+        "\"7_\"",
+        "\"7\\u002e0000000000000001\"",
+        "7.00000000000000000000000000000000001",
+    ];
+    let cfbase = json!({"data":{"id":1,"modId":42,"fileName":"a.jar","releaseType":1,"hashes":[{"algo":1,"value":"1111111111111111111111111111111111111111"}],"fileDate":"2024","fileLength":7,"downloadUrl":null,"gameVersions":["1.20.1","Fabric"]}});
+    let mut count = 0;
+    for (kind, field) in [
+        ("version", "size"),
+        ("cffile", "fileLength"),
+        ("cffile", "id"),
+        ("cffile", "modId"),
+        ("cffile", "releaseType"),
+        ("cffile", "algo"),
+    ] {
+        for token in tokens {
+            let mut v = if kind == "version" {
+                version()
+            } else {
+                cfbase.clone()
+            };
+            if kind == "version" {
+                v["files"][0][field] = json!("NUMBER_PLACEHOLDER");
+            } else if field == "algo" {
+                v["data"]["hashes"][0][field] = json!("NUMBER_PLACEHOLDER");
+            } else {
+                v["data"][field] = json!("NUMBER_PLACEHOLDER");
+            }
+            let bytes = serde_json::to_string(&v)
+                .unwrap()
+                .replace("\"NUMBER_PLACEHOLDER\"", token)
+                .into_bytes();
+            std::fs::write(&path, &bytes).unwrap();
+            let out = std::process::Command::new(&exe)
+                .args([kind, path.to_str().unwrap()])
+                .output()
+                .unwrap();
+            assert!(out.status.success());
+            let old: Value = serde_json::from_slice(&out.stdout).unwrap();
+            let new=if kind=="version" {mr::parse_version(&bytes).map(|v|serde_json::to_value(v).unwrap())}
+            else {cf::parse_file(&bytes).map(|f|json!({"id":f.id,"project":f.project,"name":f.name,"sha1":f.sha1,"size":f.size,"url":f.url}))}.unwrap_or_else(|e|json!({"error":e.0}));
+            assert_eq!(new, old, "{kind}.{field} raw token {token}");
+            count += 1;
+        }
+    }
+    eprintln!("{count} raw provider typed-number cases matched; no network or artifact access");
+}
+
+#[test]
+fn invalid_typed_metadata_prevents_download_and_preserves_registry() {
+    fn identity(path: &std::path::Path) -> (u64, u64) {
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::MetadataExt;
+            let m = std::fs::metadata(path).unwrap();
+            (m.dev(), m.ino())
+        }
+        #[cfg(windows)]
+        {
+            use std::os::windows::io::AsRawHandle;
+            use windows_sys::Win32::Storage::FileSystem::{
+                BY_HANDLE_FILE_INFORMATION, GetFileInformationByHandle,
+            };
+            let f = std::fs::File::open(path).unwrap();
+            let mut info = std::mem::MaybeUninit::<BY_HANDLE_FILE_INFORMATION>::uninit();
+            assert_ne!(
+                unsafe { GetFileInformationByHandle(f.as_raw_handle(), info.as_mut_ptr()) },
+                0
+            );
+            let info = unsafe { info.assume_init() };
+            (
+                u64::from(info.dwVolumeSerialNumber),
+                (u64::from(info.nFileIndexHigh) << 32) | u64::from(info.nFileIndexLow),
+            )
+        }
+    }
+
+    use jmcl_core_rust::content::registry::{Entry, Source};
+    struct NoDownload;
+    impl install::Transport for NoDownload {
+        fn fetch(&self, _: &str, _: &mut dyn Write) -> Result<u16, install::Error> {
+            panic!("invalid metadata must never reach artifact transport")
+        }
+    }
+    let t = tempfile::tempdir().unwrap();
+    let game = t.path().join("game");
+    std::fs::create_dir_all(game.join("mods")).unwrap();
+    let root = Root::open(game.to_str().unwrap()).unwrap();
+    let old = game.join("mods/a.jar");
+    std::fs::write(&old, b"content").unwrap();
+    std::fs::hard_link(&old, t.path().join("sibling.jar")).unwrap();
+    let mut perms = std::fs::metadata(&old).unwrap().permissions();
+    perms.set_readonly(true);
+    std::fs::set_permissions(&old, perms).unwrap();
+    root.save(&Registry {
+        entries: vec![Entry {
+            kind: Kind::Mod,
+            file: "mods/a.jar".into(),
+            sha1: format!("{:x}", Sha1::digest(b"content")),
+            size: 7,
+            source: Source {
+                provider: Provider::Modrinth,
+                project_id: Some("Proj1".into()),
+                version_id: Some("Ver1".into()),
+                slug: Some("project".into()),
+            },
+            enabled: true,
+            as_dependency: false,
+        }],
+        ..Registry::default()
+    })
+    .unwrap();
+    let registry = std::fs::read(game.join(".jmcl/content.json")).unwrap();
+    let store = Store::open(t.path().join("cas")).unwrap();
+    let old_identity = identity(&old);
+    let registry_path = game.join(".jmcl/content.json");
+    let registry_identity = identity(&registry_path);
+    let mut f = fixture();
+    let mut next = version();
+    next["id"] = json!("Ver2");
+    next["files"][0]["filename"] = json!("new.jar");
+    for token in ["7.0000000000000001", "\"7.0000000000000001\""] {
+        let raw = serde_json::to_string(&next)
+            .unwrap()
+            .replace("\"size\":7", &format!("\"size\":{token}"));
+        f.docs
+            .insert(mr::version_url("Ver2").unwrap(), raw.into_bytes());
+        let error = root
+            .set_version(
+                &store,
+                Kind::Mod,
+                "1.20.1",
+                Some("fabric"),
+                "project",
+                "Ver2",
+                None,
+                &f,
+                &NoDownload,
+                install::Options::default(),
+                None,
+            )
+            .expect_err("invalid typed size must fail");
+        assert!(format!("{error:?}").contains("InvalidNumber"), "{error:?}");
+        assert_eq!(
+            std::fs::read(game.join(".jmcl/content.json")).unwrap(),
+            registry
+        );
+        for p in [&old, &t.path().join("sibling.jar")] {
+            assert_eq!(std::fs::read(p).unwrap(), b"content");
+            assert!(std::fs::metadata(p).unwrap().permissions().readonly());
+            assert_eq!(identity(p), old_identity);
+        }
+        assert_eq!(identity(&registry_path), registry_identity);
+        assert!(!game.join("mods/new.jar").exists());
+        assert_eq!(std::fs::read_dir(game.join("mods")).unwrap().count(), 1);
+    }
 }

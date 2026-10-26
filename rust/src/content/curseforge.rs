@@ -26,10 +26,10 @@ pub fn id(s: &str) -> mr::Result<()> {
     }
 }
 fn number32<'de, D: serde::Deserializer<'de>>(d: D) -> Result<u32, D::Error> {
-    u32::try_from(mr::number(d)?).map_err(|_| serde::de::Error::custom("Overflow"))
+    mr::number_width(d, 32).map(|n| n as u32)
 }
 fn number8<'de, D: serde::Deserializer<'de>>(d: D) -> Result<u8, D::Error> {
-    u8::try_from(mr::number(d)?).map_err(|_| serde::de::Error::custom("Overflow"))
+    mr::number_width(d, 8).map(|n| n as u8)
 }
 #[derive(Deserialize)]
 struct Envelope {
