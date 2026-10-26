@@ -35,6 +35,21 @@ impl From<io::Error> for Error {
 }
 type Result<T> = std::result::Result<T, Error>;
 
+/// Zig serializes valid UTF-8 paths as strings and other path bytes as arrays.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ListedPath(pub Vec<u8>);
+impl Serialize for ListedPath {
+    fn serialize<S: serde::Serializer>(
+        &self,
+        serializer: S,
+    ) -> std::result::Result<S::Ok, S::Error> {
+        match std::str::from_utf8(&self.0) {
+            Ok(s) => serializer.serialize_str(s),
+            Err(_) => self.0.serialize(serializer),
+        }
+    }
+}
+
 pub struct Root(fs::Dir);
 impl Root {
     #[cfg(target_os = "linux")]
@@ -79,6 +94,18 @@ impl Root {
         Ok(())
     }
     pub fn list(&self, kind: Kind) -> Result<(Vec<Entry>, Vec<String>)> {
+        let (entries, paths) = self.list_paths(kind)?;
+        // Adoption still consumes the legacy UTF-8 path API. Listing must not
+        // silently discard names merely because adoption cannot yet represent them.
+        Ok((
+            entries,
+            paths
+                .into_iter()
+                .filter_map(|p| String::from_utf8(p.0).ok())
+                .collect(),
+        ))
+    }
+    pub fn list_paths(&self, kind: Kind) -> Result<(Vec<Entry>, Vec<ListedPath>)> {
         let registry = self.load()?;
         let entries = registry
             .entries
@@ -93,12 +120,14 @@ impl Root {
         };
         let mut unmanaged = vec![];
         for (name, is_file) in dir.names()? {
-            if !is_file || !name.ends_with(kind.extension()) {
+            if !is_file || !name.ends_with(kind.extension().as_bytes()) {
                 continue;
             }
-            let file = format!("{}/{}", kind.directory(), name);
-            if !registry.entries.iter().any(|e| e.file == file) {
-                unmanaged.push(file)
+            let mut file = kind.directory().as_bytes().to_vec();
+            file.push(b'/');
+            file.extend_from_slice(&name);
+            if !registry.entries.iter().any(|e| e.file.as_bytes() == file) {
+                unmanaged.push(ListedPath(file))
             }
         }
         Ok((entries, unmanaged))
@@ -365,7 +394,7 @@ pub fn handle(
         };
         match op {
             "list" => {
-                let (e, u) = root.list(kind).map_err(map)?;
+                let (e, u) = root.list_paths(kind).map_err(map)?;
                 Ok(result(
                     method,
                     world,

@@ -376,7 +376,14 @@ pub(super) fn cli_run<M: remote::Metadata + curseforge::Metadata + Sync, T: inst
                 )?;
             }
             for u in v["unmanaged"].as_array().unwrap() {
-                writeln!(out, "unmanaged\t{}", u.as_str().unwrap())?;
+                out.write_all(b"unmanaged\t")?;
+                if let Some(s) = u.as_str() {
+                    out.write_all(s.as_bytes())?;
+                } else {
+                    let bytes: Vec<u8> = u.as_array().unwrap().iter().map(|b| b.as_u64().unwrap() as u8).collect();
+                    out.write_all(&bytes)?;
+                }
+                out.write_all(b"\n")?;
             }
         }
         "install" => {

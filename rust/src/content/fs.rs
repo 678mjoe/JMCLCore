@@ -17,7 +17,7 @@ static NEXT: AtomicU64 = AtomicU64::new(0);
 mod platform {
     use super::*;
     use rustix::fs::{self as fs, AtFlags, Mode, OFlags};
-    use std::os::unix::ffi::OsStringExt;
+
     impl Dir {
         pub fn root(path: &str) -> io::Result<Self> {
             std::fs::create_dir_all(path)?;
@@ -55,7 +55,7 @@ mod platform {
             }
             Ok(f)
         }
-        pub fn names(&self) -> io::Result<Vec<(String, bool)>> {
+        pub fn names(&self) -> io::Result<Vec<(Vec<u8>, bool)>> {
             let mut it = fs::Dir::read_from(&self.0)?;
             let mut out = vec![];
             while let Some(e) = it.read() {
@@ -64,10 +64,7 @@ mod platform {
                 if name == b"." || name == b".." {
                     continue;
                 }
-                let name = std::ffi::OsString::from_vec(name.to_vec());
-                if let Some(s) = name.to_str() {
-                    out.push((s.into(), e.file_type() == fs::FileType::RegularFile));
-                }
+                out.push((name.to_vec(), e.file_type() == fs::FileType::RegularFile));
             }
             Ok(out)
         }
@@ -140,13 +137,13 @@ mod platform {
                 fs::read_follow_at(&self.0, OsStr::new(name))
             }
         }
-        pub fn names(&self) -> io::Result<Vec<(String, bool)>> {
+        pub fn names(&self) -> io::Result<Vec<(Vec<u8>, bool)>> {
             Ok(fs::entries(&self.0)?
                 .into_iter()
                 .filter_map(|(n, a)| {
                     n.to_str().map(|s| {
                         (
-                            s.to_string(),
+                            s.as_bytes().to_vec(),
                             a & (FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_REPARSE_POINT) == 0,
                         )
                     })
