@@ -77,35 +77,15 @@ pub struct Version {
     #[serde(default)]
     pub dependencies: Vec<Dependency>,
 }
+pub(super) fn number_width<'de, D: serde::Deserializer<'de>>(
+    d: D,
+    width: usize,
+) -> std::result::Result<u64, D::Error> {
+    let raw = <&serde_json::value::RawValue>::deserialize(d)?;
+    crate::json_number::typed_raw(raw.get(), width).map_err(|e| serde::de::Error::custom(e.name()))
+}
 pub(super) fn number<'de, D: serde::Deserializer<'de>>(d: D) -> std::result::Result<u64, D::Error> {
-    let v = serde_json::Value::deserialize(d)?;
-    if let Some(s) = v.as_str()
-        && !s.contains(['.', 'e', 'E'])
-    {
-        let negative = s.starts_with('-');
-        let s = s.strip_prefix(['+', '-']).unwrap_or(s);
-        if s.is_empty() || s.starts_with('_') || s.ends_with('_') {
-            return Err(serde::de::Error::custom("InvalidCharacter"));
-        }
-        let mut n = 0u64;
-        for b in s.bytes() {
-            if b == b'_' {
-                continue;
-            }
-            if !b.is_ascii_digit() {
-                return Err(serde::de::Error::custom("InvalidCharacter"));
-            }
-            n = n
-                .checked_mul(10)
-                .and_then(|n| n.checked_add((b - b'0') as u64))
-                .ok_or_else(|| serde::de::Error::custom("Overflow"))?;
-        }
-        if negative && n != 0 {
-            return Err(serde::de::Error::custom("Overflow"));
-        }
-        return Ok(n);
-    }
-    crate::metadata::unsigned(&v, u64::MAX).map_err(|e| serde::de::Error::custom(e.name()))
+    number_width(d, 64)
 }
 pub(super) fn parse<T: serde::de::DeserializeOwned>(
     bytes: &[u8],
