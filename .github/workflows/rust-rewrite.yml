@@ -185,6 +185,8 @@ jobs:
           cargo build --locked --release
       - name: Differential implemented-slice compatibility
         run: |
+          python rust/compat/test_validate_coverage.py
+          python -O rust/compat/test_validate_coverage.py
           python rust/compat/validate_coverage.py --oracle-source .ci-oracle
           if [[ "$RUNNER_OS" == "Windows" ]]; then
             python rust/compat/check.py --zig .ci-oracle/zig-out/bin/jmcl-core.exe --rust rust/target/release/jmcl-core-rust.exe --oracle-source .ci-oracle --allow-approved-deviations

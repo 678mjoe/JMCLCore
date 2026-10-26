@@ -32,3 +32,36 @@ No packaged application, UI, native Tauri IPC, sidecar discovery, keychain, real
 ## Current frozen source rerun
 
 On 2026-10-24 the same bounded harness was rerun against source `0b878035f81041ccd891098a8a0eb27e0012f48b`, frozen executable SHA-256 `4201b9b01f9bf20521e0cd92f22bb1644901e292ed6d066cf1d8e0e767a800a0`. The unchanged native bridge again passed **19 requests across two sessions**. The unchanged TypeScript wrapper again completed **11 calls against each core**, with the same two explicitly asserted pre-existing mismatches. Pinned Zig hash and frontend source revisions above were unchanged. No frontend file was modified; all original scope exclusions still apply.
+
+## Repeatable current-frontend gate (2026-10-26)
+
+The test-only [`rust/compat/frontend_bridge`](../../rust/compat/frontend_bridge/README.md)
+harness pins frontend `91ec19d8125942296054d076013a7ae538f64c5d`, rather than
+extrapolating the historical 19/11 results. Its current account wrappers already
+correct both historical envelope mismatches above. No frontend production source
+or shipping Zig pin is changed.
+
+Evidence tiers remain distinct: existing session unit tests use **mock transports**;
+existing TypeScript contract scripts use an **injected direct process adapter**;
+existing native integration tests plus the added cached-modpack progress/idle-close/
+reopen test use **unchanged native Session/LocalProcessTransport with real executables**.
+The latter does not mean actual Tauri IPC, channel compaction, packaged UI or live
+service acceptance. The inherited system-Java probe is deliberately excluded and
+reported as filtered, not counted as passing. No runtime installer work is performed.
+
+A dedicated four-platform workflow now defines the repeatable gate. Its exact-head
+and postmerge terminal results must still be recorded before claiming cross-platform
+acceptance. `replacement_allowed` and `full_compatibility` remain false.
+
+Local Linux x86_64 run on 2026-10-26 passed with Rust implementation source
+`c0bda37fb66366123f3159fd0d9f99a00bd000b9` (debug binary SHA-256
+`d1c136338ba32b58a31367e844714fde4d97718899b36b88d747c212f80ed859`)
+and Zig source `5a4310debbcee26b3d2391bab2339f79cd6ec52e` (binary SHA-256
+`0d49ff4130720c67397c3f673afaaf226f4b1f8384f68ea599e43340030c164b`).
+Rust 1.99.1 and Bun 1.4.4 were used. Results: 10 selected mock-session tests;
+two unchanged typed-wrapper scripts per binary; eight inherited native tests
+plus one new real-progress/close/reopen test per binary. Both subjects delivered
+two nonterminal native callback events for the cached content fixture. The
+system-Java integration test was explicitly filtered once per subject; the other
+12 imported unit tests were not selected. This is a bounded run, not a full
+frontend suite or four-platform acceptance result.
