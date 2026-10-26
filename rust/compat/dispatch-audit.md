@@ -133,3 +133,29 @@ primitives; additive content byte-parent wrappers do not alter dispatcher routes
 or existing archive/native callers. The content root, adoption and store module
 fingerprints were refreshed after reviewing these changes. Inventory membership
 and the blocked acquisition fallback remain unchanged.
+
+## Local raw-record mutation review
+
+Manual review confirmed unchanged client and server method selection, parameter
+guards and platform gating. Existing remove/toggle calls now select the byte-aware
+registry view and retain existing filesystem operations and public String wrappers.
+Only the content root and server facade source fingerprints were refreshed; route
+membership and acquisition fallback classifications are unchanged.
+
+## Dynamic file-selector integration review
+
+Manual review confirmed unchanged method families, platform gates and operation
+selection. Only local file-selector decoding now preserves byte arrays with the
+existing dynamic-number helper; other parameter decoders and public String
+wrappers remain in place. The byte path validator visibility changed without
+changing its rules. The three affected source fingerprints were refreshed after
+review; the inventory still does not assert executable compatibility.
+
+## Native local file-argument review
+
+Manual review of the executable pre-dispatch hook confirmed interception only for
+existing local content mutation routes with non-UTF-8 `--file` values. All-UTF-8
+and unrelated routes remain on the existing dispatcher, including hidden server
+lifecycle commands. RPC method guards and membership did not change. The content
+root and server facade fingerprints were refreshed; broader native arguments are
+not covered by this static RPC inventory or this narrow CLI implementation.

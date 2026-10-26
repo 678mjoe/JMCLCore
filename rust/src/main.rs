@@ -70,14 +70,27 @@ fn run(args: &[String], stdout: &mut impl Write, stderr: &mut impl Write) -> io:
     }
 }
 fn main() {
-    let args: Vec<_> = std::env::args().skip(1).collect();
+    let os_args: Vec<_> = std::env::args_os().skip(1).collect();
+    let raw_result =
+        jmcl_core_rust::content::local_cli_os(&os_args, &mut io::stdout(), &mut io::stderr());
+    let args = if raw_result.is_none() {
+        Some(std::env::args().skip(1).collect::<Vec<_>>())
+    } else {
+        None
+    };
     #[cfg(target_os = "linux")]
-    if let Some(code) = jmcl_core_rust::servers::lifecycle::dispatch_hidden(&args) {
+    if let Some(args) = args.as_ref()
+        && let Some(code) = jmcl_core_rust::servers::lifecycle::dispatch_hidden(args)
+    {
         std::process::exit(code);
     }
     let mut stdout = io::stdout().lock();
     let mut stderr = io::stderr().lock();
-    let code = match run(&args, &mut stdout, &mut stderr) {
+    let result = match raw_result {
+        Some(result) => result,
+        None => run(args.as_ref().unwrap(), &mut stdout, &mut stderr),
+    };
+    let code = match result {
         Ok(c) => c,
         Err(e) => {
             let _ = if e.kind() == io::ErrorKind::UnexpectedEof {

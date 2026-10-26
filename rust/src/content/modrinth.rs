@@ -155,8 +155,18 @@ fn loaders(v: &[String], required: bool) -> Result<()> {
     }
     Ok(())
 }
+// Only after a complete typed Modrinth parse: skipped unknown strings still
+// need lexical validation. Never call this for Envelope<RawValue>, or before
+// typed parsing, since earlier type/duplicate errors must retain precedence.
+fn validate_completed_strings(bytes: &[u8]) -> Result<()> {
+    let text = std::str::from_utf8(bytes).map_err(|_| Error("SyntaxError".into()))?;
+    crate::auth::json::Json::parse(text)
+        .map(|_| ())
+        .map_err(|_| Error("SyntaxError".into()))
+}
 pub fn parse_project(b: &[u8]) -> Result<Project> {
     let p: Project = parse(b, 1024 * 1024, false)?;
+    validate_completed_strings(b)?;
     project_ref(&p.id)?;
     project_ref(&p.slug)?;
     if !matches!(
@@ -242,11 +252,13 @@ fn validate(v: &Version) -> Result<()> {
 }
 pub fn parse_version(b: &[u8]) -> Result<Version> {
     let v = parse(b, 4 * 1024 * 1024, false)?;
+    validate_completed_strings(b)?;
     validate(&v)?;
     Ok(v)
 }
 pub fn parse_versions(b: &[u8]) -> Result<Vec<Version>> {
     let v: Vec<Version> = parse(b, 16 * 1024 * 1024, true)?;
+    validate_completed_strings(b)?;
     if v.len() > 512 {
         return Err("TooManyModrinthVersions".into());
     }
