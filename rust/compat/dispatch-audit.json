@@ -12,7 +12,7 @@
     "rust/src/install/rpc.rs": "84f3d4050fa7cb271e65f8e6adccb77e12f166d862f1f66e3aaaea5c8d825f50",
     "rust/src/modpack/rpc.rs": "e521da6aa00f9468e3637b43e059e3d79ef7ea76e13d86092fae4a1768383dda",
     "rust/src/launch/rpc.rs": "ceb84ea7bb890aecec89ac3b01388dcc76a84ff804148fad6a363ae6118e5dda",
-    "rust/src/version.rs": "fdd40ed158c9c1528c7afd715d3d7527c8fa56d0c916641386c1f806219b22d6",
+    "rust/src/version.rs": "12b1d3c85a1a8ee364b1e9382ac1269a921b596abc5dda1025e79527d4862868",
     "rust/src/java/select.rs": "e8e9c0f07ad7eaad106d998489af240ff089079118ead7a3055a8fd2c43fec6e",
     "rust/src/accounts.rs": "1485d3218cd5397a393554c6f4f4de957e549cd3c38ea1a1bf40cbef5a361526",
     "rust/src/instances.rs": "43874470f8962b1e84a8460525cf2c783825ad2d33fdc3137a80f75a619116b0",

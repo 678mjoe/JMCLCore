@@ -83,29 +83,46 @@ impl Transport for HttpTransport {
                 Error::Network
             }
         })?;
-        if !response.status().is_success() {
-            return Err(Error::UnsuccessfulHttpStatus);
-        }
-        if response.content_length().is_some_and(|x| x > max as u64) {
-            return Err(Error::ResponseBodyTooLarge);
-        }
-        let mut bytes = Vec::new();
-        response
-            .take(max as u64 + 1)
-            .read_to_end(&mut bytes)
-            .map_err(|e| {
-                if e.kind() == std::io::ErrorKind::TimedOut {
-                    Error::MetadataFetchTimeout
-                } else {
-                    Error::Network
-                }
-            })?;
-        if bytes.len() > max {
-            return Err(Error::ResponseBodyTooLarge);
-        }
-        Ok(bytes)
+        finalize_metadata_body(
+            response.status().is_success(),
+            response.content_length(),
+            response,
+            max,
+        )
     }
 }
+// Shared by the actual GET adapter and injected-reader contract tests.
+fn finalize_metadata_body(
+    successful: bool,
+    _advertised_length: Option<u64>,
+    response: impl Read,
+    max: usize,
+) -> Result<Vec<u8>, Error> {
+    // The pinned fetchBodyWithHeader consumes a bounded body before status
+    // classification. Content-Length is not a substitute for bytes actually
+    // produced by the response reader (which owns framing validation).
+    let mut bytes = Vec::new();
+    response
+        .take(max as u64 + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|e| {
+            if e.kind() == std::io::ErrorKind::TimedOut {
+                Error::MetadataFetchTimeout
+            } else {
+                Error::Network
+            }
+        })?;
+    if bytes.len() > max {
+        return Err(Error::ResponseBodyTooLarge);
+    }
+    if !successful {
+        return Err(Error::UnsuccessfulHttpStatus);
+    }
+    Ok(bytes)
+}
+#[cfg(test)]
+#[path = "version_http_tests.rs"]
+mod http_tests;
 #[derive(Clone, Copy)]
 pub enum Policy {
     Immutable,
