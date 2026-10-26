@@ -1,8 +1,10 @@
 //! Caller-keyed CurseForge resolution; keys never enter returned metadata/plans.
+#[path = "curseforge_file.rs"]
+mod file_ordered;
 use super::{
     modrinth as mr,
     registry::{Kind, Provider, Registry},
-    remote::{Resolution, Resolved},
+    remote::Resolution,
 };
 use crate::modpack::provider;
 use serde::Deserialize;
@@ -144,15 +146,16 @@ struct Hash {
     algo: u8,
 }
 #[derive(Deserialize)]
-struct Detail {
+#[serde(bound(deserialize = "F: mr::FilenameValue"))]
+struct Detail<F> {
     #[serde(deserialize_with = "number32")]
     id: u32,
     #[serde(rename = "modId", deserialize_with = "number32")]
     project: u32,
     #[serde(default = "yes", rename = "isAvailable")]
     available: bool,
-    #[serde(rename = "fileName", deserialize_with = "mr::string")]
-    name: String,
+    #[serde(rename = "fileName", deserialize_with = "mr::filename_value")]
+    name: F,
     #[serde(rename = "releaseType", deserialize_with = "number8")]
     release: u8,
     hashes: Vec<Hash>,
@@ -172,10 +175,10 @@ struct Detail {
     dependencies: Vec<Dependency>,
 }
 #[derive(Clone)]
-pub struct File {
+pub struct FileRecord<F> {
     pub id: u32,
     pub project: u32,
-    pub name: String,
+    pub name: F,
     pub sha1: String,
     pub size: u64,
     pub url: Option<String>,
@@ -185,32 +188,34 @@ pub struct File {
     pub games: Vec<mr::MetadataBytes>,
     pub dependencies: Vec<Dependency>,
 }
-pub fn parse_file(bytes: &[u8]) -> mr::Result<File> {
+pub(super) fn parse_file_as<F: mr::FilenameValue>(bytes: &[u8]) -> mr::Result<FileRecord<F>> {
     if bytes.len() > 2 * 1024 * 1024 {
         return Err("CurseforgeResponseTooLarge".into());
     }
-    let env: TypedEnvelope<Detail> = mr::parse(bytes, 2 * 1024 * 1024, false)?;
-    let detail = env.data;
-    validate_completed_document(bytes)?;
-    validate_detail(detail)
+    let detail = file_ordered::parse(bytes)?;
+    validate_detail_as(detail)
 }
-fn validate_detail(d: Detail) -> mr::Result<File> {
+fn validate_detail_as<F: mr::FilenameValue>(d: Detail<F>) -> mr::Result<FileRecord<F>> {
     if d.id == 0 || d.project == 0 {
         return Err("InvalidCurseforgeId".into());
     }
-    let n = &d.name;
-    let stem = n.split('.').next().unwrap_or("").to_ascii_uppercase();
-    let reserved = matches!(stem.as_str(), "CON" | "PRN" | "AUX" | "NUL")
-        || ((stem.starts_with("COM") || stem.starts_with("LPT"))
+    let n = d.name.filename_bytes();
+    let stem = n
+        .split(|b| *b == b'.')
+        .next()
+        .unwrap_or(b"")
+        .to_ascii_uppercase();
+    let reserved = matches!(stem.as_slice(), b"CON" | b"PRN" | b"AUX" | b"NUL")
+        || ((stem.starts_with(b"COM") || stem.starts_with(b"LPT"))
             && stem.len() == 4
-            && matches!(stem.as_bytes()[3], b'1'..=b'9'));
+            && matches!(stem[3], b'1'..=b'9'));
     if n.is_empty()
         || n.len() > 256
-        || n == "."
-        || n == ".."
-        || n.ends_with(['.', ' '])
-        || n.bytes()
-            .any(|b| b < 32 || b == 127 || b"/\\:".contains(&b))
+        || n == b"."
+        || n == b".."
+        || n.last().is_some_and(|b| matches!(b, b'.' | b' '))
+        || n.iter()
+            .any(|b| *b < 32 || *b == 127 || b"/\\:".contains(b))
         || reserved
     {
         return Err("InvalidCurseforgeFilename".into());
@@ -261,7 +266,7 @@ fn validate_detail(d: Detail) -> mr::Result<File> {
     if d.dependencies.len() > 128 {
         return Err("TooManyCurseforgeDependencies".into());
     }
-    Ok(File {
+    Ok(FileRecord {
         id: d.id,
         project: d.project,
         name: d.name,
@@ -276,7 +281,7 @@ fn validate_detail(d: Detail) -> mr::Result<File> {
     })
 }
 
-pub fn supports(f: &File, game: &str, loader: Option<&str>) -> bool {
+pub fn supports<F>(f: &FileRecord<F>, game: &str, loader: Option<&str>) -> bool {
     let loader = loader.filter(|l| matches!(*l, "fabric" | "forge" | "neoforge"));
     f.games.iter().any(|s| s.as_bytes() == game.as_bytes())
         && loader.is_none_or(|l| {
@@ -285,10 +290,13 @@ pub fn supports(f: &File, game: &str, loader: Option<&str>) -> bool {
                 .any(|s| s.as_bytes().eq_ignore_ascii_case(l.as_bytes()))
         })
 }
-pub fn select<'a>(files: &'a [File], ext: Option<&str>) -> Option<&'a File> {
-    let mut best: Option<&File> = None;
+fn select_as<'a, F: mr::FilenameValue>(
+    files: &'a [FileRecord<F>],
+    ext: Option<&str>,
+) -> Option<&'a FileRecord<F>> {
+    let mut best: Option<&FileRecord<F>> = None;
     for f in files {
-        if !f.available || ext.is_some_and(|e| !f.name.ends_with(e)) {
+        if !f.available || ext.is_some_and(|e| !f.name.filename_bytes().ends_with(e.as_bytes())) {
             continue;
         }
         if best.is_none_or(|b| {
@@ -299,6 +307,18 @@ pub fn select<'a>(files: &'a [File], ext: Option<&str>) -> Option<&'a File> {
         }
     }
     best
+}
+pub type File = FileRecord<String>;
+pub fn parse_file(bytes: &[u8]) -> mr::Result<File> {
+    parse_file_as(bytes)
+}
+
+pub fn select<'a>(files: &'a [File], ext: Option<&str>) -> Option<&'a File> {
+    select_as(files, ext)
+}
+#[cfg(test)]
+fn parse_page(bytes: &[u8]) -> mr::Result<(Vec<File>, Option<Pagination>)> {
+    parse_page_as(bytes)
 }
 fn url(project: &str) -> mr::Result<String> {
     id(project)?;
@@ -330,16 +350,19 @@ pub fn page_url(project: &str, game: &str, loader: Option<&str>, index: u32) -> 
 }
 // The source types the entire page before length and per-file semantic checks.
 #[derive(Deserialize)]
-struct PageEnvelope {
-    data: Vec<Detail>,
+#[serde(bound(deserialize = "F: mr::FilenameValue"))]
+struct PageEnvelope<F> {
+    data: Vec<Detail<F>>,
     pagination: Option<Pagination>,
 }
-fn parse_page(bytes: &[u8]) -> mr::Result<(Vec<File>, Option<Pagination>)> {
+fn parse_page_as<F: mr::FilenameValue>(
+    bytes: &[u8],
+) -> mr::Result<(Vec<FileRecord<F>>, Option<Pagination>)> {
     const LIMIT: usize = 8 * 1024 * 1024;
     if bytes.len() > LIMIT {
         return Err("CurseforgeResponseTooLarge".into());
     }
-    let page: PageEnvelope = mr::parse(bytes, LIMIT, false)?;
+    let page: PageEnvelope<F> = mr::parse(bytes, LIMIT, false)?;
     validate_completed_document(bytes)?;
     if page.data.len() > 50 {
         return Err("TooManyCurseforgeFiles".into());
@@ -347,22 +370,24 @@ fn parse_page(bytes: &[u8]) -> mr::Result<(Vec<File>, Option<Pagination>)> {
     let files = page
         .data
         .into_iter()
-        .map(validate_detail)
+        .map(validate_detail_as)
         .collect::<mr::Result<_>>()?;
     Ok((files, page.pagination))
 }
-struct Resolver<'a, T> {
+struct Resolver<'a, T, F, R: super::registry::RegistryFile> {
     transport: &'a T,
     key: &'a str,
     kind: Kind,
     game: &'a str,
     loader: Option<&'a str>,
     dependencies: bool,
-    registry: &'a Registry,
+    registry: &'a super::registry::RegistryRecord<R>,
     seen: HashSet<String>,
-    result: Resolution,
+    result: super::remote::ResolutionRecord<F>,
 }
-impl<T: Metadata> Resolver<'_, T> {
+impl<T: Metadata, F: mr::FilenameValue + Clone, R: super::registry::RegistryFile>
+    Resolver<'_, T, F, R>
+{
     fn get(&self, url: &str, max: usize) -> mr::Result<Vec<u8>> {
         let b = self.transport.get(url, self.key, max)?;
         if b.len() > max {
@@ -370,7 +395,7 @@ impl<T: Metadata> Resolver<'_, T> {
         }
         Ok(b)
     }
-    fn pages(&self, project: &str) -> mr::Result<Vec<File>> {
+    fn pages(&self, project: &str) -> mr::Result<Vec<FileRecord<F>>> {
         let mut files = vec![];
         let mut index = 0;
         loop {
@@ -378,7 +403,7 @@ impl<T: Metadata> Resolver<'_, T> {
                 &page_url(project, self.game, self.loader, index)?,
                 8 * 1024 * 1024,
             )?;
-            let (page, pagination) = parse_page(&bytes)?;
+            let (page, pagination) = parse_page_as(&bytes)?;
             let count = page.len();
             files.extend(page);
             if files.len() > 512 {
@@ -433,7 +458,7 @@ impl<T: Metadata> Resolver<'_, T> {
             return Ok(());
         }
         let f = if let Some(id) = file {
-            let f = parse_file(&self.get(&file_url(&project, id)?, 2 * 1024 * 1024)?)?;
+            let f = parse_file_as::<F>(&self.get(&file_url(&project, id)?, 2 * 1024 * 1024)?)?;
             if f.project != p.id {
                 return Err("CurseforgeFileProjectMismatch".into());
             }
@@ -443,13 +468,13 @@ impl<T: Metadata> Resolver<'_, T> {
             if !f.available {
                 return Err("CurseforgeDownloadUnavailable".into());
             }
-            if self.kind == Kind::Datapack && !f.name.ends_with(".zip") {
+            if self.kind == Kind::Datapack && !f.name.filename_bytes().ends_with(b".zip") {
                 return Err("ContentFileSelectionFailed".into());
             }
             f
         } else {
             let files = self.pages(&project)?;
-            select(
+            select_as(
                 &files,
                 if self.kind == Kind::Datapack {
                     Some(".zip")
@@ -468,7 +493,7 @@ impl<T: Metadata> Resolver<'_, T> {
             )?)?
             .ok_or_else(|| mr::Error::from("CurseforgeDownloadUnavailable"))?,
         };
-        self.result.files.push(Resolved {
+        self.result.files.push(super::remote::ResolvedRecord {
             project_id: project,
             slug: Some(p.slug),
             version_id: f.id.to_string(),
@@ -489,7 +514,7 @@ impl<T: Metadata> Resolver<'_, T> {
     }
 }
 #[allow(clippy::too_many_arguments)]
-pub fn resolve<T: Metadata>(
+fn resolve_as<T: Metadata, F: mr::FilenameValue + Clone, R: super::registry::RegistryFile>(
     transport: &T,
     kind: Kind,
     game: &str,
@@ -498,8 +523,8 @@ pub fn resolve<T: Metadata>(
     project: &str,
     file: Option<&str>,
     dependencies: bool,
-    registry: &Registry,
-) -> mr::Result<Resolution> {
+    registry: &super::registry::RegistryRecord<R>,
+) -> mr::Result<super::remote::ResolutionRecord<F>> {
     id(project)?;
     provider::validate_key(key).map_err(map)?;
     mr::game_version(game)?;
@@ -528,7 +553,7 @@ pub fn resolve<T: Metadata>(
         dependencies,
         registry,
         seen: HashSet::new(),
-        result: Resolution {
+        result: super::remote::ResolutionRecord {
             files: vec![],
             skipped: 0,
         },
@@ -537,6 +562,54 @@ pub fn resolve<T: Metadata>(
     Ok(r.result)
 }
 
+#[allow(clippy::too_many_arguments)]
+pub fn resolve<T: Metadata>(
+    transport: &T,
+    kind: Kind,
+    game: &str,
+    loader: Option<&str>,
+    key: &str,
+    project: &str,
+    file: Option<&str>,
+    dependencies: bool,
+    registry: &Registry,
+) -> mr::Result<Resolution> {
+    resolve_as(
+        transport,
+        kind,
+        game,
+        loader,
+        key,
+        project,
+        file,
+        dependencies,
+        registry,
+    )
+}
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn resolve_bytes<T: Metadata>(
+    transport: &T,
+    kind: Kind,
+    game: &str,
+    loader: Option<&str>,
+    key: &str,
+    project: &str,
+    file: Option<&str>,
+    dependencies: bool,
+    registry: &super::registry::ListingRegistry,
+) -> mr::Result<super::remote::ByteResolution> {
+    resolve_as(
+        transport,
+        kind,
+        game,
+        loader,
+        key,
+        project,
+        file,
+        dependencies,
+        registry,
+    )
+}
 #[cfg(test)]
 #[path = "../../tests/support/curseforge_metadata_bytes.rs"]
 mod byte_metadata_tests;

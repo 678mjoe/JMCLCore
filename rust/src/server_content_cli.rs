@@ -113,6 +113,7 @@ fn cli_params(args: &[String], op: &str) -> Result<(Params, bool), ()> {
         directory: "servers".into(),
         id: id.clone(),
         project: None,
+        local_project: None,
         file: None,
         version: None,
         provider: None,
@@ -214,6 +215,29 @@ pub(super) fn cli_run<M: remote::Metadata + curseforge::Metadata + Sync, T: inst
     };
     cli_execute(family,op,(p,json_output),out,errors,metadata,transport)
 }
+// Only local operations discard the display name; preserve real operational
+// fields in this tuple without changing the network/adoption target helper.
+fn cli_read_target(p: &Params) -> Result<(File, String, Option<&'static str>), String> {
+    let root = store::open_root(&p.directory).map_err(|_| "ServerNotFound")?;
+    let m = store::load_read(&root, &p.id).map_err(|e| {
+        if e.kind() == io::ErrorKind::NotFound || e.to_string() == "InvalidServerId" {
+            "ServerNotFound".to_owned()
+        } else {
+            e.to_string()
+        }
+    })?;
+    let loader = if m.fabric_loader.is_some() {
+        Some("fabric")
+    } else if m.neoforge_version.is_some() {
+        Some("neoforge")
+    } else if m.forge_version.is_some() {
+        Some("forge")
+    } else {
+        None
+    };
+    let dir = store::open_server(&root, &p.id).map_err(|_| "ServerNotFound")?;
+    Ok((dir, m.version_id, loader))
+}
 fn cli_execute<M: remote::Metadata + curseforge::Metadata + Sync, T: install::Transport>(family:&str,op:&str,parsed:(Params,bool),out:&mut impl Write,errors:&mut impl Write,metadata:&M,transport:&T)->io::Result<u8>{
     let (p,json_output)=parsed;
     if op == "install" && p.project.is_none() {
@@ -268,7 +292,11 @@ fn cli_execute<M: remote::Metadata + curseforge::Metadata + Sync, T: install::Tr
         None
     };
     let prepared = (|| -> Result<_, String> {
-        let (dir, game, loader) = target(&p, family == "mods" && op == "install")?;
+        let (dir, game, loader) = if matches!(op, "list" | "enable" | "disable" | "remove") {
+            cli_read_target(&p)?
+        } else {
+            target(&p, family == "mods" && op == "install")?
+        };
         let guard = if op == "list" {
             None
         } else {
@@ -320,12 +348,11 @@ fn cli_execute<M: remote::Metadata + curseforge::Metadata + Sync, T: install::Tr
             },
             |event| {
                 match event {
-                    install::Event::Retry(r) => writeln!(
-                        errors,
-                        "retry {}/{}: {} ({})",
-                        r.attempt, r.max_attempts, r.path, r.error_name
-                    )?,
-                    install::Event::Progress(p)
+                    install::ByteEvent::Retry(r) => {
+                        write!(errors,"retry {}/{}: ",r.attempt,r.max_attempts)?;
+                        errors.write_all(&r.path.0)?;writeln!(errors," ({})",r.error_name)?;
+                    },
+                    install::ByteEvent::Progress(p)
                         if p.files_completed > completed
                             && (p.files_completed % 100 == 0
                                 || p.files_completed == p.files_total) =>
@@ -397,38 +424,17 @@ fn cli_execute<M: remote::Metadata + curseforge::Metadata + Sync, T: install::Tr
         }
         "install" => {
             for e in v["installed"].as_array().unwrap() {
-                writeln!(
-                    out,
-                    "installed\t{}\t{}\t{}\t{}",
-                    s(e, "file"),
-                    s(e, "sha1"),
-                    s(e, "slug"),
-                    if e["as_dependency"] == true {
-                        "dependency"
-                    } else {
-                        "explicit"
-                    }
-                )?;
+                out.write_all(b"installed\t")?;write_content_file(out,&e["file"])?;
+                writeln!(out,"\t{}\t{}\t{}",s(e,"sha1"),s(e,"slug"),if e["as_dependency"]==true {"dependency"}else{"explicit"})?;
             }
-            writeln!(out, "skipped\t{}", v["skipped"])?;
+            writeln!(out,"skipped\t{}",v["skipped"])?;
         }
         "set-version" => {
-            if v["changed"] == true {
-                writeln!(
-                    out,
-                    "changed\t{}\t{}\t{}\t{}",
-                    s(&v, "file"),
-                    s(&v, "sha1"),
-                    s(&v, "old_version_id"),
-                    s(&v, "new_version_id")
-                )?;
-            } else {
-                writeln!(
-                    out,
-                    "unchanged\t{}\t{}",
-                    s(&v, "file"),
-                    s(&v, "new_version_id")
-                )?;
+            if v["changed"]==true {
+                out.write_all(b"changed\t")?;write_content_file(out,&v["file"])?;
+                writeln!(out,"\t{}\t{}\t{}",s(&v,"sha1"),s(&v,"old_version_id"),s(&v,"new_version_id"))?;
+            }else{
+                out.write_all(b"unchanged\t")?;write_content_file(out,&v["file"])?;writeln!(out,"\t{}",s(&v,"new_version_id"))?;
             }
         }
         "adopt" => {

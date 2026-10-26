@@ -1,4 +1,6 @@
-use super::{MAX_MANIFEST_BYTES, Manifest, installed_bytes, validate_id};
+use super::{
+    InstallationIdentity, MAX_MANIFEST_BYTES, Manifest, ReadManifest, installed_bytes, validate_id,
+};
 use rustix::fs::{self as fs, AtFlags, FileType, Mode, OFlags};
 use std::{
     ffi::{OsStr, OsString},
@@ -135,6 +137,9 @@ impl Root {
     }
 
     pub fn open(path: &str) -> io::Result<Self> {
+        Self::open_native(path.as_ref())
+    }
+    pub fn open_native(path: &std::ffi::OsStr) -> io::Result<Self> {
         if path.is_empty() {
             return Err(invalid("EmptyInstancesRoot"));
         }
@@ -142,7 +147,7 @@ impl Root {
         // (including macOS /tmp and /var), but refuse a symlink final directory.
         // createDirPathOpen reports the subsequent directory open error when
         // the final component exists as a file (NotDir, not PathAlreadyExists).
-        match std::fs::create_dir_all(path) {
+        match std::fs::create_dir_all(std::path::Path::new(path)) {
             Ok(()) => {}
             Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {}
             Err(e) => return Err(e),
@@ -176,9 +181,19 @@ impl Root {
         result
     }
     pub fn load(&self, id: &str) -> io::Result<Manifest> {
+        self.load_with(id, Manifest::parse)
+    }
+    pub fn load_read(&self, id: &str) -> io::Result<ReadManifest> {
+        self.load_with(id, ReadManifest::parse)
+    }
+    fn load_with<T>(
+        &self,
+        id: &str,
+        parse: fn(&[u8], &str) -> Result<T, &'static str>,
+    ) -> io::Result<T> {
         validate_id(id).map_err(invalid)?;
         let child = open_dir(&self.dir, id.as_ref(), false)?;
-        Manifest::parse(
+        parse(
             &read_policy(&child, "instance.json", MAX_MANIFEST_BYTES, true).map_err(|e| {
                 if e.to_string() == "TooLarge" {
                     invalid("InstanceManifestTooLarge")
@@ -190,7 +205,18 @@ impl Root {
         )
         .map_err(invalid)
     }
+    #[cfg(test)]
     pub fn list(&self) -> io::Result<Vec<Manifest>> {
+        self.list_with(Self::load, |m| &m.id)
+    }
+    pub fn list_read(&self) -> io::Result<Vec<ReadManifest>> {
+        self.list_with(Self::load_read, |m| &m.id)
+    }
+    fn list_with<T>(
+        &self,
+        load: fn(&Self, &str) -> io::Result<T>,
+        id_of: fn(&T) -> &str,
+    ) -> io::Result<Vec<T>> {
         let mut list = Vec::new();
         for (name, kind) in names(&self.dir)? {
             if !matches!(kind, FileType::Directory | FileType::Unknown) {
@@ -203,18 +229,22 @@ impl Root {
             if list.len() == 4096 {
                 return Err(invalid("TooManyInstances"));
             }
-            if let Ok(m) = self.load(id) {
+            if let Ok(m) = load(self, id) {
                 list.push(m)
             }
         }
-        list.sort_by(|a, b| a.id.cmp(&b.id));
+        list.sort_by(|a, b| id_of(a).cmp(id_of(b)));
         Ok(list)
     }
     pub fn delete(&self, id: &str) -> io::Result<()> {
-        self.load(id)?;
+        self.load_read(id)?;
         remove_tree(&self.dir, id.as_ref())
     }
+    #[cfg(test)]
     pub fn installed(&self, m: &Manifest) -> io::Result<bool> {
+        self.installed_identity(m.identity())
+    }
+    pub fn installed_identity(&self, m: InstallationIdentity<'_>) -> io::Result<bool> {
         let child = open_dir(&self.dir, m.id.as_ref(), false)?;
         let game = match open_dir(&child, ".minecraft".as_ref(), false) {
             Ok(d) => d,

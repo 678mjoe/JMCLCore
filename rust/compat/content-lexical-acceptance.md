@@ -46,11 +46,18 @@ pure adapter.
 
 ## Explicit remaining diagnostics
 
-This does not claim all malformed JSON diagnostics/order are fixed. For example,
-invalid raw UTF-8 in a known title is still `UnexpectedToken` instead of source
+Project and Version parsing now have separate [Project](modrinth-project-ordered.md)
+and [nested Version](modrinth-version-ordered.md) ordered parsers/corpora. The
+remaining text records the historical successful-parse-only boundary that
+motivated those implementations; it is not a claim that the same demonstrated
+Modrinth cases remain unfixed. Other shared/provider parser diagnostics still
+need their own evidence and scope.
+
+The original successful-parse-only change did not fix all malformed JSON
+diagnostics/order. For example, invalid raw UTF-8 in a known title was `UnexpectedToken` instead of source
 `SyntaxError`; an invalid unknown string followed by missing required fields
-still encounters serde's missing-field error first. These need a separate
-ordered parsing solution, not blanket prevalidation.
+encountered serde's missing-field error first. These required the separate
+ordered parsing solutions, not blanket prevalidation.
 
 Investigated and rejected shortcut: mapping all serde Syntax errors or comparing
 its final error offset to a string's invalid byte offset. For

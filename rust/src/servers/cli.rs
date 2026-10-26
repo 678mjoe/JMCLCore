@@ -175,9 +175,24 @@ pub fn cli(args: &[String], out: &mut impl Write, err: &mut impl Write) -> io::R
         }
     );
     let raw = serde_json::value::to_raw_value(&params)?;
-    let mut result = match super::handle(&method, Some(&raw)).unwrap() {
+    #[cfg(target_os = "linux")]
+    let (response, load_diagnostic) = if command == "show" {
+        super::rpc::show_with_load_diagnostic(Some(&raw))
+    } else if command == "delete" {
+        super::rpc::delete_with_diagnostic(Some(&raw))
+    } else {
+        (super::handle(&method, Some(&raw)).unwrap(), None)
+    };
+    #[cfg(not(target_os = "linux"))]
+    let (response, load_diagnostic): (_, Option<String>) =
+        (super::handle(&method, Some(&raw)).unwrap(), None);
+    let mut result = match response {
         Ok(v) => v,
         Err(e) => {
+            if let Some(message) = load_diagnostic {
+                writeln!(err, "{message}")?;
+                return Ok(1);
+            }
             let message = match e.code.as_str() {
                 "SERVER_NOT_FOUND" if command == "show" => {
                     "failed to load server: FileNotFound".into()
@@ -223,9 +238,9 @@ pub fn cli(args: &[String], out: &mut impl Write, err: &mut impl Write) -> io::R
     match command.as_str() {
         "list" => {
             for s in result["servers"].as_array().unwrap() {
-                writeln!(
+                write!(
                     out,
-                    "{}\t{}\t{}\t{}\t{}",
+                    "{}\t{}\t{}\t{}\t",
                     text(&s["id"]),
                     text(&s["version_id"]),
                     text(&s["source"]),
@@ -234,15 +249,17 @@ pub fn cli(args: &[String], out: &mut impl Write, err: &mut impl Write) -> io::R
                     } else {
                         "not-installed"
                     },
-                    text(&s["name"])
                 )?;
+                write_name(out, &s["name"])?;
+                out.write_all(b"\n")?;
             }
         }
         "show" => {
+            write!(out, "server\t{id}\nname\t")?;
+            write_name(out, &result["name"])?;
             writeln!(
                 out,
-                "server\t{id}\nname\t{}\nversion\t{}\nsource\t{}\ninstalled\t{}",
-                text(&result["name"]),
+                "\nversion\t{}\nsource\t{}\ninstalled\t{}",
                 text(&result["version_id"]),
                 text(&result["source"]),
                 text(&result["installed"])
@@ -304,4 +321,14 @@ pub fn cli(args: &[String], out: &mut impl Write, err: &mut impl Write) -> io::R
         _ => unreachable!(),
     }
     Ok(0)
+}
+
+fn write_name(out: &mut impl std::io::Write, name: &serde_json::Value) -> std::io::Result<()> {
+    if let Some(text) = name.as_str() {
+        out.write_all(text.as_bytes())
+    } else {
+        let bytes: Vec<u8> = serde_json::from_value(name.clone())
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+        out.write_all(&bytes)
+    }
 }

@@ -159,3 +159,61 @@ and unrelated routes remain on the existing dispatcher, including hidden server
 lifecycle commands. RPC method guards and membership did not change. The content
 root and server facade fingerprints were refreshed; broader native arguments are
 not covered by this static RPC inventory or this narrow CLI implementation.
+
+## Account metadata byte-parser review
+
+Manual review confirmed the same four account method guards and handler order.
+Private disk and parameter decoders now retain their distinct typed/dynamic byte
+grammars; parameter validation still follows the existing empty/root/metadata
+order. Public output models and routing membership are unchanged. Only the
+reviewed accounts source fingerprint was refreshed.
+
+## Persisted manifest diagnostic and enum review
+
+Manual review confirmed unchanged RPC membership and parameter routing. A private
+server show diagnostic channel retains the original anchored load error without
+rereading disk; ordinary RPC envelopes are unchanged. Instance and server source
+enums now validate during typed parsing while retaining their public String API.
+The instance module and server RPC fingerprints were refreshed; these parser and
+CLI changes do not expand the static method inventory claim.
+
+The subsequent persisted invalid-ID correction only changes `instance.get`
+load-error classification to its source contract. Request validation, delete
+handling and method selection are unchanged; the instance fingerprint was
+reviewed again after this narrow mapping correction.
+
+## Display-name read-view integration review
+
+Manual review confirmed that only instance/server get/list and CLI show/list
+select the byte-aware display-name read view. Other operations still use the
+existing operational String manifests. Server get is handled earlier within
+the same guarded handler, with unchanged root, platform and error checks; the
+installation identity excludes names without fabricating placeholder values.
+The instance and server RPC fingerprints were reviewed and refreshed.
+
+## Read-only lookup parameter review
+
+Manual review confirmed dedicated instance/server get and server list parameter
+views retain platform gates and method membership while preserving dynamic byte
+IDs and ignored values. Root opening still precedes ID semantic lookup. Shared
+create/delete/lifecycle parameter decoding is unchanged; outer duplicate-field
+rejection remains before dispatch. The two affected fingerprints were refreshed.
+
+## Adoption target decoder review
+
+The existing content-family adoption dispatch and `handle` entry point are
+unchanged. Manual review found changes only to byte-string parameter decoding,
+ordered native root opening and world-result representation. The per-file
+adoption transaction and shared store implementation are unchanged. The source
+fingerprint was refreshed for this reviewed decoder change; this does not
+classify the existing persistent digest-lock layout difference as parity.
+
+## Server local mutation target review
+
+The Linux server-content method inventory and public dispatcher guard remain
+unchanged. Existing enable/disable/remove methods now take a dedicated byte-target
+path before the unchanged network/adoption parser. Manual review verified the
+root, operational manifest, stopped guard, properties and selector ordering; the
+shared local mutation field executor retains CLI behavior. Lifecycle/store
+implementations are unchanged. The reviewed server-content fingerprint is
+updated; no running-server or non-Linux RPC acceptance is implied.

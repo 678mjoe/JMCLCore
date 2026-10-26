@@ -225,14 +225,14 @@ pub fn run_with<M: remote::Metadata + curseforge::Metadata + Sync, T: install::T
     };
     let mut completed = 0;
     enum Outcome {
-        Installed(remote::Summary),
-        Changed(remote::VersionChange),
+        Installed(remote::ByteSummary),
+        Changed(remote::ByteVersionChange),
     }
     let result = install::stream::stream(
         |reporter| {
             if change {
                 return root
-                    .set_version(
+                    .set_version_bytes(
                         &store,
                         kind,
                         game,
@@ -267,10 +267,10 @@ pub fn run_with<M: remote::Metadata + curseforge::Metadata + Sync, T: install::T
             })();
             identifiers.map_err(|e| install::Error::named(&e.0))?;
             let registry = root
-                .load()
+                .load_listing()
                 .map_err(|e| install::Error::named(&super::cli::name(&e)))?;
             let r = if provider == Provider::Modrinth {
-                remote::resolve_modrinth(
+                remote::resolve_modrinth_bytes(
                     metadata,
                     kind,
                     game,
@@ -281,7 +281,7 @@ pub fn run_with<M: remote::Metadata + curseforge::Metadata + Sync, T: install::T
                     &registry,
                 )
             } else {
-                curseforge::resolve(
+                curseforge::resolve_bytes(
                     metadata,
                     kind,
                     game,
@@ -294,7 +294,7 @@ pub fn run_with<M: remote::Metadata + curseforge::Metadata + Sync, T: install::T
                 )
             }
             .map_err(|e| install::Error::named(&e.0))?;
-            root.install_resolved_with_registry(
+            root.install_resolved_with_registry_bytes(
                 &store,
                 kind,
                 game,
@@ -309,12 +309,12 @@ pub fn run_with<M: remote::Metadata + curseforge::Metadata + Sync, T: install::T
         },
         |event| {
             match event {
-                install::Event::Retry(r) => writeln!(
-                    err,
-                    "retry {}/{}: {} ({})",
-                    r.attempt, r.max_attempts, r.path, r.error_name
-                )?,
-                install::Event::Progress(p)
+                install::ByteEvent::Retry(r) => {
+                    write!(err, "retry {}/{}: ", r.attempt, r.max_attempts)?;
+                    err.write_all(&r.path.0)?;
+                    writeln!(err, " ({})", r.error_name)?;
+                }
+                install::ByteEvent::Progress(p)
                     if p.files_completed > completed
                         && (p.files_completed % 100 == 0 || p.files_completed == p.files_total) =>
                 {
@@ -337,10 +337,11 @@ pub fn run_with<M: remote::Metadata + curseforge::Metadata + Sync, T: install::T
         }
         Ok(Outcome::Installed(s)) => {
             for f in s.installed {
+                out.write_all(b"installed\t")?;
+                out.write_all(&f.file.0)?;
                 writeln!(
                     out,
-                    "installed\t{}\t{}\t{}\t{}",
-                    f.file,
+                    "\t{}\t{}\t{}",
                     f.sha1,
                     f.slug.as_deref().unwrap_or("-"),
                     if f.as_dependency {
@@ -348,20 +349,24 @@ pub fn run_with<M: remote::Metadata + curseforge::Metadata + Sync, T: install::T
                     } else {
                         "explicit"
                     }
-                )?
+                )?;
             }
             writeln!(out, "skipped\t{}", s.skipped)?;
             Ok(0)
         }
         Ok(Outcome::Changed(c)) => {
             if c.changed {
+                out.write_all(b"changed\t")?;
+                out.write_all(&c.file.0)?;
                 writeln!(
                     out,
-                    "changed\t{}\t{}\t{}\t{}",
-                    c.file, c.sha1, c.old_version_id, c.new_version_id
-                )?
+                    "\t{}\t{}\t{}",
+                    c.sha1, c.old_version_id, c.new_version_id
+                )?;
             } else {
-                writeln!(out, "unchanged\t{}\t{}", c.file, c.new_version_id)?
+                out.write_all(b"unchanged\t")?;
+                out.write_all(&c.file.0)?;
+                writeln!(out, "\t{}", c.new_version_id)?;
             }
             Ok(0)
         }

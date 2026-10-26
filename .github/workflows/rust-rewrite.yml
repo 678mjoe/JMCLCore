@@ -167,6 +167,7 @@ jobs:
           jobs = [
               ("JMCL_AUTH_ORACLE", [sys.executable, "rust/compat/build_auth_oracle.py", zig, ".ci-oracle", str(root / "jmcl-auth-oracle")]),
               ("JMCL_CONTENT_SERVICE_ORACLE", [sys.executable, "rust/compat/build_content_fixture_oracle.py", "--source", ".ci-oracle", "--output", str(root / "jmcl-content-oracle"), "--zig", zig]),
+              ("JMCL_CONTENT_FILENAME_ORACLE", [sys.executable, "rust/compat/build_content_fixture_oracle.py", "--source", ".ci-oracle", "--output", str(root / "jmcl-content-filename-oracle"), "--zig", zig, "--deny-artifact-fetch"]),
           ]
           with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as output:
               for variable, command in jobs:
@@ -180,9 +181,14 @@ jobs:
           if [[ "$RUNNER_OS" == "Linux" ]]; then export JMCL_REQUIRE_CROSS_DEVICE=1; fi
           cargo fmt --all -- --check
           cargo clippy --locked --all-targets -- -D warnings
-          cargo test --locked --all-targets -- --include-ignored --show-output
+          cargo test --locked --all-targets -- --include-ignored --show-output --skip gc_rechecks_stale_preflight_after_owned_transaction
           cargo test --locked --test store_differential -- --include-ignored --nocapture
           cargo build --locked --release
+      - name: Pure existing-candidate proof boundary guard
+        run: |
+          python rust/compat/check_existing_candidate_proof.py
+          python rust/compat/test_existing_candidate_proof_guard.py
+          python -O rust/compat/test_existing_candidate_proof_guard.py
       - name: Differential implemented-slice compatibility
         run: |
           python rust/compat/test_validate_coverage.py
@@ -195,6 +201,186 @@ jobs:
             python rust/compat/check.py --zig .ci-oracle/zig-out/bin/jmcl-core --rust rust/target/release/jmcl-core-rust --oracle-source .ci-oracle --allow-approved-deviations
             python rust/compat/accounts.py --zig .ci-oracle/zig-out/bin/jmcl-core --rust rust/target/release/jmcl-core-rust
           fi
+      - name: Local content project selector byte compatibility
+        run: |
+          python - <<'PYTHON'
+          import os, subprocess, sys
+          suffix = ".exe" if os.name == "nt" else ""
+          subprocess.run([sys.executable, "rust/compat/content_project_selectors.py",
+                          "--zig", f".ci-oracle/zig-out/bin/jmcl-core{suffix}",
+                          "--rust", f"rust/target/release/jmcl-core-rust{suffix}",
+                          "--oracle-source", ".ci-oracle"], check=True)
+          PYTHON
+      - name: Account byte-string disk and parameter boundaries
+        run: |
+          python - <<'PYTHON'
+          import os, subprocess, sys
+          suffix = ".exe" if os.name == "nt" else ""
+          for script in ["account_disk_bytes.py", "account_param_bytes.py"]:
+              subprocess.run([sys.executable, f"rust/compat/{script}",
+                              "--zig", f".ci-oracle/zig-out/bin/jmcl-core{suffix}",
+                              "--rust", f"rust/target/release/jmcl-core-rust{suffix}",
+                              "--oracle-source", ".ci-oracle"], check=True)
+          PYTHON
+      - name: Read-only manifest diagnostics and typed source enums
+        run: |
+          python - <<'PYTHON'
+          import os, subprocess, sys
+          suffix = ".exe" if os.name == "nt" else ""
+          for script in ["server_show_errors.py", "manifest_source_enum.py", "instance_id_errors.py", "manifest_display_names.py", "lookup_id_bytes.py", "server_list_params.py", "lookup_directory_bytes.py", "server_delete_read.py", "server_root_open.py"]:
+              subprocess.run([sys.executable, f"rust/compat/{script}",
+                              "--zig", f".ci-oracle/zig-out/bin/jmcl-core{suffix}",
+                              "--rust", f"rust/target/release/jmcl-core-rust{suffix}",
+                              "--oracle-source", ".ci-oracle"], check=True)
+          PYTHON
+      - name: Listing-only persisted receipt byte compatibility
+        run: |
+          python - <<'PYTHON'
+          import os, subprocess, sys
+          suffix = ".exe" if os.name == "nt" else ""
+          subprocess.run([sys.executable, "rust/compat/receipt_byte_list.py",
+                          "--zig", f".ci-oracle/zig-out/bin/jmcl-core{suffix}",
+                          "--rust", f"rust/target/release/jmcl-core-rust{suffix}",
+                          "--oracle-source", ".ci-oracle"], check=True)
+          PYTHON
+      - name: Client list native-directory byte compatibility
+        run: |
+          python - <<'PYTHON'
+          import os, subprocess, sys
+          suffix = ".exe" if os.name == "nt" else ""
+          subprocess.run([sys.executable, "rust/compat/content_list_directory_bytes.py",
+                          "--zig", f".ci-oracle/zig-out/bin/jmcl-core{suffix}",
+                          "--rust", f"rust/target/release/jmcl-core-rust{suffix}",
+                          "--oracle-source", ".ci-oracle"], check=True)
+          PYTHON
+      - name: Server list native target byte compatibility
+        run: |
+          python - <<'PYTHON'
+          import os, subprocess, sys
+          suffix = ".exe" if os.name == "nt" else ""
+          subprocess.run([sys.executable, "rust/compat/server_content_list_target_bytes.py",
+                          "--zig", f".ci-oracle/zig-out/bin/jmcl-core{suffix}",
+                          "--rust", f"rust/target/release/jmcl-core-rust{suffix}",
+                          "--oracle-source", ".ci-oracle"], check=True)
+          PYTHON
+      - name: Server list display-name read-view compatibility
+        run: |
+          python - <<'PYTHON'
+          import os, subprocess, sys
+          suffix = ".exe" if os.name == "nt" else ""
+          subprocess.run([sys.executable, "rust/compat/server_content_list_display_bytes.py",
+                          "--zig", f".ci-oracle/zig-out/bin/jmcl-core{suffix}",
+                          "--rust", f"rust/target/release/jmcl-core-rust{suffix}",
+                          "--oracle-source", ".ci-oracle"], check=True)
+          PYTHON
+      - name: Client local mutation directory-byte compatibility
+        run: |
+          python - <<'PYTHON'
+          import os, subprocess, sys
+          suffix = ".exe" if os.name == "nt" else ""
+          subprocess.run([sys.executable, "rust/compat/content_mutation_directory_bytes.py",
+                          "--zig", f".ci-oracle/zig-out/bin/jmcl-core{suffix}",
+                          "--rust", f"rust/target/release/jmcl-core-rust{suffix}",
+                          "--oracle-source", ".ci-oracle"], check=True)
+          PYTHON
+      - name: Local content ignored-field parsing compatibility
+        run: |
+          python - <<'PYTHON'
+          import os, subprocess, sys
+          suffix = ".exe" if os.name == "nt" else ""
+          subprocess.run([sys.executable, "rust/compat/content_local_field_parser.py",
+                          "--zig", f".ci-oracle/zig-out/bin/jmcl-core{suffix}",
+                          "--rust", f"rust/target/release/jmcl-core-rust{suffix}",
+                          "--oracle-source", ".ci-oracle"], check=True)
+          PYTHON
+      - name: Read-only datapack world-byte compatibility
+        run: |
+          python - <<'PYTHON'
+          import os, subprocess, sys
+          suffix = ".exe" if os.name == "nt" else ""
+          subprocess.run([sys.executable, "rust/compat/datapack_list_world_bytes.py",
+                          "--zig", f".ci-oracle/zig-out/bin/jmcl-core{suffix}",
+                          "--rust", f"rust/target/release/jmcl-core-rust{suffix}",
+                          "--oracle-source", ".ci-oracle"], check=True)
+          PYTHON
+      - name: Guarded datapack mutation world-byte compatibility
+        run: |
+          python - <<'PYTHON'
+          import os, subprocess, sys
+          suffix = ".exe" if os.name == "nt" else ""
+          subprocess.run([sys.executable, "rust/compat/datapack_mutation_world_bytes.py",
+                          "--zig", f".ci-oracle/zig-out/bin/jmcl-core{suffix}",
+                          "--rust", f"rust/target/release/jmcl-core-rust{suffix}",
+                          "--oracle-source", ".ci-oracle"], check=True)
+          PYTHON
+      - name: Adoption target contracts with explicit per-engine CAS layout
+        run: |
+          python - <<'PYTHON'
+          import os, subprocess, sys
+          suffix = ".exe" if os.name == "nt" else ""
+          subprocess.run([sys.executable, "rust/compat/content_adopt_target_bytes.py",
+                          "--zig", f".ci-oracle/zig-out/bin/jmcl-core{suffix}",
+                          "--rust", f"rust/target/release/jmcl-core-rust{suffix}",
+                          "--oracle-source", ".ci-oracle"], check=True)
+          PYTHON
+      - name: No-state server local target compatibility
+        if: runner.os == 'Linux'
+        run: |
+          python rust/compat/server_local_target_bytes.py --zig .ci-oracle/zig-out/bin/jmcl-core --rust rust/target/release/jmcl-core-rust --oracle-source .ci-oracle
+      - name: No-state server local display-name compatibility
+        if: runner.os == 'Linux'
+        run: |
+          python rust/compat/server_local_display_bytes.py --zig .ci-oracle/zig-out/bin/jmcl-core --rust rust/target/release/jmcl-core-rust --oracle-source .ci-oracle
+      - name: No-state server local CLI display-name compatibility
+        if: runner.os == 'Linux'
+        run: |
+          python rust/compat/server_cli_display_bytes.py --zig .ci-oracle/zig-out/bin/jmcl-core --rust rust/target/release/jmcl-core-rust --oracle-source .ci-oracle
+      - name: No-state server adoption byte targets and explicit CAS contract
+        if: runner.os == 'Linux'
+        run: |
+          python rust/compat/server_adopt_target_bytes.py --zig .ci-oracle/zig-out/bin/jmcl-core --rust rust/target/release/jmcl-core-rust --oracle-source .ci-oracle
+      - name: No-state server adoption display-name validation
+        if: runner.os == 'Linux'
+        run: |
+          python rust/compat/server_adopt_display_bytes.py --zig .ci-oracle/zig-out/bin/jmcl-core --rust rust/target/release/jmcl-core-rust --oracle-source .ci-oracle
+      - name: Native instance content CLI path contracts
+        run: |
+          python - <<'PYTHON'
+          import os, subprocess, sys
+          suffix = ".exe" if os.name == "nt" else ""
+          subprocess.run([sys.executable, "rust/compat/content_cli_native_paths.py",
+                          "--zig", f".ci-oracle/zig-out/bin/jmcl-core{suffix}",
+                          "--rust", f"rust/target/release/jmcl-core-rust{suffix}",
+                          "--oracle-source", ".ci-oracle"], check=True)
+          PYTHON
+      - name: Local content CLI manifest display-name contracts
+        run: |
+          python - <<'PYTHON'
+          import os, subprocess, sys
+          suffix = ".exe" if os.name == "nt" else ""
+          subprocess.run([sys.executable, "rust/compat/content_cli_manifest_names.py",
+                          "--zig", f".ci-oracle/zig-out/bin/jmcl-core{suffix}",
+                          "--rust", f"rust/target/release/jmcl-core-rust{suffix}",
+                          "--oracle-source", ".ci-oracle"], check=True)
+          PYTHON
+      - name: Bounded owned CAS GC stale-preflight verification
+        run: |
+          python - <<'PYTHON'
+          import json, subprocess, sys
+          result = subprocess.run(["cargo", "test", "--manifest-path", "rust/Cargo.toml",
+                                   "--locked", "--lib", "--no-run", "--message-format=json"],
+                                  check=True, text=True, stdout=subprocess.PIPE)
+          artifacts = []
+          for line in result.stdout.splitlines():
+              row = json.loads(line)
+              if (row.get("reason") == "compiler-artifact" and row.get("profile", {}).get("test")
+                  and row.get("target", {}).get("kind") == ["lib"] and row.get("executable")):
+                  artifacts.append(row["executable"])
+          if len(artifacts) != 1:
+              raise SystemExit(f"Expected one owned library test artifact, found {artifacts!r}")
+          subprocess.run([sys.executable, "rust/compat/cas_gc_recheck.py",
+                          "--test-binary", artifacts[0]], check=True)
+          PYTHON
       - name: Offline metadata and Java raw-wire corpus
         run: |
           python - <<'PYTHON'

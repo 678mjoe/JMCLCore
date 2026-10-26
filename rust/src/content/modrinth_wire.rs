@@ -17,11 +17,12 @@ pub(super) struct WireHashes {
     pub sha512: Option<MetadataBytes>,
 }
 #[derive(Deserialize)]
-pub(super) struct WireFile {
+#[serde(bound(deserialize = "F: FilenameValue"))]
+pub(super) struct WireFile<F> {
     #[serde(deserialize_with = "string")]
     pub url: String,
-    #[serde(deserialize_with = "string")]
-    pub filename: String,
+    #[serde(deserialize_with = "filename_value")]
+    pub filename: F,
     #[serde(default)]
     pub primary: bool,
     pub hashes: WireHashes,
@@ -39,14 +40,15 @@ pub(super) struct WireDependency {
     pub dependency_type: DependencyType,
 }
 #[derive(Deserialize)]
-pub(super) struct WireVersion {
+#[serde(bound(deserialize = "F: FilenameValue"))]
+pub(super) struct WireVersion<F> {
     pub id: MetadataBytes,
     pub project_id: MetadataBytes,
     pub version_number: MetadataBytes,
     pub version_type: MetadataBytes,
     pub game_versions: Vec<MetadataBytes>,
     pub loaders: Vec<MetadataBytes>,
-    pub files: Vec<WireFile>,
+    pub files: Vec<WireFile<F>>,
     #[serde(default)]
     pub dependencies: Vec<WireDependency>,
 }
@@ -69,9 +71,9 @@ impl WireProject {
         })
     }
 }
-impl WireVersion {
-    pub(super) fn into_public(self) -> Result<Version> {
-        Ok(Version {
+impl<F: FilenameValue> WireVersion<F> {
+    pub(super) fn into_public(self) -> Result<VersionRecord<F>> {
+        Ok(VersionRecord {
             id: text(self.id)?,
             project_id: text(self.project_id)?,
             version_number: self.version_number,
@@ -82,7 +84,7 @@ impl WireVersion {
                 .files
                 .into_iter()
                 .map(|f| {
-                    Ok(File {
+                    Ok(FileRecord {
                         url: f.url,
                         filename: f.filename,
                         primary: f.primary,

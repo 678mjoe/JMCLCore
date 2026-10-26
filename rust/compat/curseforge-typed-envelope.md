@@ -37,3 +37,7 @@ No requests, provider downloads, filename/URL pipeline changes, Java, archives,
 installs or real user data are involved. Malformed known-string diagnostics and
 earlier malformed unknown strings followed by typed errors remain separate
 limitations; this is not a complete lexer parity claim.
+
+The later [File-only ordered parser](curseforge-file-ordered.md) replaces the
+File serde envelope to preserve failed-typed lexical ordering. Project retains
+the typed envelope described here; Page and download-URL parsers are unchanged.

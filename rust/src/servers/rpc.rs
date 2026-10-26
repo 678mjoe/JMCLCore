@@ -57,6 +57,20 @@ pub fn handle(method: &str, params: Option<&RawValue>) -> Option<Result<Value, R
         Some(linux::handle(method, params))
     }
 }
+// CLI show retains the original anchored manifest-load error. The ordinary
+// RPC path still returns exactly its existing public error code/message.
+#[cfg(target_os = "linux")]
+pub(crate) fn show_with_load_diagnostic(
+    raw: Option<&RawValue>,
+) -> (Result<Value, RpcError>, Option<String>) {
+    linux::show_with_load_diagnostic(raw)
+}
+#[cfg(target_os = "linux")]
+pub(crate) fn delete_with_diagnostic(
+    raw: Option<&RawValue>,
+) -> (Result<Value, RpcError>, Option<String>) {
+    linux::delete_with_diagnostic(raw)
+}
 #[cfg(target_os = "linux")]
 mod linux {
     use super::*;
@@ -127,14 +141,32 @@ mod linux {
             _ => ("status", "directory and id"),
         }
     }
-    fn load(root: &File, id: &str) -> Result<crate::servers::manifest::Manifest, RpcError> {
-        store::load(root, id).map_err(|e| {
-            if e.kind() == io::ErrorKind::NotFound || e.to_string() == "InvalidServerId" {
-                err("SERVER_NOT_FOUND", "No server matches the given id")
-            } else {
-                err("SERVER_LOAD_FAILED", "Failed to load the server")
-            }
-        })
+    fn manifest_load_error(e: io::Error, diagnostic: Option<&mut Option<String>>) -> RpcError {
+        if let Some(diagnostic) = diagnostic {
+            *diagnostic = Some(format!(
+                "failed to load server: {}",
+                crate::instances::cli_error_name(&e)
+            ));
+        }
+        if e.kind() == io::ErrorKind::NotFound || e.to_string() == "InvalidServerId" {
+            err("SERVER_NOT_FOUND", "No server matches the given id")
+        } else {
+            err("SERVER_LOAD_FAILED", "Failed to load the server")
+        }
+    }
+    fn load(
+        root: &File,
+        id: &str,
+        diagnostic: Option<&mut Option<String>>,
+    ) -> Result<crate::servers::manifest::Manifest, RpcError> {
+        store::load(root, id).map_err(|e| manifest_load_error(e, diagnostic))
+    }
+    fn load_read(
+        root: &File,
+        id: &str,
+        diagnostic: Option<&mut Option<String>>,
+    ) -> Result<crate::servers::manifest::ReadManifest, RpcError> {
+        store::load_read(root, id).map_err(|e| manifest_load_error(e, diagnostic))
     }
     fn properties(dir: &File) -> Result<properties::Document, RpcError> {
         let b =
@@ -175,11 +207,11 @@ mod linux {
         }
         Value::Object(v)
     }
-    fn manifest(m: &crate::servers::manifest::Manifest, installed: bool) -> Value {
+    fn manifest(m: &crate::servers::manifest::ReadManifest, installed: bool) -> Value {
         serde_json::json!({"id":m.id,"name":m.name,"version_id":m.version_id,"fabric_loader":m.fabric_loader,"neoforge_version":m.neoforge_version,"forge_version":m.forge_version,"source":m.source,"accept_eula":m.accept_eula,"java_path":m.java_path,"installed":installed})
     }
-    fn installed(dir: &File, m: &crate::servers::manifest::Manifest) -> Result<bool, RpcError> {
-        store::installed_java_major(dir, m)
+    fn installed(dir: &File, m: &crate::servers::manifest::ReadManifest) -> Result<bool, RpcError> {
+        store::installed_identity(dir, m.identity(), &m.source)
             .map(|m| m.is_some())
             .map_err(|_| {
                 err(
@@ -211,6 +243,193 @@ mod linux {
         fs::unlinkat(parent, name, AtFlags::REMOVEDIR).map_err(Into::into)
     }
     pub fn handle(method: &str, raw: Option<&RawValue>) -> Result<Value, RpcError> {
+        handle_inner(method, raw, None)
+    }
+    pub fn show_with_load_diagnostic(
+        raw: Option<&RawValue>,
+    ) -> (Result<Value, RpcError>, Option<String>) {
+        let mut diagnostic = None;
+        let result = handle_inner("server.get", raw, Some(&mut diagnostic));
+        (result, diagnostic)
+    }
+    pub fn delete_with_diagnostic(
+        raw: Option<&RawValue>,
+    ) -> (Result<Value, RpcError>, Option<String>) {
+        let mut diagnostic = None;
+        let result = handle_inner("server.delete", raw, Some(&mut diagnostic));
+        (result, diagnostic)
+    }
+    fn delete_error(e: io::Error, diagnostic: Option<&mut Option<String>>) -> RpcError {
+        if let Some(diagnostic) = diagnostic {
+            *diagnostic = Some(format!(
+                "failed to delete server: {}",
+                crate::instances::cli_error_name(&e)
+            ));
+        }
+        if e.kind() == io::ErrorKind::NotFound || e.to_string() == "InvalidServerId" {
+            err("SERVER_NOT_FOUND", "No server matches the given id")
+        } else {
+            err("SERVER_DELETE_FAILED", "Failed to delete the server")
+        }
+    }
+    fn delete(
+        root: &File,
+        id: &str,
+        mut diagnostic: Option<&mut Option<String>>,
+    ) -> Result<Value, RpcError> {
+        let dir = store::open_server(root, id).map_err(|e| {
+            if let Some(diagnostic) = diagnostic.as_deref_mut() {
+                *diagnostic = Some(format!(
+                    "failed to open server directory: {}",
+                    crate::instances::cli_error_name(&e)
+                ));
+            }
+            if e.kind() == io::ErrorKind::NotFound || e.to_string() == "InvalidServerId" {
+                err("SERVER_NOT_FOUND", "No server matches the given id")
+            } else {
+                err("SERVER_ROOT_ERROR", "Failed to open the server directory")
+            }
+        })?;
+        // Match the source order: guard first, then validate the document that
+        // authorizes deletion. This view never feeds launch/install consumers.
+        let _guard = lc::lock_stopped(&dir).map_err(|e| {
+            if let Some(diagnostic) = diagnostic.as_deref_mut() {
+                *diagnostic = Some(if e == "ServerAlreadyRunning" {
+                    "stop the server before deleting it".into()
+                } else {
+                    format!("failed to validate the server lifecycle status: {e}")
+                });
+            }
+            if e == "ServerAlreadyRunning" {
+                err(
+                    "SERVER_ALREADY_RUNNING",
+                    "Stop the server before deleting it",
+                )
+            } else {
+                err(
+                    "SERVER_STATUS_FAILED",
+                    "Failed to validate the server lifecycle status",
+                )
+            }
+        })?;
+        store::load_read(root, id).map_err(|e| delete_error(e, diagnostic.as_deref_mut()))?;
+        let name = std::ffi::CString::new(id).expect("open_server validated the id");
+        remove_tree(root, &name).map_err(|e| delete_error(e, diagnostic))?;
+        Ok(serde_json::json!({"stage":"server.delete","id":id,"deleted":true}))
+    }
+    #[derive(Deserialize)]
+    struct ListParams {
+        directory: crate::instances::LookupDirectory,
+    }
+    fn read_list(raw: Option<&RawValue>) -> Result<Value, RpcError> {
+        let raw = raw.ok_or_else(|| invalid("server listing requires a directory"))?;
+        if !raw.get().trim_start().starts_with('{') {
+            return Err(invalid("server listing parameters are invalid"));
+        }
+        let p: ListParams = serde_json::from_str(raw.get())
+            .map_err(|_| invalid("server listing parameters are invalid"))?;
+        if p.directory.is_empty() {
+            return Err(invalid("server listing directory must not be empty"));
+        }
+        let root = p
+            .directory
+            .native()
+            .and_then(|path| store::open_root_native(&path))
+            .map_err(|_| err("SERVERS_ROOT_ERROR", "Failed to open the servers root"))?;
+        let mut out = serde_json::json!({"stage":"server.list"});
+        let entries = fs::Dir::read_from(&root)
+            .map_err(|_| err("SERVER_LIST_FAILED", "Failed to list servers"))?;
+        let mut docs = Vec::new();
+        for entry in entries {
+            let entry = entry.map_err(|_| err("SERVER_LIST_FAILED", "Failed to list servers"))?;
+            let Ok(name) = entry.file_name().to_str() else {
+                continue;
+            };
+            if crate::instances::validate_id(name).is_err()
+                || !matches!(
+                    entry.file_type(),
+                    fs::FileType::Directory | fs::FileType::Unknown
+                )
+            {
+                continue;
+            }
+            if docs.len() == 4096 {
+                return Err(err("SERVER_LIST_FAILED", "Failed to list servers"));
+            }
+            if let Ok(m) = store::load_read(&root, name) {
+                docs.push(m);
+            }
+        }
+        docs.sort_by(|a, b| a.id.cmp(&b.id));
+        let mut servers = Vec::new();
+        for m in docs {
+            let dir = store::open_server(&root, &m.id).map_err(|_| {
+                err(
+                    "SERVER_STATUS_FAILED",
+                    "Failed to read server installation status",
+                )
+            })?;
+            servers.push(manifest(&m, installed(&dir, &m)?));
+        }
+        out["servers"] = Value::Array(servers);
+        Ok(out)
+    }
+    fn read_get(
+        raw: Option<&RawValue>,
+        mut diagnostic: Option<&mut Option<String>>,
+    ) -> Result<Value, RpcError> {
+        let p = crate::instances::lookup_target(
+            raw,
+            "server lookup requires a directory and an id",
+            "server lookup parameters are invalid",
+        )?;
+        if p.directory.is_empty() || p.id.is_empty() {
+            return Err(invalid("server lookup parameters are out of range"));
+        }
+        let root = p
+            .directory
+            .native()
+            .and_then(|path| store::open_root_native(&path))
+            .map_err(|e| {
+                if let Some(diagnostic) = diagnostic.as_deref_mut() {
+                    *diagnostic = Some(format!(
+                        "failed to open servers directory: {}",
+                        crate::instances::cli_error_name(&e)
+                    ));
+                }
+                err("SERVERS_ROOT_ERROR", "Failed to open the servers root")
+            })?;
+        // Invalid bytes are an ID semantic error only after root opening. Use the
+        // same load diagnostic as InvalidServerId without passing bytes as paths.
+        let id = p.id.validated().ok_or_else(|| {
+            manifest_load_error(
+                io::Error::new(io::ErrorKind::InvalidData, "InvalidServerId"),
+                diagnostic.as_deref_mut(),
+            )
+        })?;
+        let m = load_read(&root, id, diagnostic)?;
+        let dir = store::open_server(&root, id)
+            .map_err(|_| err("SERVER_ROOT_ERROR", "Failed to open the server directory"))?;
+        let mut out = serde_json::json!({"stage":"server.get"});
+        out.as_object_mut().unwrap().extend(
+            manifest(&m, installed(&dir, &m)?)
+                .as_object()
+                .unwrap()
+                .clone(),
+        );
+        Ok(out)
+    }
+    fn handle_inner(
+        method: &str,
+        raw: Option<&RawValue>,
+        mut diagnostic: Option<&mut Option<String>>,
+    ) -> Result<Value, RpcError> {
+        if method == "server.get" {
+            return read_get(raw, diagnostic);
+        }
+        if method == "server.list" {
+            return read_list(raw);
+        }
         let (word, requires) = wording(method);
         let raw = raw.ok_or_else(|| invalid(format!("server {word} requires {requires}")))?;
         let value: Value = serde_json::from_str(raw.get())
@@ -293,80 +512,38 @@ mod linux {
                 "server properties update parameters are out of range",
             ));
         }
-        let root = store::open_root(&p.directory)
-            .map_err(|_| err("SERVERS_ROOT_ERROR", "Failed to open the servers root"))?;
+        let root = store::open_root(&p.directory).map_err(|e| {
+            if method == "server.delete"
+                && let Some(diagnostic) = diagnostic.as_deref_mut()
+            {
+                *diagnostic = Some(format!(
+                    "failed to open servers directory: {}",
+                    crate::instances::cli_error_name(&e)
+                ));
+            }
+            err("SERVERS_ROOT_ERROR", "Failed to open the servers root")
+        })?;
+        if method == "server.delete" {
+            return delete(&root, &p.id, diagnostic);
+        }
         let mut out = serde_json::json!({"stage":method});
-        if method == "server.list" {
-            let entries = fs::Dir::read_from(&root)
-                .map_err(|_| err("SERVER_LIST_FAILED", "Failed to list servers"))?;
-            let mut docs = Vec::new();
-            for entry in entries {
-                let entry =
-                    entry.map_err(|_| err("SERVER_LIST_FAILED", "Failed to list servers"))?;
-                let Ok(name) = entry.file_name().to_str() else {
-                    continue;
-                };
-                if crate::instances::validate_id(name).is_err()
-                    || !matches!(
-                        entry.file_type(),
-                        fs::FileType::Directory | fs::FileType::Unknown
-                    )
-                {
-                    continue;
-                }
-                if docs.len() == 4096 {
-                    return Err(err("SERVER_LIST_FAILED", "Failed to list servers"));
-                }
-                if let Ok(m) = store::load(&root, name) {
-                    docs.push(m);
-                }
-            }
-            docs.sort_by(|a, b| a.id.cmp(&b.id));
-            let mut servers = Vec::new();
-            for m in docs {
-                let dir = store::open_server(&root, &m.id).map_err(|_| {
-                    err(
-                        "SERVER_STATUS_FAILED",
-                        "Failed to read server installation status",
-                    )
-                })?;
-                servers.push(manifest(&m, installed(&dir, &m)?));
-            }
-            out["servers"] = Value::Array(servers);
+        if method == "server.get" {
+            let m = load_read(&root, &p.id, diagnostic)?;
+            let dir = store::open_server(&root, &p.id)
+                .map_err(|_| err("SERVER_ROOT_ERROR", "Failed to open the server directory"))?;
+            out.as_object_mut().unwrap().extend(
+                manifest(&m, installed(&dir, &m)?)
+                    .as_object()
+                    .unwrap()
+                    .clone(),
+            );
             return Ok(out);
         }
-        let m = load(&root, &p.id)?;
+        let m = load(&root, &p.id, diagnostic)?;
         let dir = store::open_server(&root, &p.id)
             .map_err(|_| err("SERVER_ROOT_ERROR", "Failed to open the server directory"))?;
         out["id"] = Value::String(p.id.clone());
         match method {
-            "server.get" => {
-                out.as_object_mut().unwrap().extend(
-                    manifest(&m, installed(&dir, &m)?)
-                        .as_object()
-                        .unwrap()
-                        .clone(),
-                );
-            }
-            "server.delete" => {
-                let _guard = lc::lock_stopped(&dir).map_err(|e| {
-                    if e == "ServerAlreadyRunning" {
-                        err(
-                            "SERVER_ALREADY_RUNNING",
-                            "Stop the server before deleting it",
-                        )
-                    } else {
-                        err(
-                            "SERVER_STATUS_FAILED",
-                            "Failed to validate the server lifecycle status",
-                        )
-                    }
-                })?;
-                let name = std::ffi::CString::new(p.id).unwrap();
-                remove_tree(&root, &name)
-                    .map_err(|_| err("SERVER_DELETE_FAILED", "Failed to delete the server"))?;
-                out["deleted"] = Value::Bool(true);
-            }
             "server.properties.get" | "server.properties.set" => {
                 let _guard = if method.ends_with(".set") {
                     Some(lc::lock_stopped(&dir).map_err(|e| {

@@ -145,6 +145,7 @@ mod linux {
         directory: String,
         id: String,
         project: Option<String>,
+        local_project: Option<Vec<u8>>,
         file: Option<Vec<u8>>,
         version: Option<String>,
         provider: Option<String>,
@@ -187,8 +188,14 @@ mod linux {
                 id: required("id")?,
                 project: if network {
                     Some(required("project")?)
-                } else if selector {
-                    optional("project")?
+                } else {
+                    None
+                },
+                local_project: if selector {
+                    j.field("project")?
+                        .filter(|v| !v.null())
+                        .map(|v| content::dynamic_file(v.0))
+                        .transpose()?
                 } else {
                     None
                 },
@@ -256,7 +263,7 @@ mod linux {
         } else if p.directory.is_empty()
             || p.id.is_empty()
             || (matches!(op, "enable" | "disable" | "remove")
-                && p.project.is_some() == p.file.is_some())
+                && p.local_project.is_some() == p.file.is_some())
         {
             let suffix = if matches!(op, "enable" | "disable" | "remove") {
                 "directory, id, and exactly one of project or file"
@@ -428,7 +435,14 @@ mod linux {
         require_loader: bool,
     ) -> Result<(File, String, Option<&'static str>), String> {
         let root = store::open_root(&p.directory).map_err(|_| "ServerNotFound")?;
-        let m = store::load(&root, &p.id).map_err(|e| {
+        target_from_root(&root, &p.id, require_loader)
+    }
+    fn target_from_root(
+        root: &File,
+        id: &str,
+        require_loader: bool,
+    ) -> Result<(File, String, Option<&'static str>), String> {
+        let m = store::load(root, id).map_err(|e| {
             if e.kind() == io::ErrorKind::NotFound || e.to_string() == "InvalidServerId" {
                 "ServerNotFound".into()
             } else {
@@ -447,7 +461,7 @@ mod linux {
         if require_loader && loader.is_none() {
             return Err("ModLoaderRequired".into());
         }
-        let dir = store::open_server(&root, &p.id).map_err(|_| "ServerNotFound")?;
+        let dir = store::open_server(root, id).map_err(|_| "ServerNotFound")?;
         Ok((dir, m.version_id, loader))
     }
     fn world(dir: &File, create: bool) -> Result<Option<File>, String> {
@@ -469,6 +483,288 @@ mod linux {
             Err(e) => Err(e.to_string()),
         }
     }
+    // LIST has a read-specific byte target view. Local mutations below retain
+    // their operational manifest/guard path; network/adoption keep String Params.
+    fn list_rpc(
+        method: &str,
+        family: &str,
+        raw: Option<&RawValue>,
+        request_id: &str,
+        out: &mut impl Write,
+    ) -> io::Result<()> {
+        let result = (|| -> Result<Value, RpcError> {
+            let target = crate::instances::lookup_target(
+                raw.filter(|r| r.get().trim() != "null"),
+                "missing parameters",
+                &format!("server {family} listing parameters are invalid"),
+            )?;
+            if target.directory.is_empty() || target.id.is_empty() {
+                return Err(invalid(format!(
+                    "server {family} listing requires directory and id"
+                )));
+            }
+            let root = target
+                .directory
+                .native()
+                .and_then(|path| store::open_root_native(&path))
+                .map_err(|_| mapped("ServerNotFound", family, "list"))?;
+            let id = target
+                .id
+                .validated()
+                .ok_or_else(|| mapped("ServerNotFound", family, "list"))?;
+            // LIST only needs manifest validation, not an operational String
+            // name. Reuse the existing byte-preserving read view and discard it.
+            store::load_read(&root, id).map_err(|e| {
+                let name =
+                    if e.kind() == io::ErrorKind::NotFound || e.to_string() == "InvalidServerId" {
+                        "ServerNotFound".to_owned()
+                    } else {
+                        e.to_string()
+                    };
+                mapped(&name, family, "list")
+            })?;
+            let dir = store::open_server(&root, id)
+                .map_err(|_| mapped("ServerNotFound", family, "list"))?;
+            let directory = if family == "datapacks" {
+                world(&dir, false).map_err(|e| mapped(&e, family, "list"))?
+            } else {
+                Some(dir)
+            };
+            let root = directory.map(Root::from_directory);
+            let kind = if family == "mods" {
+                Kind::Mod
+            } else {
+                Kind::Datapack
+            };
+            let fields = list_fields(root.as_ref(), kind)
+                .map_err(|e| mapped(&local_name(e), family, "list"))?;
+            let mut result = serde_json::Map::new();
+            result.insert("stage".into(), method.into());
+            result.insert("id".into(), id.into());
+            result.extend(fields.as_object().expect("list fields object").clone());
+            Ok(Value::Object(result))
+        })();
+        match result {
+            Ok(result) => {
+                serde_json::to_writer(
+                    &mut *out,
+                    &json!({"protocol":1,"id":request_id,"event":"result","result":result}),
+                )?;
+                out.write_all(b"\n")
+            }
+            Err(e) => protocol::error(out, Some(request_id), &e.code, &e.message),
+        }
+    }
+    fn adopt_rpc(
+        method: &str,
+        family: &str,
+        raw: Option<&RawValue>,
+        request_id: &str,
+        out: &mut impl Write,
+    ) -> io::Result<()> {
+        let prepare = || -> Result<_, RpcError> {
+            let bad = format!("server {family} adoption parameters are invalid");
+            let raw = raw
+                .filter(|r| r.get().trim() != "null")
+                .ok_or_else(|| invalid("missing parameters"))?;
+            let j = Json::parse(raw.get()).map_err(|_| invalid(&bad))?;
+            let target = crate::instances::lookup_target(Some(raw), "missing parameters", &bad)?;
+            // Missing alone retains the established default; explicit null is invalid.
+            let store_bytes = j
+                .field("store_directory")
+                .map_err(|_| invalid(&bad))?
+                .map(|v| content::dynamic_file(v.0))
+                .unwrap_or_else(|| Ok(crate::store::DEFAULT_DIRECTORY.as_bytes().to_vec()))
+                .map_err(|_| invalid(&bad))?;
+            if target.directory.is_empty() || target.id.is_empty() {
+                return Err(invalid(format!(
+                    "server {family} adoption requires directory and id"
+                )));
+            }
+            // Both server adoption families open CAS before the server target.
+            let store_error = |_| err("STORE_ROOT_ERROR", "Failed to open the artifact store");
+            let native_store = crate::store::path_from_bytes(&store_bytes).map_err(store_error)?;
+            let cas = Store::open(&native_store).map_err(store_error)?;
+            let root = target
+                .directory
+                .native()
+                .and_then(|path| store::open_root_native(&path))
+                .map_err(|_| mapped("ServerNotFound", family, "adopt"))?;
+            let server_id = target
+                .id
+                .validated()
+                .ok_or_else(|| mapped("ServerNotFound", family, "adopt"))?;
+            // Adoption consumes no operational display name. Validate the same
+            // stored record through the byte-preserving view before the guard.
+            store::load_read(&root, server_id).map_err(|e| {
+                let name =
+                    if e.kind() == io::ErrorKind::NotFound || e.to_string() == "InvalidServerId" {
+                        "ServerNotFound".to_owned()
+                    } else {
+                        e.to_string()
+                    };
+                mapped(&name, family, "adopt")
+            })?;
+            let dir = store::open_server(&root, server_id)
+                .map_err(|_| mapped("ServerNotFound", family, "adopt"))?;
+            let guard = lifecycle::lock_stopped(&dir).map_err(|e| mapped(e, family, "adopt"))?;
+            let directory = if family == "datapacks" {
+                world(&dir, true).map_err(|e| mapped(&e, family, "adopt"))?
+            } else {
+                Some(dir)
+            };
+            Ok((
+                server_id.to_owned(),
+                directory.map(Root::from_directory),
+                cas,
+                guard,
+            ))
+        };
+        let (server_id, root, cas, _guard) = match prepare() {
+            Ok(v) => v,
+            Err(e) => return protocol::error(out, Some(request_id), &e.code, &e.message),
+        };
+        let kind = if family == "mods" {
+            Kind::Mod
+        } else {
+            Kind::Datapack
+        };
+        let fields = match root.as_ref() {
+            Some(root) => root
+                .adopt(kind, &cas)
+                .map(|adopted| json!({"adopted":adopted})),
+            None => Ok(json!({"entries":[],"unmanaged":[]})),
+        };
+        match fields {
+            Err(e) => {
+                let e = mapped(&local_name(e), family, "adopt");
+                protocol::error(out, Some(request_id), &e.code, &e.message)
+            }
+            Ok(Value::Object(fields)) => {
+                let mut result = serde_json::Map::new();
+                result.insert("stage".into(), method.into());
+                result.insert("id".into(), server_id.into());
+                result.extend(fields);
+                serde_json::to_writer(
+                    &mut *out,
+                    &json!({"protocol":1,"id":request_id,"event":"result","result":result}),
+                )?;
+                writeln!(out)
+            }
+            Ok(_) => unreachable!(),
+        }
+    }
+    fn mutation_rpc(
+        method: &str,
+        family: &str,
+        op: &str,
+        raw: Option<&RawValue>,
+        request_id: &str,
+        out: &mut impl Write,
+    ) -> io::Result<()> {
+        let prepare = || -> Result<_, RpcError> {
+            let what = if op == "remove" { "removal" } else { "toggle" };
+            let bad = format!("server {family} {what} parameters are invalid");
+            let raw = raw
+                .filter(|r| r.get().trim() != "null")
+                .ok_or_else(|| invalid("missing parameters"))?;
+            let j = Json::parse(raw.get()).map_err(|_| invalid(&bad))?;
+            let target = crate::instances::lookup_target(Some(raw), "missing parameters", &bad)?;
+            let selector = |name| {
+                j.field(name)?
+                    .filter(|v| !v.null())
+                    .map(|v| content::dynamic_file(v.0))
+                    .transpose()
+            };
+            let project = selector("project").map_err(|_| invalid(&bad))?;
+            let file = selector("file").map_err(|_| invalid(&bad))?;
+            if target.directory.is_empty()
+                || target.id.is_empty()
+                || project.is_some() == file.is_some()
+            {
+                return Err(invalid(format!(
+                    "server {family} {what} requires directory, id, and exactly one of project or file"
+                )));
+            }
+            let root = target
+                .directory
+                .native()
+                .and_then(|path| store::open_root_native(&path))
+                .map_err(|_| mapped("ServerNotFound", family, op))?;
+            let server_id = target
+                .id
+                .validated()
+                .ok_or_else(|| mapped("ServerNotFound", family, op))?;
+            // Local selection needs validated metadata, not an operational String
+            // display name. Preserve validation and opening before the guard.
+            store::load_read(&root, server_id).map_err(|e| {
+                let name =
+                    if e.kind() == io::ErrorKind::NotFound || e.to_string() == "InvalidServerId" {
+                        "ServerNotFound".to_owned()
+                    } else {
+                        e.to_string()
+                    };
+                mapped(&name, family, op)
+            })?;
+            let dir = store::open_server(&root, server_id)
+                .map_err(|_| mapped("ServerNotFound", family, op))?;
+            let guard = lifecycle::lock_stopped(&dir).map_err(|e| mapped(e, family, op))?;
+            let directory = if family == "datapacks" {
+                world(&dir, true).map_err(|e| mapped(&e, family, op))?
+            } else {
+                Some(dir)
+            };
+            Ok((
+                server_id.to_owned(),
+                directory.map(Root::from_directory),
+                guard,
+                project,
+                file,
+            ))
+        };
+        // As in the existing path, keep the guard through selection and response.
+        let (server_id, root, _guard, project, file) = match prepare() {
+            Ok(value) => value,
+            Err(e) => return protocol::error(out, Some(request_id), &e.code, &e.message),
+        };
+        let kind = if family == "mods" {
+            Kind::Mod
+        } else {
+            Kind::Datapack
+        };
+        let fields = match root.as_ref() {
+            Some(root) => content::local_project(project.as_deref())
+                .and_then(|project| selected_fields(root, op, kind, project, file.as_deref())),
+            None => Ok(json!({"entries":[],"unmanaged":[]})),
+        };
+        match fields {
+            Err(e) => {
+                let e = mapped(&local_name(e), family, op);
+                protocol::error(out, Some(request_id), &e.code, &e.message)
+            }
+            Ok(Value::Object(fields)) => {
+                let mut result = serde_json::Map::new();
+                result.insert("stage".into(), method.into());
+                result.insert("id".into(), server_id.into());
+                result.extend(fields);
+                serde_json::to_writer(
+                    &mut *out,
+                    &json!({
+                        "protocol":1,"id":request_id,"event":"result","result":result
+                    }),
+                )?;
+                out.write_all(b"\n")
+            }
+            _ => unreachable!(),
+        }
+    }
+    fn list_fields(root: Option<&Root>, kind: Kind) -> Result<Value, content::Error> {
+        let Some(root) = root else {
+            return Ok(json!({"entries":[],"unmanaged":[]}));
+        };
+        let (entries, unmanaged) = root.list_paths(kind)?;
+        Ok(json!({"entries":entries,"unmanaged":unmanaged}))
+    }
     #[allow(clippy::too_many_arguments)]
     pub(super) fn run<M: remote::Metadata + curseforge::Metadata + Sync, T: install::Transport>(
         method: &str,
@@ -480,6 +776,15 @@ mod linux {
         metadata: &M,
         transport: &T,
     ) -> io::Result<()> {
+        if op == "list" {
+            return list_rpc(method, family, raw, id, out);
+        }
+        if matches!(op, "enable" | "disable" | "remove") {
+            return mutation_rpc(method, family, op, raw, id, out);
+        }
+        if op == "adopt" {
+            return adopt_rpc(method, family, raw, id, out);
+        }
         let prepare = || -> Result<_, RpcError> {
             let p = parse(raw, family, op)?;
             let provider = if op == "install" {
@@ -566,7 +871,7 @@ mod linux {
                         options, reporter,
                     )
                 },
-                |event| crate::modpack::rpc::write_event(out, id, event),
+                |event| crate::content::rpc::write_byte_event(out, id, event),
             )?
             .map_err(|e| e.name().to_owned())
         } else {
@@ -604,10 +909,10 @@ mod linux {
         metadata: &M,
         transport: &T,
         options: install::Options,
-        reporter: &(dyn Fn(install::Event) -> Result<(), install::Error> + Sync),
+        reporter: &(dyn Fn(install::ByteEvent) -> Result<(), install::Error> + Sync),
     ) -> Result<Value, install::Error> {
         if op == "set-version" {
-            let v = root.set_version(
+            let v = root.set_version_bytes(
                 cas,
                 kind,
                 game,
@@ -645,10 +950,10 @@ mod linux {
         })();
         ids.map_err(|e| install::Error::named(&e.0))?;
         let registry = root
-            .load()
+            .load_listing()
             .map_err(|e| install::Error::named(&local_name(e)))?;
         let r = match provider {
-            Provider::Modrinth => remote::resolve_modrinth(
+            Provider::Modrinth => remote::resolve_modrinth_bytes(
                 metadata,
                 kind,
                 game,
@@ -658,7 +963,7 @@ mod linux {
                 p.dependencies,
                 &registry,
             ),
-            _ => curseforge::resolve(
+            _ => curseforge::resolve_bytes(
                 metadata,
                 kind,
                 game,
@@ -671,7 +976,7 @@ mod linux {
             ),
         }
         .map_err(|e| install::Error::named(&e.0))?;
-        let s = root.install_resolved_with_registry(
+        let s = root.install_resolved_with_registry_bytes(
             cas,
             kind,
             game,
@@ -694,24 +999,35 @@ mod linux {
         let Some(root) = root else {
             return Ok(json!({"entries": [], "unmanaged": []}));
         };
+        // RPC local selectors retain bytes until after target/guard/world setup.
+        // Existing CLI and remote-provider String fields are not reinterpreted.
+        let project = if matches!(op, "enable" | "disable" | "remove") {
+            content::local_project(
+                p.local_project
+                    .as_deref()
+                    .or_else(|| p.project.as_deref().map(str::as_bytes)),
+            )?
+        } else {
+            p.project.as_deref()
+        };
         match op {
-            "list" => {
-                let (entries, unmanaged) = root.list_paths(kind)?;
-                Ok(json!({"entries": entries, "unmanaged": unmanaged}))
-            }
-            "remove" => Ok(
-                json!({"removed": root.remove_bytes(kind, p.project.as_deref(), p.file.as_deref())?}),
-            ),
+            "list" => list_fields(Some(root), kind),
             "adopt" => Ok(json!({"adopted": root.adopt(kind, cas.unwrap())?})),
-            _ => {
-                let (changed, entry) = root.toggle_bytes(
-                    kind,
-                    p.project.as_deref(),
-                    p.file.as_deref(),
-                    op == "enable",
-                )?;
-                Ok(json!({"changed": changed, "entry": entry}))
-            }
+            _ => selected_fields(root, op, kind, project, p.file.as_deref()),
+        }
+    }
+    fn selected_fields(
+        root: &Root,
+        op: &str,
+        kind: Kind,
+        project: Option<&str>,
+        file: Option<&[u8]>,
+    ) -> Result<Value, content::Error> {
+        if op == "remove" {
+            Ok(json!({"removed":root.remove_bytes(kind, project, file)?}))
+        } else {
+            let (changed, entry) = root.toggle_bytes(kind, project, file, op == "enable")?;
+            Ok(json!({"changed":changed,"entry":entry}))
         }
     }
     include!("server_content_cli.rs");

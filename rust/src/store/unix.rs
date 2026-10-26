@@ -8,8 +8,13 @@ use std::os::unix::fs::{MetadataExt, PermissionsExt};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, SystemTime};
 
+#[cfg(test)]
+type GcBeforeLock = Box<dyn Fn(&str) -> io::Result<()> + Send + Sync>;
+
 pub struct Store {
     root: File,
+    #[cfg(test)]
+    gc_before_lock: Option<GcBeforeLock>,
 }
 /// Closing the descriptor releases its OS advisory lock, also used by Zig.
 pub struct ObjectLock {
@@ -143,11 +148,17 @@ impl Store {
             let dir = dir_at(&root, name.as_ref(), true)?;
             dir_at(&dir, "sha1".as_ref(), true)?;
         }
-        Ok(Self { root })
+        Ok(Self {
+            root,
+            #[cfg(test)]
+            gc_before_lock: None,
+        })
     }
     pub fn open_existing(path: impl AsRef<Path>) -> io::Result<Self> {
         Ok(Self {
             root: walk(path.as_ref(), false)?,
+            #[cfg(test)]
+            gc_before_lock: None,
         })
     }
     fn objects(&self) -> io::Result<File> {
@@ -428,6 +439,10 @@ impl Store {
             s.objects_eligible += 1;
             s.bytes_eligible += before.len();
             return Ok(());
+        }
+        #[cfg(test)]
+        if let Some(hook) = &self.gc_before_lock {
+            hook(name.to_str().ok_or_else(|| invalid("InvalidSha1"))?)?;
         }
         let _lock = self.lock_object(name.to_str().ok_or_else(|| invalid("InvalidSha1"))?)?;
         let current = file_at(prefix, name)?;
@@ -716,6 +731,18 @@ impl ArtifactRoot {
         let _ = rfs::unlinkat(&dest, temp.as_str(), AtFlags::empty());
         result
     }
+    /// Content-only byte path verification. Never creates missing parents and
+    /// uses the same no-follow regular-file open as the String API.
+    pub(crate) fn verify_bytes(&self, relative: &[u8], hash: &str, size: u64) -> io::Result<bool> {
+        let opened = self
+            .content_parent_bytes(relative, false)
+            .and_then(|(dir, name)| file_at(&dir, &name));
+        match opened {
+            Ok(mut file) => matches(&mut file, hash, size),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(false),
+            Err(error) => Err(error),
+        }
+    }
     pub fn verify(&self, relative: &str, hash: &str, size: u64) -> io::Result<bool> {
         match self.open_file(relative) {
             Ok(mut f) => matches(&mut f, hash, size),
@@ -820,6 +847,135 @@ mod tests {
         std::fs::write(&source, b"verified artifact").unwrap();
         let h = hash(b"verified artifact");
         (temp, store, source, h)
+    }
+    #[test]
+    #[ignore = "run through compat/cas_gc_recheck.py with an owned-process deadline"]
+    fn gc_rechecks_stale_preflight_after_owned_transaction() {
+        use std::sync::{Mutex, mpsc};
+        fn remove_owned(path: &Path) {
+            std::fs::remove_file(path).unwrap();
+        }
+        fn identity(path: &Path) -> (u64, u64, u64, bool) {
+            let m = std::fs::metadata(path).unwrap();
+            (m.dev(), m.ino(), m.nlink(), m.permissions().readonly())
+        }
+        let (temp, store, source, h) = fixture();
+        let temp = temp.keep();
+        eprintln!("OWNED_GC_FIXTURE: {}", temp.display());
+        assert_eq!(
+            store.import_verified(&source, &h, 17).unwrap(),
+            Placement::HardLink
+        );
+        remove_owned(&source);
+        let cas = temp.as_path().join(".jmclcore");
+        let object = cas.join(object_path(&h).unwrap());
+        let initial = identity(&object);
+        assert_eq!(initial.2, 1);
+        assert!(initial.3);
+        let root = ArtifactRoot::open(temp.as_path().join("peer")).unwrap();
+        let peer = temp.as_path().join("peer/opaque");
+        let leaf = cas.join(format!("locks/sha1/{h}.lock"));
+        let lock_identity = identity(&leaf);
+        let tx = store.transaction(&h).unwrap();
+        let descriptor = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(&leaf)
+            .unwrap();
+        assert!(
+            matches!(
+                descriptor.try_lock(),
+                Err(std::fs::TryLockError::WouldBlock)
+            ),
+            "separate descriptor must report lock contention, not another error"
+        );
+        let mut collector = Store::open_existing(&cas).unwrap();
+        let (arrived, at_preflight) = mpsc::channel();
+        let (resume, resumed) = mpsc::channel();
+        let resumed = Mutex::new(resumed);
+        let expected_hash = h.clone();
+        collector.gc_before_lock = Some(Box::new(move |hash| {
+            if hash != expected_hash {
+                return Err(io::Error::other("unexpected digest"));
+            }
+            arrived.send(()).map_err(io::Error::other)?;
+            resumed
+                .lock()
+                .unwrap()
+                .recv_timeout(Duration::from_secs(10))
+                .map_err(io::Error::other)
+        }));
+        let (done, completed) = mpsc::channel();
+        let worker = std::thread::spawn(move || {
+            let result = collector.collect(GcOptions {
+                dry_run: false,
+                min_age_seconds: 0,
+            });
+            let _ = done.send(result);
+        });
+        // Never panic while holding the transaction or withholding the callback.
+        let reached = at_preflight.recv_timeout(Duration::from_secs(10));
+        let placed = reached
+            .as_ref()
+            .ok()
+            .map(|_| tx.materialize_at(&root, "opaque", 17));
+        drop(tx);
+        let resumed_ok = resume.send(());
+        let collected = completed.recv_timeout(Duration::from_secs(10));
+        // The enclosing owned-test-process deadline bounds a pathological join.
+        let joined = worker.join();
+        assert!(reached.is_ok(), "preflight callback: {reached:?}");
+        assert!(resumed_ok.is_ok(), "resume callback: {resumed_ok:?}");
+        assert!(joined.is_ok(), "collector thread panicked");
+        assert_eq!(placed.unwrap().unwrap(), Placement::HardLink);
+        let summary = collected.unwrap().unwrap();
+        assert_eq!(
+            summary,
+            GcSummary {
+                objects_scanned: 1,
+                objects_linked: 1,
+                ..GcSummary::default()
+            }
+        );
+        descriptor
+            .try_lock()
+            .expect("transaction released descriptor lock");
+        descriptor.unlock().unwrap();
+        let after = identity(&object);
+        assert_eq!(
+            (after.0, after.1, after.3),
+            (initial.0, initial.1, initial.3)
+        );
+        assert_eq!(after.2, 2);
+        assert_eq!(identity(&peer), after);
+        assert_eq!(std::fs::read(&peer).unwrap(), b"verified artifact");
+        assert!(store.verify(&h, 17).unwrap());
+        assert_eq!(identity(&leaf), lock_identity);
+        assert_eq!(std::fs::read(&leaf).unwrap(), b"");
+        remove_owned(&peer);
+        let removed = store
+            .collect(GcOptions {
+                dry_run: false,
+                min_age_seconds: 0,
+            })
+            .unwrap();
+        assert_eq!(
+            removed,
+            GcSummary {
+                objects_scanned: 1,
+                objects_eligible: 1,
+                objects_deleted: 1,
+                bytes_eligible: 17,
+                bytes_deleted: 17,
+                ..GcSummary::default()
+            }
+        );
+        assert!(!object.exists());
+        assert_eq!(identity(&leaf), lock_identity);
+        drop(descriptor);
+        drop(root);
+        drop(store);
+        std::fs::remove_dir_all(&temp).unwrap();
     }
     #[test]
     fn exact_legacy_paths_and_hash_validation() {

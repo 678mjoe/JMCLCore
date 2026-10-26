@@ -1,0 +1,16 @@
+{
+  "base": "cede55ce9b3544796b7775ea9bac2e13537aee47",
+  "protected": {
+    "rust/src/java/receipt.rs": "0922e1f026efa3e08906a9db37cb2712c418c8338299852ba2cfdbdcc3012d6d",
+    "rust/src/java/receipt_read.rs": "8d46b5cfb9e517b991777e0b2de41b240fc92d2530365a4b8a1ae968640136db",
+    "rust/src/java/store.rs": "822f2d4636662540bbb27396e7cc6abf01d4038c01bc616a80e9fb7932bcfb4f",
+    "rust/src/java/runtime_plan.rs": "5a3996a64c9e867faab3f4d21130388dca4f64fa1e5380c4c82204f9dd401c3c",
+    "rust/src/java/detect.rs": "43a25b5795c903e2eb0c1aade0980b23bf986e36602dcbde434a85419f0741cf",
+    "rust/src/java/direct_exec.rs": "7458e6de3add521ab1bf38e0c682b4ab3ee6d6c0c7feab04406ed44375724e37",
+    "rust/src/java/select.rs": "e8e9c0f07ad7eaad106d998489af240ff089079118ead7a3055a8fd2c43fec6e",
+    "rust/src/auth/json.rs": "1c5f6072d612e023ccb8573790016cbe5e5f9508010211707a04ed3672a5c1f5",
+    "rust/src/json_number.rs": "57e33cee5ac49be2ecb35f9a7b151fee4c79796d671eab94114616ff761f0ea4"
+  },
+  "managed_without_test_module": "e0df38d49a22275b3c793d30a11f23501060ca2b9d0a5a0df579db8d4c23f471",
+  "proof_sha256": "93218c8f49cb9c2cc704c0ec3a47615b2286303c5a119e5ff1d755d0224cd860"
+}

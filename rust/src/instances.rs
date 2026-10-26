@@ -24,6 +24,31 @@ fn official() -> String {
 fn yes() -> bool {
     true
 }
+// DownloadSource is a typed enum in Zig: invalid tags fail while parsing,
+// before post-parse manifest validation, even when another field is invalid.
+// Keep the public String representation and callers' construction API unchanged.
+pub(crate) fn schema_source<'de, D: serde::Deserializer<'de>>(d: D) -> Result<String, D::Error> {
+    let raw = <&RawValue>::deserialize(d)?;
+    let token = raw.get().trim();
+    let value = if token.starts_with('"') {
+        serde_json::from_str::<String>(token).map_err(serde::de::Error::custom)?
+    } else if token.starts_with('-') || token.as_bytes().first().is_some_and(u8::is_ascii_digit) {
+        token.to_owned()
+    } else {
+        return Err(serde::de::Error::custom("Zig:UnexpectedToken"));
+    };
+    if matches!(value.as_str(), "official" | "bmclapi") {
+        return Ok(value);
+    }
+    // Zig sliceToEnum accepts integer-shaped ordinal tags, never float coercion.
+    if value != "-0"
+        && !value.bytes().any(|b| matches!(b, b'.' | b'e' | b'E'))
+        && let Ok(tag) = crate::json_number::unsigned_text(&value, 1)
+    {
+        return Ok(if tag == 0 { "official" } else { "bmclapi" }.into());
+    }
+    Err(serde::de::Error::custom("Zig:InvalidEnumTag"))
+}
 // Zig's integer schema parser also accepts integral JSON floats/numeric strings.
 pub(crate) fn schema_number<'de, D: serde::Deserializer<'de>>(d: D) -> Result<u32, D::Error> {
     let raw = <&RawValue>::deserialize(d)?;
@@ -72,7 +97,9 @@ pub(crate) fn parse_document<T: serde::de::DeserializeOwned>(
 ) -> Result<T, &'static str> {
     fn error(e: serde_json::Error) -> &'static str {
         let message = e.to_string();
-        if message.contains("Zig:Overflow") {
+        if message.contains("Zig:InvalidEnumTag") {
+            "InvalidEnumTag"
+        } else if message.contains("Zig:Overflow") {
             "Overflow"
         } else if message.contains("Zig:InvalidNumber") {
             "InvalidNumber"
@@ -101,6 +128,49 @@ pub(crate) fn parse_document<T: serde::de::DeserializeOwned>(
     }
     serde_json::from_slice(bytes).map_err(error)
 }
+// Display names are byte slices in the persisted Zig schemas. Only read views
+// use this representation; operational Manifest construction remains String-based.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct DisplayName(pub(crate) Vec<u8>);
+impl<'de> Deserialize<'de> for DisplayName {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        let raw = <&RawValue>::deserialize(d)?;
+        if raw.get().starts_with('"') {
+            return serde_json::from_str::<String>(raw.get())
+                .map(|s| Self(s.into_bytes()))
+                .map_err(serde::de::Error::custom);
+        }
+        let elements: Vec<&RawValue> =
+            serde_json::from_str(raw.get()).map_err(serde::de::Error::custom)?;
+        elements
+            .into_iter()
+            .map(|v| {
+                crate::json_number::typed_raw(v.get(), 8)
+                    .map(|n| n as u8)
+                    .map_err(|e| serde::de::Error::custom(format!("Zig:{}", e.name())))
+            })
+            .collect::<Result<Vec<_>, _>>()
+            .map(Self)
+    }
+}
+impl Serialize for DisplayName {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        match std::str::from_utf8(&self.0) {
+            Ok(text) => s.serialize_str(text),
+            Err(_) => self.0.serialize(s),
+        }
+    }
+}
+// Installation identity deliberately excludes display names. Borrowed fields
+// prevent either a placeholder name or lossy conversion entering operational APIs.
+#[derive(Clone, Copy)]
+pub(crate) struct InstallationIdentity<'a> {
+    pub id: &'a str,
+    pub version_id: &'a str,
+    pub fabric_loader: &'a Option<String>,
+    pub neoforge_version: &'a Option<String>,
+    pub forge_version: &'a Option<String>,
+}
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Manifest {
     #[serde(default = "one", deserialize_with = "schema_number")]
@@ -114,48 +184,49 @@ pub struct Manifest {
     pub neoforge_version: Option<String>,
     #[serde(default)]
     pub forge_version: Option<String>,
-    #[serde(default = "official")]
+    #[serde(default = "official", deserialize_with = "schema_source")]
+    pub source: String,
+}
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub(crate) struct ReadManifest {
+    #[serde(default = "one", deserialize_with = "schema_number")]
+    pub schema_version: u32,
+    pub id: String,
+    pub name: crate::instances::DisplayName,
+    pub version_id: String,
+    #[serde(default)]
+    pub fabric_loader: Option<String>,
+    #[serde(default)]
+    pub neoforge_version: Option<String>,
+    #[serde(default)]
+    pub forge_version: Option<String>,
+    #[serde(default = "official", deserialize_with = "schema_source")]
     pub source: String,
 }
 impl Manifest {
+    #[cfg(test)]
+    pub(crate) fn identity(&self) -> crate::instances::InstallationIdentity<'_> {
+        crate::instances::InstallationIdentity {
+            id: &self.id,
+            version_id: &self.version_id,
+            fabric_loader: &self.fabric_loader,
+            neoforge_version: &self.neoforge_version,
+            forge_version: &self.forge_version,
+        }
+    }
+
     pub fn validate(&self) -> Result<(), &'static str> {
-        validate_id(&self.id)?;
-        if self.schema_version != 1 {
-            return Err("UnsupportedInstanceSchema");
+        Validation {
+            id: &self.id,
+            schema_version: self.schema_version,
+            name: self.name.as_bytes(),
+            version_id: &self.version_id,
+            fabric_loader: &self.fabric_loader,
+            neoforge_version: &self.neoforge_version,
+            forge_version: &self.forge_version,
+            source: &self.source,
         }
-        if self.name.is_empty() || self.name.len() > 256 {
-            return Err("InvalidInstanceName");
-        }
-        if self.version_id.is_empty() || self.version_id.len() > 256 {
-            return Err("InvalidVersionId");
-        }
-        for (v, err) in [
-            (&self.fabric_loader, "InvalidFabricLoaderVersion"),
-            (&self.neoforge_version, "InvalidNeoForgeVersion"),
-            (&self.forge_version, "InvalidForgeVersion"),
-        ] {
-            if let Some(v) = v
-                && (v.is_empty() || v.len() > 256)
-            {
-                return Err(err);
-            }
-        }
-        if [
-            &self.fabric_loader,
-            &self.neoforge_version,
-            &self.forge_version,
-        ]
-        .iter()
-        .filter(|s| s.is_some())
-        .count()
-            > 1
-        {
-            return Err("LoaderConflict");
-        }
-        if !matches!(self.source.as_str(), "official" | "bmclapi") {
-            return Err("InvalidEnumTag");
-        }
-        Ok(())
+        .validate()
     }
     pub fn parse(bytes: &[u8], id: &str) -> Result<Self, &'static str> {
         validate_id(id)?;
@@ -205,12 +276,75 @@ pub fn validate_id(id: &str) -> Result<(), &'static str> {
 }
 #[derive(Deserialize)]
 struct Directory {
-    directory: String,
+    directory: LookupDirectory,
+}
+// Lookup and delete parameters use byte IDs; creation remains unchanged.
+// Keep invalid bytes until range and root-open checks.
+#[derive(Debug)]
+pub(crate) struct LookupId(Vec<u8>);
+impl<'de> Deserialize<'de> for LookupId {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        let raw = <&RawValue>::deserialize(d)?;
+        if raw.get().starts_with('"') {
+            return serde_json::from_str::<String>(raw.get())
+                .map(|s| Self(s.into_bytes()))
+                .map_err(serde::de::Error::custom);
+        }
+        let elements: Vec<&RawValue> =
+            serde_json::from_str(raw.get()).map_err(serde::de::Error::custom)?;
+        elements
+            .into_iter()
+            .map(|v| {
+                crate::json_number::dynamic_raw(v.get(), 8)
+                    .map(|n| n as u8)
+                    .map_err(|e| serde::de::Error::custom(e.name()))
+            })
+            .collect::<Result<Vec<_>, _>>()
+            .map(Self)
+    }
+}
+impl LookupId {
+    pub(crate) fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+    pub(crate) fn validated(&self) -> Option<&str> {
+        let id = std::str::from_utf8(&self.0).ok()?;
+        validate_id(id).ok()?;
+        Some(id)
+    }
+}
+// Directory byte decoding is separate from validated IDs. Get/list/delete use
+// this view; native conversion uses the existing checked platform bridge.
+#[derive(Debug)]
+pub(crate) struct LookupDirectory(Vec<u8>);
+impl<'de> Deserialize<'de> for LookupDirectory {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        LookupId::deserialize(d).map(|bytes| Self(bytes.0))
+    }
+}
+impl LookupDirectory {
+    pub(crate) fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+    pub(crate) fn native(&self) -> std::io::Result<std::ffi::OsString> {
+        crate::store::path_from_bytes(&self.0)
+    }
 }
 #[derive(Deserialize)]
-struct Target {
-    directory: String,
-    id: String,
+pub(crate) struct LookupTarget {
+    pub directory: LookupDirectory,
+    pub id: LookupId,
+}
+pub(crate) fn lookup_target(
+    p: Option<&RawValue>,
+    missing: &str,
+    bad: &str,
+) -> Result<LookupTarget, RpcError> {
+    let p = p.ok_or_else(|| invalid(missing))?;
+    if !p.get().trim_start().starts_with('{') {
+        return Err(invalid(bad));
+    }
+    serde_json::from_str(p.get()).map_err(|_| invalid(bad))
 }
 #[derive(Deserialize)]
 struct Create {
@@ -367,7 +501,49 @@ fn handle_unix(method: &str, p: Option<&RawValue>) -> Result<Value, RpcError> {
                 .extend(m.fields(false).as_object().unwrap().clone());
             Ok(result)
         }
+        "instance.get" => {
+            let t = lookup_target(
+                p,
+                "instance lookup requires a directory and an id",
+                "instance lookup parameters are invalid",
+            )?;
+            if t.directory.is_empty() || t.id.is_empty() {
+                return Err(invalid("instance lookup parameters are out of range"));
+            }
+            let root = t
+                .directory
+                .native()
+                .and_then(|path| Root::open_native(&path))
+                .map_err(|_| fail("INSTANCES_ROOT_ERROR", "Failed to open the instances root"))?;
+            let id = t
+                .id
+                .validated()
+                .ok_or_else(|| fail("INSTANCE_NOT_FOUND", "No instance matches the given id"))?;
+            let m = root.load_read(id).map_err(|e| {
+                if e.kind() == std::io::ErrorKind::NotFound || e.to_string() == "InvalidInstanceId"
+                {
+                    fail("INSTANCE_NOT_FOUND", "No instance matches the given id")
+                } else {
+                    fail("INSTANCE_LOAD_FAILED", "Failed to load the instance")
+                }
+            })?;
+            let status = root.installed_identity(m.identity()).map_err(|_| {
+                fail(
+                    "INSTANCE_STATUS_FAILED",
+                    "Failed to read instance installation status",
+                )
+            })?;
+            let mut result = json!({"stage":"instance.get"});
+            result
+                .as_object_mut()
+                .unwrap()
+                .extend(m.fields(status).as_object().unwrap().clone());
+            Ok(result)
+        }
         "instance.list" => {
+            if p.is_some_and(|raw| !raw.get().trim_start().starts_with('{')) {
+                return Err(invalid("instance listing parameters are invalid"));
+            }
             let d: Directory = parse(
                 p,
                 "instance listing requires a directory",
@@ -376,73 +552,58 @@ fn handle_unix(method: &str, p: Option<&RawValue>) -> Result<Value, RpcError> {
             if d.directory.is_empty() {
                 return Err(invalid("instance listing directory must not be empty"));
             }
-            let root = open(&d.directory)?;
+            let root = d
+                .directory
+                .native()
+                .and_then(|path| Root::open_native(&path))
+                .map_err(|_| fail("INSTANCES_ROOT_ERROR", "Failed to open the instances root"))?;
             let manifests = root
-                .list()
+                .list_read()
                 .map_err(|_| fail("INSTANCE_LIST_FAILED", "Failed to list instances"))?;
             let items: Result<Vec<Value>, RpcError> = manifests
                 .iter()
                 .map(|m| {
-                    root.installed(m).map(|v| m.fields(v)).map_err(|_| {
-                        fail(
-                            "INSTANCE_STATUS_FAILED",
-                            "Failed to read instance installation status",
-                        )
-                    })
+                    root.installed_identity(m.identity())
+                        .map(|v| m.fields(v))
+                        .map_err(|_| {
+                            fail(
+                                "INSTANCE_STATUS_FAILED",
+                                "Failed to read instance installation status",
+                            )
+                        })
                 })
                 .collect();
             Ok(json!({"stage":"instance.list","instances":items?}))
         }
         _ => {
-            let is_get = method == "instance.get";
-            let t: Target = if is_get {
-                parse(
-                    p,
-                    "instance lookup requires a directory and an id",
-                    "instance lookup parameters are invalid",
-                )?
-            } else {
-                parse(
-                    p,
-                    "instance deletion requires a directory and an id",
-                    "instance deletion parameters are invalid",
-                )?
-            };
+            let t = lookup_target(
+                p,
+                "instance deletion requires a directory and an id",
+                "instance deletion parameters are invalid",
+            )?;
             if t.directory.is_empty() || t.id.is_empty() {
-                return Err(invalid(if is_get {
-                    "instance lookup parameters are out of range"
-                } else {
-                    "instance deletion parameters are out of range"
-                }));
+                return Err(invalid("instance deletion parameters are out of range"));
             }
-            let root = open(&t.directory)?;
-            let m = root.load(&t.id).map_err(|e| {
-                if validate_id(&t.id).is_err() || e.kind() == std::io::ErrorKind::NotFound {
+            let root = t
+                .directory
+                .native()
+                .and_then(|path| Root::open_native(&path))
+                .map_err(|_| fail("INSTANCES_ROOT_ERROR", "Failed to open the instances root"))?;
+            let id = t
+                .id
+                .validated()
+                .ok_or_else(|| fail("INSTANCE_NOT_FOUND", "No instance matches the given id"))?;
+            let delete_error = |e: std::io::Error| {
+                if e.kind() == std::io::ErrorKind::NotFound || e.to_string() == "InvalidInstanceId"
+                {
                     fail("INSTANCE_NOT_FOUND", "No instance matches the given id")
-                } else if is_get {
-                    fail("INSTANCE_LOAD_FAILED", "Failed to load the instance")
                 } else {
                     fail("INSTANCE_DELETE_FAILED", "Failed to delete the instance")
                 }
-            })?;
-            if is_get {
-                let status = root.installed(&m).map_err(|_| {
-                    fail(
-                        "INSTANCE_STATUS_FAILED",
-                        "Failed to read instance installation status",
-                    )
-                })?;
-                let mut result = json!({"stage":"instance.get"});
-                result
-                    .as_object_mut()
-                    .unwrap()
-                    .extend(m.fields(status).as_object().unwrap().clone());
-                Ok(result)
-            } else {
-                root.delete(&t.id)
-                    .map_err(|_| fail("INSTANCE_DELETE_FAILED", "Failed to delete the instance"))?;
-                Ok(json!({"stage":"instance.delete","id":t.id,"deleted":true}))
-            }
+            };
+            root.load_read(id).map_err(delete_error)?;
+            root.delete(id).map_err(delete_error)?;
+            Ok(json!({"stage":"instance.delete","id":id,"deleted":true}))
         }
     }
 }
@@ -462,7 +623,7 @@ struct Installation {
     os: String,
     arch: String,
 }
-fn installed_bytes(bytes: &[u8], m: &Manifest) -> bool {
+fn installed_bytes(bytes: &[u8], m: InstallationIdentity<'_>) -> bool {
     if bytes.len() > 16 * 1024 {
         return false;
     }
@@ -490,10 +651,103 @@ fn installed_bytes(bytes: &[u8], m: &Manifest) -> bool {
         return false;
     }
     i.version_id == m.version_id
-        && i.fabric_loader == m.fabric_loader
-        && i.neoforge_version == m.neoforge_version
-        && i.forge_version == m.forge_version
+        && &i.fabric_loader == m.fabric_loader
+        && &i.neoforge_version == m.neoforge_version
+        && &i.forge_version == m.forge_version
 }
+struct Validation<'a> {
+    id: &'a str,
+    schema_version: u32,
+    name: &'a [u8],
+    version_id: &'a str,
+    fabric_loader: &'a Option<String>,
+    neoforge_version: &'a Option<String>,
+    forge_version: &'a Option<String>,
+    source: &'a str,
+}
+impl Validation<'_> {
+    fn validate(&self) -> Result<(), &'static str> {
+        validate_id(self.id)?;
+        if self.schema_version != 1 {
+            return Err("UnsupportedInstanceSchema");
+        }
+        if self.name.is_empty() || self.name.len() > 256 {
+            return Err("InvalidInstanceName");
+        }
+        if self.version_id.is_empty() || self.version_id.len() > 256 {
+            return Err("InvalidVersionId");
+        }
+        for (v, err) in [
+            (&self.fabric_loader, "InvalidFabricLoaderVersion"),
+            (&self.neoforge_version, "InvalidNeoForgeVersion"),
+            (&self.forge_version, "InvalidForgeVersion"),
+        ] {
+            if let Some(v) = v
+                && (v.is_empty() || v.len() > 256)
+            {
+                return Err(err);
+            }
+        }
+        if [
+            &self.fabric_loader,
+            &self.neoforge_version,
+            &self.forge_version,
+        ]
+        .iter()
+        .filter(|s| s.is_some())
+        .count()
+            > 1
+        {
+            return Err("LoaderConflict");
+        }
+        if !matches!(self.source, "official" | "bmclapi") {
+            return Err("InvalidEnumTag");
+        }
+        Ok(())
+    }
+}
+
+impl ReadManifest {
+    pub(crate) fn identity(&self) -> crate::instances::InstallationIdentity<'_> {
+        crate::instances::InstallationIdentity {
+            id: &self.id,
+            version_id: &self.version_id,
+            fabric_loader: &self.fabric_loader,
+            neoforge_version: &self.neoforge_version,
+            forge_version: &self.forge_version,
+        }
+    }
+
+    pub fn validate(&self) -> Result<(), &'static str> {
+        Validation {
+            id: &self.id,
+            schema_version: self.schema_version,
+            name: &self.name.0,
+            version_id: &self.version_id,
+            fabric_loader: &self.fabric_loader,
+            neoforge_version: &self.neoforge_version,
+            forge_version: &self.forge_version,
+            source: &self.source,
+        }
+        .validate()
+    }
+    pub fn parse(bytes: &[u8], id: &str) -> Result<Self, &'static str> {
+        validate_id(id)?;
+        if bytes.len() > MAX_MANIFEST_BYTES {
+            return Err("InstanceManifestTooLarge");
+        }
+        let m: Self = parse_document(bytes)?;
+        m.validate()?;
+        if m.id != id {
+            return Err("InstanceIdMismatch");
+        }
+        Ok(m)
+    }
+    pub fn fields(&self, installed: bool) -> Value {
+        json!({"id":self.id,"name":self.name,"version_id":self.version_id,"fabric_loader":self.fabric_loader,"neoforge_version":self.neoforge_version,"forge_version":self.forge_version,"source":self.source,"installed":installed})
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -532,7 +786,7 @@ mod tests {
         let m = Manifest::parse(br#"{"id":"a","name":"A","version_id":"1.21"}"#, "a").unwrap();
         assert!(installed_bytes(
             br#"{"version_id":"1.21","source":"bmclapi","os":"linux","arch":"x86_64"}"#,
-            &m
+            m.identity()
         ));
     }
 }
@@ -594,5 +848,196 @@ mod validation_errors {
             missing.message,
             "Failed to resolve the Minecraft version and loader"
         );
+    }
+}
+
+#[cfg(test)]
+mod manifest_enum_tests {
+    fn instance(bytes: &[u8]) -> Result<String, &'static str> {
+        super::Manifest::parse(bytes, "demo").map(|m| m.source)
+    }
+    fn server(bytes: &[u8]) -> Result<String, &'static str> {
+        crate::servers::manifest::Manifest::parse(bytes, "demo").map(|m| m.source)
+    }
+    #[test]
+    fn source_enum_tags_ordinals_and_precedence() {
+        for parse in [instance, server] {
+            for (token, expected) in [
+                (r#""official""#, "official"),
+                (r#""bmclapi""#, "bmclapi"),
+                ("0", "official"),
+                ("1", "bmclapi"),
+                (r#""+1""#, "bmclapi"),
+                (r#""0__1""#, "bmclapi"),
+                (r#""-00""#, "official"),
+            ] {
+                let input = format!(
+                    r#"{{"id":"demo","name":"Demo","version_id":"fake","source":{token}}}"#
+                );
+                assert_eq!(parse(input.as_bytes()).unwrap(), expected);
+            }
+            for token in [
+                r#""bad""#, "2", "-1", "-0", r#""-0""#, "1.0", "1e0", r#""1.0""#, r#""1_""#,
+            ] {
+                let input = format!(r#"{{"name":"","source":{token}}}"#);
+                assert_eq!(
+                    parse(input.as_bytes()).unwrap_err(),
+                    "InvalidEnumTag",
+                    "{token}"
+                );
+            }
+            assert_eq!(
+                parse(br#"{"name":"","source":[]}"#).unwrap_err(),
+                "UnexpectedToken"
+            );
+            assert_eq!(
+                parse(br#"{"name":"A","name":"B","source":"bad"}"#).unwrap_err(),
+                "DuplicateField"
+            );
+            assert_eq!(
+                parse(br#"{"source":"bad","schema_version":4294967296}"#).unwrap_err(),
+                "InvalidEnumTag"
+            );
+            assert_eq!(
+                parse(br#"{"schema_version":4294967296,"source":"bad"}"#).unwrap_err(),
+                "Overflow"
+            );
+        }
+    }
+}
+
+#[cfg(test)]
+mod display_name_tests {
+    use super::*;
+
+    #[test]
+    fn read_view_preserves_bytes_but_operational_manifest_stays_string_based() {
+        for (token, expected) in [
+            (r#""Demo""#, b"Demo".as_slice()),
+            ("[68,101,109,111]", b"Demo".as_slice()),
+            ("[255,9,10,0,65]", b"\xff\t\n\0A".as_slice()),
+            (r#"["+6__5",66.0,6.7e1]"#, b"ABC".as_slice()),
+        ] {
+            let bytes = format!(r#"{{"id":"a","name":{token},"version_id":"fake"}}"#);
+            let m = ReadManifest::parse(bytes.as_bytes(), "a").unwrap();
+            assert_eq!(m.name.0, expected);
+            let encoded = serde_json::to_value(&m.name).unwrap();
+            if let Ok(text) = std::str::from_utf8(expected) {
+                assert_eq!(encoded, json!(text));
+            } else {
+                assert_eq!(encoded, json!(expected));
+            }
+            assert_eq!(
+                Manifest::parse(bytes.as_bytes(), "a").is_ok(),
+                token.starts_with('"')
+            );
+            assert!(installed_bytes(
+                br#"{"version_id":"fake","source":"bmclapi","os":"linux","arch":"x86_64"}"#,
+                m.identity()
+            ));
+            assert!(!installed_bytes(
+                br#"{"version_id":"other","source":"official","os":"linux","arch":"x86_64"}"#,
+                m.identity()
+            ));
+        }
+    }
+
+    #[test]
+    fn read_view_ordered_validation_matches_operational_string_validation() {
+        for (name, expected) in [
+            ("[]", "InvalidInstanceName"),
+            ("[256]", "Overflow"),
+            ("[1.0000000000000001]", "InvalidNumber"),
+            ("[null]", "UnexpectedToken"),
+        ] {
+            let bytes = format!(r#"{{"id":"a","name":{name},"version_id":""}}"#);
+            assert_eq!(
+                ReadManifest::parse(bytes.as_bytes(), "a").unwrap_err(),
+                expected
+            );
+        }
+        for document in [
+            r#"{"id":"a","name":"","version_id":""}"#,
+            r#"{"id":"../bad","name":"","version_id":""}"#,
+            r#"{"schema_version":2,"id":"a","name":"","version_id":""}"#,
+            r#"{"id":"a","name":"","version_id":"","source":"bad"}"#,
+            r#"{"id":"a","name":"A","version_id":"x","fabric_loader":"a","forge_version":"b"}"#,
+        ] {
+            assert_eq!(
+                ReadManifest::parse(document.as_bytes(), "a").unwrap_err(),
+                Manifest::parse(document.as_bytes(), "a").unwrap_err()
+            );
+        }
+    }
+}
+
+#[cfg(test)]
+mod lookup_id_tests {
+    use super::*;
+    #[test]
+    fn dynamic_lookup_bytes_do_not_use_persisted_typed_precision() {
+        let raw = "[100.000000000000001,101,109,111]";
+        assert_eq!(
+            serde_json::from_str::<LookupId>(raw).unwrap().validated(),
+            Some("demo")
+        );
+        assert!(serde_json::from_str::<DisplayName>(raw).is_err());
+        assert!(
+            serde_json::from_str::<LookupId>(r#"["100.000000000000001",101,109,111]"#).is_err()
+        );
+        for raw in ["[255]", "[0]", "[195,169]", "[46,46,47,120]"] {
+            let id = serde_json::from_str::<LookupId>(raw).unwrap();
+            assert!(!id.is_empty());
+            assert_eq!(id.validated(), None);
+        }
+        assert!(serde_json::from_str::<LookupId>("[]").unwrap().is_empty());
+        for raw in ["[256]", "[-1]", "[true]", "[null]", "[[100]]"] {
+            assert!(serde_json::from_str::<LookupId>(raw).is_err());
+        }
+    }
+    #[test]
+    fn lookup_params_ignore_unrelated_fields_without_changing_create() {
+        let bytes = r#"{"directory":"instances","id":[100,101,109,111],"unknown":1e400,"java_paths":false}"#;
+        let raw = RawValue::from_string(bytes.into()).unwrap();
+        let p = lookup_target(Some(&raw), "missing", "invalid").unwrap();
+        assert_eq!(p.id.validated(), Some("demo"));
+        let create = r#"{"directory":"instances","id":[100,101,109,111],"version_id":"fake"}"#;
+        assert!(serde_json::from_str::<Create>(create).is_err());
+        let raw = RawValue::from_string(r#"["instances","demo"]"#.into()).unwrap();
+        assert!(lookup_target(Some(&raw), "missing", "invalid").is_err());
+    }
+}
+
+#[cfg(test)]
+mod lookup_directory_tests {
+    use super::*;
+    #[test]
+    fn directory_bytes_use_checked_native_encoding_without_id_validation() {
+        let d: LookupDirectory = serde_json::from_str(r#""目录/child""#).unwrap();
+        assert_eq!(d.native().unwrap(), std::ffi::OsString::from("目录/child"));
+        let raw: LookupDirectory = serde_json::from_str("[255]").unwrap();
+        let surrogate: LookupDirectory = serde_json::from_str("[237,160,128]").unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::ffi::OsStrExt;
+            assert_eq!(raw.native().unwrap().as_bytes(), &[255]);
+            assert_eq!(surrogate.native().unwrap().as_bytes(), &[237, 160, 128]);
+        }
+        #[cfg(windows)]
+        {
+            use std::os::windows::ffi::OsStrExt;
+            assert_eq!(raw.native().unwrap_err().to_string(), "BadPathName");
+            assert_eq!(
+                surrogate
+                    .native()
+                    .unwrap()
+                    .encode_wide()
+                    .collect::<Vec<_>>(),
+                vec![0xd800]
+            );
+        }
+        let empty: LookupDirectory = serde_json::from_str("[]").unwrap();
+        assert!(empty.is_empty());
+        assert!(serde_json::from_str::<LookupDirectory>("[256]").is_err());
     }
 }

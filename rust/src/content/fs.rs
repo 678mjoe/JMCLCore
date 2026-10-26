@@ -6,6 +6,12 @@ use std::{
     sync::atomic::{AtomicU64, Ordering},
 };
 pub struct Dir(File);
+impl Dir {
+    /// Read-only byte-name lookup; never creates a missing child.
+    pub(super) fn read_child_bytes(&self, name: &[u8]) -> io::Result<Self> {
+        self.child_bytes(name, false)
+    }
+}
 #[cfg(target_os = "linux")]
 impl Dir {
     pub(crate) fn from_directory(dir: File) -> Self {
@@ -20,6 +26,9 @@ mod platform {
 
     impl Dir {
         pub fn root(path: &str) -> io::Result<Self> {
+            Self::root_native(path.as_ref())
+        }
+        pub(crate) fn root_native(path: &std::ffi::OsStr) -> io::Result<Self> {
             std::fs::create_dir_all(path)?;
             Ok(Self(File::from(fs::open(
                 Path::new(path),
@@ -179,6 +188,9 @@ mod platform {
     }
     impl Dir {
         pub fn root(path: &str) -> io::Result<Self> {
+            Self::root_native(path.as_ref())
+        }
+        pub(crate) fn root_native(path: &std::ffi::OsStr) -> io::Result<Self> {
             Ok(Self(fs::walk(Path::new(path), true)?))
         }
         pub fn child(&self, name: &str, create: bool) -> io::Result<Self> {
@@ -225,17 +237,10 @@ mod platform {
                 Err(e) => Err(e),
             }
         }
-        // Remote content still uses the UTF-8 API on all platforms.
-        pub fn unlink(&self, name: &str) -> io::Result<()> {
-            self.unlink_bytes(name.as_bytes())
-        }
         pub fn unlink_bytes(&self, bytes: &[u8]) -> io::Result<()> {
             let name = crate::store::path_from_bytes(bytes)?;
             let name = name.as_os_str();
             fs::unlink(&fs::file_at(&self.0, name)?)
-        }
-        pub fn rename(&self, from: &str, to: &str) -> io::Result<()> {
-            self.rename_bytes(from.as_bytes(), to.as_bytes())
         }
         pub fn rename_bytes(&self, from: &[u8], to: &[u8]) -> io::Result<()> {
             let from = crate::store::path_from_bytes(from)?;
@@ -265,17 +270,6 @@ mod platform {
 impl Dir {
     pub fn artifact_root(&self) -> io::Result<crate::store::ArtifactRoot> {
         crate::store::ArtifactRoot::from_directory(self.0.try_clone()?)
-    }
-    pub fn parent(&self, path: &str) -> io::Result<(Self, String)> {
-        let mut parts = path.rsplitn(2, '/');
-        let leaf = parts.next().ok_or_else(|| io::Error::other("EmptyPath"))?;
-        let mut dir = Self(self.0.try_clone()?);
-        if let Some(parent) = parts.next() {
-            for part in parent.split('/') {
-                dir = dir.child(part, false)?;
-            }
-        }
-        Ok((dir, leaf.to_string()))
     }
     pub fn parent_bytes(&self, path: &[u8]) -> io::Result<(Self, Vec<u8>)> {
         let mut parts = path.rsplitn(2, |b| *b == b'/');

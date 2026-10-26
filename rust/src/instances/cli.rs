@@ -225,7 +225,7 @@ fn run_inner(
                 )?;
             }
             "list" => {
-                let manifests = match root.list() {
+                let manifests = match root.list_read() {
                     Ok(m) => m,
                     Err(e) => {
                         writeln!(
@@ -241,13 +241,15 @@ fn run_inner(
                     out.write_all(b"\n")?;
                 } else {
                     for m in manifests {
-                        writeln!(out, "{}\t{}\t{}\t{}", m.id, m.version_id, m.source, m.name)?;
+                        write!(out, "{}\t{}\t{}\t", m.id, m.version_id, m.source)?;
+                        out.write_all(&m.name.0)?;
+                        out.write_all(b"\n")?;
                     }
                 }
             }
             "show" => {
                 let id = o.id.unwrap();
-                let m = match root.load(&id) {
+                let m = match root.load_read(&id) {
                     Ok(m) => m,
                     Err(e) => {
                         writeln!(
@@ -263,10 +265,12 @@ fn run_inner(
                     serde_json::to_writer(&mut *out, &json!({"instance":m,"directory":path}))?;
                     out.write_all(b"\n")?;
                 } else {
+                    write!(out, "instance\t{}\nname\t", m.id)?;
+                    out.write_all(&m.name.0)?;
                     writeln!(
                         out,
-                        "instance\t{}\nname\t{}\nversion\t{}\nsource\t{}\ndirectory\t{}",
-                        m.id, m.name, m.version_id, m.source, path
+                        "\nversion\t{}\nsource\t{}\ndirectory\t{}",
+                        m.version_id, m.source, path
                     )?;
                 }
             }

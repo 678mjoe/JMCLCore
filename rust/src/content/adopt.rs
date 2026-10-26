@@ -81,32 +81,29 @@ pub(super) fn handle(
         "a directory"
     };
     let raw = params.ok_or_else(|| invalid(format!("{noun} adoption requires {need}")))?;
-    let parsed = (|| -> Option<(String, Option<String>, String)> {
-        #[derive(serde::Deserialize)]
-        struct Params<'a> {
-            directory: String,
-            #[serde(default, borrow)]
-            world: Option<&'a RawValue>,
-            #[serde(default = "default_store")]
-            store_directory: String,
-        }
-        fn default_store() -> String {
-            crate::store::DEFAULT_DIRECTORY.into()
-        }
+    let parsed = (|| -> Option<(Vec<u8>, Option<ListedPath>, Vec<u8>)> {
         if !raw.get().trim_start().starts_with('{') {
             return None;
         }
-        let p: Params = serde_json::from_str(raw.get()).ok()?;
+        crate::auth::json::Json::parse(raw.get()).ok()?;
+        let fields: std::collections::BTreeMap<String, &RawValue> =
+            serde_json::from_str(raw.get()).ok()?;
+        let directory = dynamic_file(fields.get("directory")?.get()).ok()?;
         let world = if dp {
-            Some(serde_json::from_str::<String>(p.world?.get()).ok()?)
+            Some(ListedPath(dynamic_file(fields.get("world")?.get()).ok()?))
         } else {
             None
         };
-        Some((p.directory, world, p.store_directory))
+        // Missing alone selects the existing default. Explicit null remains invalid.
+        let store_directory = match fields.get("store_directory") {
+            Some(value) => dynamic_file(value.get()).ok()?,
+            None => crate::store::DEFAULT_DIRECTORY.as_bytes().to_vec(),
+        };
+        Some((directory, world, store_directory))
     })()
     .ok_or_else(|| invalid(format!("{noun} adoption parameters are invalid")))?;
     let (directory, world, store_directory) = parsed;
-    if directory.is_empty() || world.as_ref().is_some_and(|w| w.is_empty()) {
+    if directory.is_empty() || world.as_ref().is_some_and(|w| w.0.is_empty()) {
         return Err(invalid(if dp {
             "datapack adoption requires a directory and world"
         } else {
@@ -129,20 +126,33 @@ pub(super) fn handle(
     };
     let store_error = |_| RpcError::new("STORE_ROOT_ERROR", "Failed to open the artifact store");
     let (root, store) = if dp {
-        let store = Store::open(&store_directory).map_err(store_error)?;
+        // Preserve source CAS-before-world ordering, including creation effects.
+        let native_store = crate::store::path_from_bytes(&store_directory).map_err(store_error)?;
+        let store = Store::open(&native_store).map_err(store_error)?;
+        let native_root = crate::store::path_from_bytes(&directory)
+            .map_err(Error::from)
+            .map_err(map)?;
         (
-            Root::world(&directory, world.as_deref().unwrap(), true).map_err(map)?,
+            Root::world_bytes_native(&native_root, &world.as_ref().unwrap().0, true)
+                .map_err(map)?,
             store,
         )
     } else {
-        let root = Root::open(&directory)
-            .map_err(|_| RpcError::new("INSTALL_ROOT_ERROR", "Failed to open the install root"))?;
-        (root, Store::open(&store_directory).map_err(store_error)?)
+        let root_error = || RpcError::new("INSTALL_ROOT_ERROR", "Failed to open the install root");
+        let native_root = crate::store::path_from_bytes(&directory).map_err(|_| root_error())?;
+        let root = Root::open_native(&native_root).map_err(|_| root_error())?;
+        // Do not move this conversion/open before the configured game root.
+        let native_store = crate::store::path_from_bytes(&store_directory).map_err(store_error)?;
+        (root, Store::open(&native_store).map_err(store_error)?)
     };
     let adopted = root.adopt(kind, &store).map_err(map)?;
-    Ok(result(
-        &format!("{}.adopt", kind.directory()),
-        world.as_deref(),
-        vec![("adopted", val(adopted))],
-    ))
+    let stage = format!("{}.adopt", kind.directory());
+    let fields = vec![("adopted", val(adopted))];
+    match world.as_ref() {
+        None => Ok(result(&stage, None, fields)),
+        Some(name) => match std::str::from_utf8(&name.0) {
+            Ok(text) => Ok(result(&stage, Some(text), fields)),
+            Err(_) => Ok(result_with_world(&stage, Some(name), fields)),
+        },
+    }
 }

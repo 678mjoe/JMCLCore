@@ -167,7 +167,7 @@ struct ResultBody<'a> {
     stage: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     world: Option<&'a str>,
-    installed: Vec<remote::Installed>,
+    installed: Vec<remote::InstalledRecord<super::ListedPath>>,
     skipped: usize,
 }
 #[allow(clippy::too_many_arguments)]
@@ -344,7 +344,7 @@ fn run<M: remote::Metadata + curseforge::Metadata + Sync, T: install::Transport>
     if change {
         let result = install::stream::stream(
             |reporter| {
-                root.set_version(
+                root.set_version_bytes(
                     &store,
                     kind,
                     &p.game,
@@ -362,7 +362,7 @@ fn run<M: remote::Metadata + curseforge::Metadata + Sync, T: install::Transport>
                     Some(reporter),
                 )
             },
-            |event| crate::modpack::rpc::write_event(out, id, event),
+            |event| crate::content::rpc::write_byte_event(out, id, event),
         )?;
         return match result {
             Err(e) => {
@@ -376,7 +376,7 @@ fn run<M: remote::Metadata + curseforge::Metadata + Sync, T: install::Transport>
                     #[serde(skip_serializing_if = "Option::is_none")]
                     world: Option<&'a str>,
                     #[serde(flatten)]
-                    change: remote::VersionChange,
+                    change: remote::ByteVersionChange,
                 }
                 serde_json::to_writer(
                     &mut *out,
@@ -415,10 +415,10 @@ fn run<M: remote::Metadata + curseforge::Metadata + Sync, T: install::Transport>
             })();
             identifiers.map_err(|e| install::Error::named(&e.0))?;
             let registry = root
-                .load()
+                .load_listing()
                 .map_err(|e| install::Error::named(&super::cli::name(&e)))?;
             let r = match provider {
-                Provider::Modrinth => remote::resolve_modrinth(
+                Provider::Modrinth => remote::resolve_modrinth_bytes(
                     metadata,
                     kind,
                     &p.game,
@@ -428,7 +428,7 @@ fn run<M: remote::Metadata + curseforge::Metadata + Sync, T: install::Transport>
                     p.dependencies,
                     &registry,
                 ),
-                Provider::Curseforge => curseforge::resolve(
+                Provider::Curseforge => curseforge::resolve_bytes(
                     metadata,
                     kind,
                     &p.game,
@@ -442,7 +442,7 @@ fn run<M: remote::Metadata + curseforge::Metadata + Sync, T: install::Transport>
                 Provider::Manual => unreachable!(),
             }
             .map_err(|e| install::Error::named(&e.0))?;
-            root.install_resolved_with_registry(
+            root.install_resolved_with_registry_bytes(
                 &store,
                 kind,
                 &p.game,
@@ -458,7 +458,7 @@ fn run<M: remote::Metadata + curseforge::Metadata + Sync, T: install::Transport>
                 Some(reporter),
             )
         },
-        |event| crate::modpack::rpc::write_event(out, id, event),
+        |event| crate::content::rpc::write_byte_event(out, id, event),
     )?;
     match result {
         Err(e) => {
@@ -538,4 +538,39 @@ fn mapped_change(name: &str, dp: bool) -> (&'static str, &'static str) {
             },
         ),
     }
+}
+
+pub(crate) fn write_byte_event(
+    out: &mut impl Write,
+    id: &str,
+    event: install::ByteEvent,
+) -> io::Result<()> {
+    #[derive(Serialize)]
+    struct Frame<'a> {
+        protocol: u32,
+        id: &'a str,
+        event: &'static str,
+        source: &'static str,
+        #[serde(flatten)]
+        payload: serde_json::Value,
+    }
+    let (event, payload) = match event {
+        install::ByteEvent::File(file) => ("file", serde_json::json!({"file":file})),
+        install::ByteEvent::Retry(retry) => ("retry", serde_json::json!({"retry":retry})),
+        install::ByteEvent::Progress(progress) => {
+            ("progress", serde_json::json!({"progress":progress}))
+        }
+    };
+    serde_json::to_writer(
+        &mut *out,
+        &Frame {
+            protocol: 1,
+            id,
+            event,
+            source: "official",
+            payload,
+        },
+    )?;
+    out.write_all(b"\n")?;
+    out.flush()
 }

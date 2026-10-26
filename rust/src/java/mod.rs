@@ -76,7 +76,7 @@ pub fn handle(method: &str, params: Option<&RawValue>) -> Option<Result<Value, R
             if p.store_directory.is_empty() {
                 return Err(invalid("store directory must not be empty"));
             };
-            let docs = store::list(&p.store_directory).map_err(runtime_error)?;
+            let docs = store::list_read(&p.store_directory).map_err(runtime_error)?;
             Ok(
                 serde_json::json!({"runtimes":docs.iter().map(|d|d.receipt.rpc(&d.name)).collect::<Vec<_>>()}),
             )
@@ -181,7 +181,7 @@ pub fn cli(args: &[String], out: &mut impl Write, err: &mut impl Write) -> io::R
                         return Ok(2);
                     }
                 };
-                let docs = match store::list(&store) {
+                let docs = match store::list_read(&store) {
                     Ok(d) => d,
                     Err(e) => {
                         writeln!(err, "failed to list managed runtimes: {e}")?;
@@ -194,18 +194,26 @@ pub fn cli(args: &[String], out: &mut impl Write, err: &mut impl Write) -> io::R
                     writeln!(out)?;
                 } else {
                     for d in docs {
-                        writeln!(
+                        write!(
                             out,
-                            "{}\t{}\t{}\t{}\t{}",
+                            "{}\t{}\t{}\t",
                             d.name,
                             match d.receipt.provider {
                                 receipt::Provider::Mojang => "mojang",
                                 receipt::Provider::Zulu => "zulu",
                             },
-                            d.receipt.major_version,
-                            d.receipt.version.as_deref().unwrap_or("unknown"),
-                            d.receipt.executable
-                        )?
+                            d.receipt.major_version
+                        )?;
+                        out.write_all(
+                            d.receipt
+                                .version
+                                .as_ref()
+                                .map(|v| v.0.as_slice())
+                                .unwrap_or(b"unknown"),
+                        )?;
+                        out.write_all(b"\t")?;
+                        out.write_all(&d.receipt.executable.0)?;
+                        out.write_all(b"\n")?;
                     }
                 }
                 Ok(0)

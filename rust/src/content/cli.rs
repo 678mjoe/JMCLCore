@@ -86,7 +86,7 @@ pub(super) fn local_inner(
     }
     let datapack = kind == Kind::Datapack;
     let family = kind.directory();
-    let mut directory = "instances".to_string();
+    let mut directory = std::ffi::OsString::from("instances");
     let (mut world, mut project, mut file) = (None, None, None);
     let mut json = false;
     let mut i = 1;
@@ -107,17 +107,9 @@ pub(super) fn local_inner(
         }
         match a {
             "--instances-directory" => {
-                let Some(v) = v.text() else {
-                    return bad(err);
-                };
-                directory = v.to_owned();
+                directory = crate::store::path_from_bytes(v.bytes())?;
             }
-            "--world" if datapack => {
-                world = Some(match v.text() {
-                    Some(v) => v,
-                    None => return bad(err),
-                })
-            }
+            "--world" if datapack => world = Some(v.bytes()),
             "--project" if op != "list" => {
                 project = Some(match v.text() {
                     Some(v) => v,
@@ -140,9 +132,9 @@ pub(super) fn local_inner(
         )?;
         return Ok(2);
     }
-    let game = crate::instances::minecraft_path(&directory, id);
+    let game = std::path::Path::new(&directory).join(id).join(".minecraft");
     let root = if datapack {
-        match Root::world(&game, world.unwrap(), op != "list") {
+        match Root::world_bytes_native(game.as_os_str(), world.unwrap(), op != "list") {
             Ok(r) => r,
             Err(e) => {
                 world_error(err, &e, op)?;
@@ -150,7 +142,7 @@ pub(super) fn local_inner(
             }
         }
     } else {
-        let instances = match crate::instances::Root::open(&directory) {
+        let instances = match crate::instances::Root::open_native(&directory) {
             Ok(r) => r,
             Err(e) => {
                 writeln!(
@@ -161,7 +153,7 @@ pub(super) fn local_inner(
                 return Ok(1);
             }
         };
-        if let Err(e) = instances.load(id) {
+        if let Err(e) = instances.load_read(id) {
             writeln!(
                 err,
                 "failed to load instance: {}",
@@ -169,7 +161,7 @@ pub(super) fn local_inner(
             )?;
             return Ok(1);
         }
-        match Root::open(&game) {
+        match Root::open_native(game.as_os_str()) {
             Ok(r) => r,
             Err(e) => {
                 writeln!(err, "failed to open instance directory: {}", name(&e))?;
@@ -434,8 +426,8 @@ impl LocalArg<'_> {
         }
     }
 }
-/// Narrow pre-dispatch hook. Only non-UTF8 --file values on existing local
-/// mutation routes are intercepted; other arguments keep the old dispatcher.
+/// Narrow pre-dispatch hook for native instance-local path arguments. Server
+/// interception remains limited to the existing non-UTF8 mutation --file path.
 pub fn local_cli_os(
     args: &[std::ffi::OsString],
     out: &mut impl Write,
@@ -444,21 +436,26 @@ pub fn local_cli_os(
     let family = args.get(1)?.to_str()?;
     let kind = Kind::from_directory(family)?;
     let op = args.get(2)?.to_str()?;
-    if !matches!(op, "enable" | "disable" | "remove") {
-        return None;
-    }
     let server = match args.first()?.to_str()? {
         "instance" => false,
         "server" if cfg!(target_os = "linux") && matches!(family, "mods" | "datapacks") => true,
         _ => return None,
     };
+    if !matches!(op, "enable" | "disable" | "remove") && (server || op != "list") {
+        return None;
+    }
     let mut has_raw = false;
     let mut local = Vec::new();
     for (i, arg) in args.iter().enumerate().skip(3) {
         if let Some(text) = arg.to_str() {
             local.push(LocalArg::Text(text));
         } else {
-            if i == 3 || args.get(i - 1)?.to_str() != Some("--file") {
+            let previous = args.get(i.wrapping_sub(1))?.to_str();
+            let allowed = previous == Some("--file") && op != "list"
+                || !server
+                    && (previous == Some("--instances-directory")
+                        || kind == Kind::Datapack && previous == Some("--world"));
+            if i == 3 || !allowed {
                 return None;
             }
             has_raw = true;

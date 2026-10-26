@@ -10,10 +10,19 @@ fn invalid(e: impl ToString) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, e.to_string())
 }
 pub fn open_root(path: &str) -> io::Result<File> {
+    open_root_native(path.as_ref())
+}
+pub(crate) fn open_root_native(path: &std::ffi::OsStr) -> io::Result<File> {
     if path.is_empty() {
         return Err(invalid("EmptyServersRoot"));
     }
-    std::fs::create_dir_all(path)?;
+    // Let the unchanged nofollow directory open distinguish an existing file
+    // from a directory, as the source's createDirPathOpen does.
+    match std::fs::create_dir_all(std::path::Path::new(path)) {
+        Ok(()) => {}
+        Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {}
+        Err(e) => return Err(e),
+    }
     fs::open(
         path,
         OFlags::RDONLY | OFlags::DIRECTORY | OFlags::NOFOLLOW | OFlags::CLOEXEC,
@@ -34,6 +43,11 @@ pub fn open_server(root: &File, id: &str) -> io::Result<File> {
 pub fn load(root: &File, id: &str) -> io::Result<Manifest> {
     let dir = open_server(root, id)?;
     Manifest::parse(&read(&dir, "server.json", 64 * 1024)?, id).map_err(invalid)
+}
+pub(crate) fn load_read(root: &File, id: &str) -> io::Result<super::manifest::ReadManifest> {
+    let dir = open_server(root, id)?;
+    super::manifest::ReadManifest::parse(&read(&dir, "server.json", 64 * 1024)?, id)
+        .map_err(invalid)
 }
 pub fn write_manifest(dir: &File, manifest: &Manifest) -> io::Result<()> {
     atomic_write(dir, "server.json", &manifest.encode().map_err(invalid)?)
@@ -141,14 +155,21 @@ pub fn load_installation(dir: &File) -> io::Result<Option<Installation>> {
         .filter(Installation::valid))
 }
 pub fn installed_java_major(dir: &File, m: &Manifest) -> io::Result<Option<u16>> {
+    installed_identity(dir, m.identity(), &m.source)
+}
+pub(crate) fn installed_identity(
+    dir: &File,
+    m: crate::instances::InstallationIdentity<'_>,
+    source: &str,
+) -> io::Result<Option<u16>> {
     let Some(i) = load_installation(dir)? else {
         return Ok(None);
     };
     if i.version_id != m.version_id
-        || i.fabric_loader != m.fabric_loader
-        || i.neoforge_version != m.neoforge_version
-        || i.forge_version != m.forge_version
-        || i.source != m.source
+        || &i.fabric_loader != m.fabric_loader
+        || &i.neoforge_version != m.neoforge_version
+        || &i.forge_version != m.forge_version
+        || i.source != source
     {
         return Ok(None);
     }
@@ -169,4 +190,44 @@ pub fn installed_java_major(dir: &File, m: &Manifest) -> io::Result<Option<u16>>
         }
     }
     Ok(Some(i.java_major_version))
+}
+
+#[cfg(test)]
+mod root_tests {
+    use super::*;
+    #[test]
+    fn root_open_preserves_directory_errors_and_nofollow() {
+        let t = tempfile::tempdir().unwrap();
+        let file = t.path().join("file");
+        std::fs::write(&file, b"owned").unwrap();
+        for path in [&file, &file.join("child")] {
+            assert_eq!(
+                open_root_native(path.as_os_str())
+                    .unwrap_err()
+                    .raw_os_error(),
+                Some(libc::ENOTDIR)
+            );
+        }
+        assert_eq!(std::fs::read(&file).unwrap(), b"owned");
+        let directory = t.path().join("created/nested");
+        let handle = open_root_native(directory.as_os_str()).unwrap();
+        assert!(handle.metadata().unwrap().is_dir());
+        assert!(
+            open_root_native(directory.as_os_str())
+                .unwrap()
+                .metadata()
+                .unwrap()
+                .is_dir()
+        );
+        let alias = t.path().join("alias");
+        std::os::unix::fs::symlink(&directory, &alias).unwrap();
+        assert_eq!(
+            open_root_native(alias.as_os_str())
+                .unwrap_err()
+                .raw_os_error(),
+            Some(libc::ENOTDIR)
+        );
+        assert!(alias.is_symlink());
+        assert_eq!(open_root("").unwrap_err().to_string(), "EmptyServersRoot");
+    }
 }

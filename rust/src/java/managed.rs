@@ -1,4 +1,7 @@
 //! Preserve preference ordering: `managed` still falls back to a local JVM.
+#[cfg(test)]
+#[path = "existing_candidate.rs"]
+mod existing_candidate;
 use super::{
     detect::{self, CandidateSource, Environment, Error, Runtime},
     receipt, store,

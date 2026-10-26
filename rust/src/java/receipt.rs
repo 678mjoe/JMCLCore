@@ -282,3 +282,7 @@ mod tests {
         assert_eq!(r.major_version, 17);
     }
 }
+
+#[path = "receipt_read.rs"]
+mod read;
+pub(super) use read::{ReadReceipt, parse_read};

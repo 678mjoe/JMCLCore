@@ -2,7 +2,7 @@
 //! published after exact size/hash verification; every instance gets a hard link
 //! whenever its filesystem supports it. This module does not launch a game.
 use crate::{
-    plan::{File as PlannedFile, Plan, validate_relative_path},
+    plan::{Plan, validate_relative_path},
     store::{ArtifactRoot, Placement, Store},
 };
 use serde::Serialize;
@@ -110,6 +110,174 @@ pub enum Event {
     Retry(RetryEvent),
     Progress(Progress),
 }
+/// Internal content path carrier. URLs and public version/install plans remain
+/// Strings; only filenames use the source string-or-byte-array representation.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct BytePath(pub Vec<u8>);
+impl Serialize for BytePath {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match std::str::from_utf8(&self.0) {
+            Ok(text) => serializer.serialize_str(text),
+            Err(_) => self.0.serialize(serializer),
+        }
+    }
+}
+impl From<Vec<u8>> for BytePath {
+    fn from(value: Vec<u8>) -> Self {
+        Self(value)
+    }
+}
+impl From<String> for BytePath {
+    fn from(value: String) -> Self {
+        Self(value.into_bytes())
+    }
+}
+impl From<&str> for BytePath {
+    fn from(value: &str) -> Self {
+        Self(value.as_bytes().to_vec())
+    }
+}
+impl AsRef<[u8]> for BytePath {
+    fn as_ref(&self) -> &[u8] {
+        &self.0
+    }
+}
+#[derive(Clone, Debug)]
+pub(crate) struct ByteFile {
+    pub path: BytePath,
+    pub url: String,
+    pub fallback_url: Option<String>,
+    pub sha1: String,
+    pub size: u64,
+}
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub(crate) struct ByteFileEvent {
+    pub path: BytePath,
+    pub status: FileStatus,
+    pub placement: &'static str,
+    pub size: u64,
+    pub attempts: u8,
+}
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub(crate) struct ByteRetryEvent {
+    pub path: BytePath,
+    pub attempt: u8,
+    pub max_attempts: u8,
+    #[serde(rename = "error")]
+    pub error_name: String,
+}
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum ByteEvent {
+    File(ByteFileEvent),
+    Retry(ByteRetryEvent),
+    Progress(Progress),
+}
+// Only the public String-plan adapter calls this. Its paths originate as &str;
+// conversion is nevertheless checked rather than lossy or unchecked.
+fn string_event(event: ByteEvent) -> Result<Event, Error> {
+    let text =
+        |path: BytePath| String::from_utf8(path.0).map_err(|_| Error::named("InvalidUtf8Path"));
+    Ok(match event {
+        ByteEvent::File(file) => Event::File(FileEvent {
+            path: text(file.path)?,
+            status: file.status,
+            placement: file.placement,
+            size: file.size,
+            attempts: file.attempts,
+        }),
+        ByteEvent::Retry(retry) => Event::Retry(RetryEvent {
+            path: text(retry.path)?,
+            attempt: retry.attempt,
+            max_attempts: retry.max_attempts,
+            error_name: retry.error_name,
+        }),
+        ByteEvent::Progress(progress) => Event::Progress(progress),
+    })
+}
+#[derive(Clone, Copy)]
+enum ExecutionPath<'a> {
+    String(&'a str),
+    Bytes(&'a [u8]),
+}
+impl ExecutionPath<'_> {
+    fn bytes(&self) -> &[u8] {
+        match self {
+            Self::String(s) => s.as_bytes(),
+            Self::Bytes(b) => b,
+        }
+    }
+    fn validate(&self) -> Result<(), Error> {
+        match self {
+            Self::String(s) => validate_relative_path(s).map_err(|e| Error::named(e.name())),
+            Self::Bytes(bytes) => validate_content_path(bytes),
+        }
+    }
+    fn verify(&self, root: &ArtifactRoot, hash: &str, size: u64) -> io::Result<bool> {
+        match self {
+            Self::String(s) => root.verify(s, hash, size),
+            Self::Bytes(b) => root.verify_bytes(b, hash, size),
+        }
+    }
+    fn import(
+        &self,
+        tx: &crate::store::ObjectTransaction<'_>,
+        root: &ArtifactRoot,
+        size: u64,
+    ) -> io::Result<Placement> {
+        match self {
+            Self::String(s) => tx.import_from(root, s, size),
+            Self::Bytes(b) => tx.import_bytes(root, b, size),
+        }
+    }
+    fn materialize(
+        &self,
+        tx: &crate::store::ObjectTransaction<'_>,
+        root: &ArtifactRoot,
+        size: u64,
+    ) -> io::Result<Placement> {
+        match self {
+            Self::String(s) => tx.materialize_at(root, s, size),
+            Self::Bytes(b) => tx.materialize_bytes(root, b, size),
+        }
+    }
+}
+fn validate_content_path(path: &[u8]) -> Result<(), Error> {
+    // Byte-for-byte counterpart of plan::validate_relative_path/components;
+    // not the weaker native/archive path validator.
+    for component in path.split(|b| *b == b'/') {
+        if component.is_empty()
+            || component == b"."
+            || component == b".."
+            || component.ends_with(b".")
+            || component.ends_with(b" ")
+            || component
+                .iter()
+                .any(|b| *b < 32 || *b == 127 || matches!(b, b'/' | b'\\' | b':'))
+        {
+            return Err(Error::named("UnsafePath"));
+        }
+        let stem = component
+            .split(|b| *b == b'.')
+            .next()
+            .unwrap()
+            .to_ascii_uppercase();
+        if matches!(stem.as_slice(), b"CON" | b"PRN" | b"AUX" | b"NUL")
+            || (stem.len() == 4
+                && (stem.starts_with(b"COM") || stem.starts_with(b"LPT"))
+                && matches!(stem[3], b'1'..=b'9'))
+        {
+            return Err(Error::named("UnsafePath"));
+        }
+    }
+    Ok(())
+}
+struct ExecutionFile<'a> {
+    path: ExecutionPath<'a>,
+    url: &'a str,
+    fallback_url: Option<&'a str>,
+    sha1: &'a str,
+    size: u64,
+}
 /// A response must stream into the supplied bounded sink. HTTP status is returned
 /// after the body so its verification/error precedence matches the Zig executor.
 pub trait Transport: Sync {
@@ -164,10 +332,10 @@ struct State {
 }
 struct Shared<'a> {
     state: Mutex<State>,
-    reporter: Option<&'a (dyn Fn(Event) -> Result<(), Error> + Sync)>,
+    reporter: Option<&'a (dyn Fn(ByteEvent) -> Result<(), Error> + Sync)>,
 }
 impl Shared<'_> {
-    fn emit(&self, event: Event) -> Result<(), Error> {
+    fn emit(&self, event: ByteEvent) -> Result<(), Error> {
         if let Some(r) = self.reporter {
             r(event)?;
         }
@@ -203,12 +371,12 @@ impl Shared<'_> {
             return Ok(());
         }
         s.last_stream = Some(now);
-        self.emit(Event::Progress(s.progress.clone()))
+        self.emit(ByteEvent::Progress(s.progress.clone()))
     }
     fn complete(
         &self,
         index: usize,
-        file: &PlannedFile,
+        file: &ExecutionFile<'_>,
         downloaded: bool,
         placement: Placement,
         attempts: u8,
@@ -231,8 +399,8 @@ impl Shared<'_> {
         s.progress.files_completed += 1;
         s.progress.bytes_verified += file.size;
         s.last_stream = Some(Instant::now());
-        self.emit(Event::File(FileEvent {
-            path: file.path.clone(),
+        self.emit(ByteEvent::File(ByteFileEvent {
+            path: BytePath(file.path.bytes().to_vec()),
             status: if downloaded {
                 FileStatus::Downloaded
             } else {
@@ -245,7 +413,7 @@ impl Shared<'_> {
             size: file.size,
             attempts,
         }))?;
-        self.emit(Event::Progress(s.progress.clone()))
+        self.emit(ByteEvent::Progress(s.progress.clone()))
     }
 }
 struct LimitedSink<'a, D: Digest> {
@@ -379,6 +547,76 @@ pub fn execute<T: Transport>(
     transport: &T,
     reporter: Option<&(dyn Fn(Event) -> Result<(), Error> + Sync)>,
 ) -> Result<Summary, Error> {
+    let files: Vec<_> = plan
+        .files
+        .iter()
+        .map(|f| ExecutionFile {
+            path: ExecutionPath::String(&f.path),
+            url: &f.url,
+            fallback_url: f.fallback_url.as_deref(),
+            sha1: &f.sha1,
+            size: f.size,
+        })
+        .collect();
+    let adapter = |event| {
+        if let Some(reporter) = reporter {
+            reporter(string_event(event)?)
+        } else {
+            Ok(())
+        }
+    };
+    execute_files(
+        destination,
+        store,
+        &files,
+        plan.total_download_size,
+        options,
+        transport,
+        Some(&adapter),
+    )
+}
+/// Additive content-only execution view; no native/archive projection or Java
+/// path is entered. Uses the same scheduler, bounded sink and digest transaction.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn execute_bytes<T: Transport>(
+    destination: &ArtifactRoot,
+    store: &Store,
+    files: &[ByteFile],
+    total: u64,
+    options: Options,
+    transport: &T,
+    reporter: Option<&(dyn Fn(ByteEvent) -> Result<(), Error> + Sync)>,
+) -> Result<Summary, Error> {
+    let files: Vec<_> = files
+        .iter()
+        .map(|f| ExecutionFile {
+            path: ExecutionPath::Bytes(&f.path.0),
+            url: &f.url,
+            fallback_url: f.fallback_url.as_deref(),
+            sha1: &f.sha1,
+            size: f.size,
+        })
+        .collect();
+    execute_files(
+        destination,
+        store,
+        &files,
+        total,
+        options,
+        transport,
+        reporter,
+    )
+}
+#[allow(clippy::too_many_arguments)]
+fn execute_files<T: Transport>(
+    destination: &ArtifactRoot,
+    store: &Store,
+    files: &[ExecutionFile<'_>],
+    expected_total: u64,
+    options: Options,
+    transport: &T,
+    reporter: Option<&(dyn Fn(ByteEvent) -> Result<(), Error> + Sync)>,
+) -> Result<Summary, Error> {
     if options.workers == 0 || options.workers > 32 {
         return Err(Error::named("InvalidWorkerCount"));
     }
@@ -387,17 +625,17 @@ pub fn execute<T: Transport>(
     }
     let mut total = 0u64;
     let mut paths = std::collections::HashSet::new();
-    for f in &plan.files {
-        validate_relative_path(&f.path).map_err(|e| Error::named(e.name()))?;
-        crate::store::object_path(&f.sha1)?;
-        if !paths.insert(&f.path) {
+    for f in files {
+        f.path.validate()?;
+        crate::store::object_path(f.sha1)?;
+        if !paths.insert(f.path.bytes()) {
             return Err(Error::named("ConflictingDestination"));
         }
         total = total
             .checked_add(f.size)
             .ok_or_else(|| Error::named("DownloadSizeOverflow"))?;
     }
-    if total != plan.total_download_size {
+    if total != expected_total {
         return Err(Error::named("InvalidPlanTotal"));
     }
     let shared = Shared {
@@ -405,28 +643,28 @@ pub fn execute<T: Transport>(
             next: 0,
             error: None,
             summary: Summary {
-                files_total: plan.files.len(),
+                files_total: files.len(),
                 ..Default::default()
             },
             progress: Progress {
-                files_total: plan.files.len(),
+                files_total: files.len(),
                 bytes_total: total,
                 ..Default::default()
             },
-            file_progress: vec![0; plan.files.len()],
+            file_progress: vec![0; files.len()],
             last_stream: None,
         }),
         reporter,
     };
     std::thread::scope(|scope| {
-        for _ in 0..usize::from(options.workers).min(plan.files.len()) {
+        for _ in 0..usize::from(options.workers).min(files.len()) {
             let shared = &shared;
             scope.spawn(move || {
-                while let Some(index) = shared.next(plan.files.len()) {
+                while let Some(index) = shared.next(files.len()) {
                     if let Err(e) = one(
                         destination,
                         store,
-                        &plan.files[index],
+                        &files[index],
                         index,
                         options,
                         transport,
@@ -448,34 +686,34 @@ pub fn execute<T: Transport>(
 fn one<T: Transport>(
     destination: &ArtifactRoot,
     store: &Store,
-    file: &PlannedFile,
+    file: &ExecutionFile<'_>,
     index: usize,
     options: Options,
     transport: &T,
     shared: &Shared<'_>,
 ) -> Result<(), Error> {
-    let destination_valid = destination.verify(&file.path, &file.sha1, file.size)?;
-    let transaction = store.transaction(&file.sha1)?;
+    let destination_valid = file.path.verify(destination, file.sha1, file.size)?;
+    let transaction = store.transaction(file.sha1)?;
     let mut downloaded = false;
     let mut attempts = 0;
     if !transaction.verify(file.size)? {
         transaction.remove_invalid(file.size)?;
         if destination_valid {
-            transaction.import_from(destination, &file.path, file.size)?;
+            file.path.import(&transaction, destination, file.size)?;
         } else {
             let max = options.retries + 1;
             for attempt in 1..=max {
                 let url = if max > 1 && attempt == max {
-                    file.fallback_url.as_deref().unwrap_or(&file.url)
+                    file.fallback_url.unwrap_or(file.url)
                 } else {
-                    &file.url
+                    file.url
                 };
                 let result: Result<(), Error> = (|| {
                     let mut staged = transaction.stage(file.size)?;
                     download_into_staging_file::<Sha1, _>(
                         transport,
                         url,
-                        &file.sha1,
+                        file.sha1,
                         file.size,
                         staged.file_mut(),
                         &mut |received| shared.bytes(index, received),
@@ -490,8 +728,8 @@ fn one<T: Transport>(
                         break;
                     }
                     Err(e) if attempt < max => {
-                        shared.emit(Event::Retry(RetryEvent {
-                            path: file.path.clone(),
+                        shared.emit(ByteEvent::Retry(ByteRetryEvent {
+                            path: BytePath(file.path.bytes().to_vec()),
                             attempt,
                             max_attempts: max,
                             error_name: e.0,
@@ -503,7 +741,9 @@ fn one<T: Transport>(
             }
         }
     }
-    let placement = transaction.materialize_at(destination, &file.path, file.size)?;
+    let placement = file
+        .path
+        .materialize(&transaction, destination, file.size)?;
     shared.complete(index, file, downloaded, placement, attempts)
 }
 
@@ -512,7 +752,7 @@ mod tests {
     use super::*;
     use crate::{
         metadata::Source,
-        plan::{Target, Usage},
+        plan::{File as PlannedFile, Target, Usage},
     };
     use std::sync::{
         Arc, Condvar,
@@ -1039,3 +1279,7 @@ pub mod cli;
 pub mod rpc;
 pub mod service;
 pub mod stream;
+
+#[cfg(test)]
+#[path = "content_byte_tests.rs"]
+mod content_byte_tests;

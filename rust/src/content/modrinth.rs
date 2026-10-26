@@ -1,4 +1,8 @@
 //! Typed Modrinth content metadata and deterministic selection, without credentials.
+#[path = "modrinth_project.rs"]
+pub(super) mod project_ordered;
+#[path = "modrinth_version.rs"]
+mod version_ordered;
 use serde::{Deserialize, Serialize};
 #[path = "modrinth_wire.rs"]
 mod wire;
@@ -33,11 +37,12 @@ pub struct Hashes {
     pub sha512: Option<MetadataBytes>,
 }
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct File {
+#[serde(bound(deserialize = "F: FilenameValue"))]
+pub struct FileRecord<F> {
     #[serde(deserialize_with = "string")]
     pub url: String,
-    #[serde(deserialize_with = "string")]
-    pub filename: String,
+    #[serde(deserialize_with = "filename_value")]
+    pub filename: F,
     #[serde(default)]
     pub primary: bool,
     pub hashes: Hashes,
@@ -63,7 +68,8 @@ pub struct Dependency {
     pub dependency_type: DependencyType,
 }
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct Version {
+#[serde(bound(deserialize = "F: FilenameValue"))]
+pub struct VersionRecord<F> {
     #[serde(deserialize_with = "string")]
     pub id: String,
     #[serde(deserialize_with = "string")]
@@ -75,9 +81,36 @@ pub struct Version {
     pub game_versions: Vec<String>,
     #[serde(deserialize_with = "strings")]
     pub loaders: Vec<String>,
-    pub files: Vec<File>,
+    pub files: Vec<FileRecord<F>>,
     #[serde(default)]
     pub dependencies: Vec<Dependency>,
+}
+pub type File = FileRecord<String>;
+pub type Version = VersionRecord<String>;
+pub(super) trait FilenameValue: Sized {
+    fn from_bytes(value: MetadataBytes) -> Result<Self>;
+    fn filename_bytes(&self) -> &[u8];
+}
+impl FilenameValue for String {
+    fn from_bytes(value: MetadataBytes) -> Result<Self> {
+        String::from_utf8(value.into_bytes()).map_err(|_| "UnexpectedToken".into())
+    }
+    fn filename_bytes(&self) -> &[u8] {
+        self.as_bytes()
+    }
+}
+impl FilenameValue for MetadataBytes {
+    fn from_bytes(value: MetadataBytes) -> Result<Self> {
+        Ok(value)
+    }
+    fn filename_bytes(&self) -> &[u8] {
+        self.as_bytes()
+    }
+}
+pub(super) fn filename_value<'de, D: serde::Deserializer<'de>, F: FilenameValue>(
+    d: D,
+) -> std::result::Result<F, D::Error> {
+    F::from_bytes(MetadataBytes::deserialize(d)?).map_err(|e| serde::de::Error::custom(e.0))
 }
 pub(super) fn number_width<'de, D: serde::Deserializer<'de>>(
     d: D,
@@ -158,18 +191,8 @@ fn loaders(v: &[MetadataBytes], required: bool) -> Result<()> {
     }
     Ok(())
 }
-// Only after a complete typed Modrinth parse: skipped unknown strings still
-// need lexical validation. Never call this for Envelope<RawValue>, or before
-// typed parsing, since earlier type/duplicate errors must retain precedence.
-fn validate_completed_strings(bytes: &[u8]) -> Result<()> {
-    let text = std::str::from_utf8(bytes).map_err(|_| Error("SyntaxError".into()))?;
-    crate::auth::json::Json::parse(text)
-        .map(|_| ())
-        .map_err(|_| Error("SyntaxError".into()))
-}
 pub fn parse_project(b: &[u8]) -> Result<Project> {
-    let p: WireProject = parse(b, 1024 * 1024, false)?;
-    validate_completed_strings(b)?;
+    let p = project_ordered::parse(b)?;
     ascii(p.id.as_bytes(), 64, b"-_.", "InvalidModrinthProject")?;
     ascii(p.slug.as_bytes(), 64, b"-_.", "InvalidModrinthProject")?;
     if !matches!(
@@ -189,7 +212,7 @@ fn rank(s: &str) -> Option<u8> {
         _ => None,
     }
 }
-fn validate(v: &WireVersion) -> Result<()> {
+fn validate<F: FilenameValue>(v: &WireVersion<F>) -> Result<()> {
     ascii(v.id.as_bytes(), 16, b"", "InvalidModrinthVersionId")?;
     ascii(v.project_id.as_bytes(), 16, b"", "InvalidModrinthVersionId")?;
     if !matches!(v.version_type.as_bytes(), b"release" | b"beta" | b"alpha") {
@@ -206,19 +229,23 @@ fn validate(v: &WireVersion) -> Result<()> {
         return Err("InvalidModrinthFiles".into());
     }
     for f in &v.files {
-        let n = &f.filename;
-        let stem = n.split('.').next().unwrap_or("").to_ascii_uppercase();
-        let reserved = matches!(stem.as_str(), "CON" | "PRN" | "AUX" | "NUL")
-            || ((stem.starts_with("COM") || stem.starts_with("LPT"))
+        let n = f.filename.filename_bytes();
+        let stem = n
+            .split(|b| *b == b'.')
+            .next()
+            .unwrap_or(b"")
+            .to_ascii_uppercase();
+        let reserved = matches!(stem.as_slice(), b"CON" | b"PRN" | b"AUX" | b"NUL")
+            || ((stem.starts_with(b"COM") || stem.starts_with(b"LPT"))
                 && stem.len() == 4
-                && matches!(stem.as_bytes()[3], b'1'..=b'9'));
+                && matches!(stem[3], b'1'..=b'9'));
         if n.is_empty()
             || n.len() > 256
-            || n == "."
-            || n == ".."
-            || n.ends_with(['.', ' '])
-            || n.bytes()
-                .any(|b| b < 32 || b == 127 || b"/\\:".contains(&b))
+            || n == b"."
+            || n == b".."
+            || n.last().is_some_and(|b| matches!(b, b'.' | b' '))
+            || n.iter()
+                .any(|b| *b < 32 || *b == 127 || b"/\\:".contains(b))
             || reserved
         {
             return Err("InvalidModrinthFilename".into());
@@ -260,15 +287,13 @@ fn validate(v: &WireVersion) -> Result<()> {
     }
     Ok(())
 }
-pub fn parse_version(b: &[u8]) -> Result<Version> {
-    let v: WireVersion = parse(b, 4 * 1024 * 1024, false)?;
-    validate_completed_strings(b)?;
+pub(super) fn parse_version_as<F: FilenameValue>(b: &[u8]) -> Result<VersionRecord<F>> {
+    let v = version_ordered::one::<F>(b)?;
     validate(&v)?;
     v.into_public()
 }
-pub fn parse_versions(b: &[u8]) -> Result<Vec<Version>> {
-    let v: Vec<WireVersion> = parse(b, 16 * 1024 * 1024, true)?;
-    validate_completed_strings(b)?;
+pub(super) fn parse_versions_as<F: FilenameValue>(b: &[u8]) -> Result<Vec<VersionRecord<F>>> {
+    let v = version_ordered::many::<F>(b)?;
     if v.len() > 512 {
         return Err("TooManyModrinthVersions".into());
     }
@@ -277,22 +302,36 @@ pub fn parse_versions(b: &[u8]) -> Result<Vec<Version>> {
     }
     v.into_iter().map(WireVersion::into_public).collect()
 }
-pub fn supports(v: &Version, game: &str, loader: Option<&str>) -> bool {
+pub fn parse_version(b: &[u8]) -> Result<Version> {
+    parse_version_as(b)
+}
+pub fn parse_versions(b: &[u8]) -> Result<Vec<Version>> {
+    parse_versions_as(b)
+}
+
+pub fn supports<F>(v: &VersionRecord<F>, game: &str, loader: Option<&str>) -> bool {
     v.game_versions.iter().any(|s| s == game)
         && loader.is_none_or(|l| v.loaders.iter().any(|s| s == l))
 }
-pub fn select<'a>(v: &'a [Version], game: &str, loader: Option<&str>) -> Option<&'a Version> {
+pub fn select<'a, F>(
+    v: &'a [VersionRecord<F>],
+    game: &str,
+    loader: Option<&str>,
+) -> Option<&'a VersionRecord<F>> {
     v.iter()
         .filter(|v| supports(v, game, loader))
         .filter_map(|v| rank(&v.version_type).map(|r| (r, v)))
         .min_by_key(|(r, _)| *r)
         .map(|(_, v)| v)
 }
-pub fn select_file<'a>(v: &'a Version, extension: Option<&str>) -> Option<&'a File> {
+pub(super) fn select_file_as<'a, F: FilenameValue>(
+    v: &'a VersionRecord<F>,
+    extension: Option<&str>,
+) -> Option<&'a FileRecord<F>> {
     let mut fallback = None;
     let mut many = false;
     for f in &v.files {
-        if extension.is_some_and(|e| !f.filename.ends_with(e)) {
+        if extension.is_some_and(|e| !f.filename.filename_bytes().ends_with(e.as_bytes())) {
             continue;
         }
         if f.primary {
@@ -306,6 +345,10 @@ pub fn select_file<'a>(v: &'a Version, extension: Option<&str>) -> Option<&'a Fi
     }
     if many { None } else { fallback }
 }
+pub fn select_file<'a>(v: &'a Version, extension: Option<&str>) -> Option<&'a File> {
+    select_file_as(v, extension)
+}
+
 pub fn project_url(s: &str) -> Result<String> {
     project_ref(s)?;
     Ok(format!("https://api.modrinth.com/v2/project/{s}"))
@@ -329,6 +372,16 @@ pub fn versions_url(s: &str, g: &str, l: Option<&str>) -> Result<String> {
 /// The original typed JSON schema emits UTF-8 as strings and other bytes as arrays.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct MetadataBytes(Vec<u8>);
+impl From<String> for MetadataBytes {
+    fn from(v: String) -> Self {
+        Self(v.into_bytes())
+    }
+}
+impl From<Vec<u8>> for MetadataBytes {
+    fn from(v: Vec<u8>) -> Self {
+        Self(v)
+    }
+}
 impl MetadataBytes {
     pub(super) fn as_bytes(&self) -> &[u8] {
         &self.0

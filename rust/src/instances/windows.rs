@@ -1,5 +1,7 @@
 //! Windows instance adapter using shared handle-relative NT filesystem primitives.
-use super::{MAX_MANIFEST_BYTES, Manifest, installed_bytes, validate_id};
+use super::{
+    InstallationIdentity, MAX_MANIFEST_BYTES, Manifest, ReadManifest, installed_bytes, validate_id,
+};
 use crate::store::windows as fs;
 use std::{
     fs::File,
@@ -63,12 +65,15 @@ impl Root {
     }
 
     pub fn open(path: &str) -> io::Result<Self> {
+        Self::open_native(path.as_ref())
+    }
+    pub fn open_native(path: &std::ffi::OsStr) -> io::Result<Self> {
         if path.is_empty() {
             return Err(invalid("EmptyInstancesRoot"));
         }
         // Match createDirPathOpen: an existing final file must reach the
         // directory-open operation (NotDir), not stop at mkdir AlreadyExists.
-        match std::fs::create_dir_all(path) {
+        match std::fs::create_dir_all(std::path::Path::new(path)) {
             Ok(()) => {}
             Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {}
             Err(e) => return Err(e),
@@ -92,9 +97,19 @@ impl Root {
         result
     }
     pub fn load(&self, id: &str) -> io::Result<Manifest> {
+        self.load_with(id, Manifest::parse)
+    }
+    pub fn load_read(&self, id: &str) -> io::Result<ReadManifest> {
+        self.load_with(id, ReadManifest::parse)
+    }
+    fn load_with<T>(
+        &self,
+        id: &str,
+        parse: fn(&[u8], &str) -> Result<T, &'static str>,
+    ) -> io::Result<T> {
         validate_id(id).map_err(invalid)?;
         let child = fs::child(&self.dir, id.as_ref(), true, false, false)?;
-        Manifest::parse(
+        parse(
             &read(&child, "instance.json", MAX_MANIFEST_BYTES).map_err(|e| {
                 if e.to_string() == "TooLarge" {
                     invalid("InstanceManifestTooLarge")
@@ -106,7 +121,18 @@ impl Root {
         )
         .map_err(invalid)
     }
+    #[cfg(test)]
     pub fn list(&self) -> io::Result<Vec<Manifest>> {
+        self.list_with(Self::load, |m| &m.id)
+    }
+    pub fn list_read(&self) -> io::Result<Vec<ReadManifest>> {
+        self.list_with(Self::load_read, |m| &m.id)
+    }
+    fn list_with<T>(
+        &self,
+        load: fn(&Self, &str) -> io::Result<T>,
+        id_of: fn(&T) -> &str,
+    ) -> io::Result<Vec<T>> {
         let mut values = Vec::new();
         for name in fs::names(&self.dir)? {
             let Some(id) = name.to_str() else { continue };
@@ -120,18 +146,22 @@ impl Root {
             if values.len() == 4096 {
                 return Err(invalid("TooManyInstances"));
             }
-            if let Ok(m) = self.load(id) {
+            if let Ok(m) = load(self, id) {
                 values.push(m)
             }
         }
-        values.sort_by(|a, b| a.id.cmp(&b.id));
+        values.sort_by(|a, b| id_of(a).cmp(id_of(b)));
         Ok(values)
     }
     pub fn delete(&self, id: &str) -> io::Result<()> {
-        self.load(id)?;
+        self.load_read(id)?;
         fs::remove_tree(&self.dir, id.as_ref())
     }
+    #[cfg(test)]
     pub fn installed(&self, m: &Manifest) -> io::Result<bool> {
+        self.installed_identity(m.identity())
+    }
+    pub fn installed_identity(&self, m: InstallationIdentity<'_>) -> io::Result<bool> {
         let child = fs::child(&self.dir, m.id.as_ref(), true, false, false)?;
         let game = match fs::child(&child, ".minecraft".as_ref(), true, false, false) {
             Ok(d) => d,

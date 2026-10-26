@@ -61,8 +61,16 @@ impl Root {
     pub fn open(path: &str) -> Result<Self> {
         Ok(Self(fs::Dir::root(path)?))
     }
+    pub(crate) fn open_native(path: &std::ffi::OsStr) -> Result<Self> {
+        Ok(Self(fs::Dir::root_native(path)?))
+    }
     pub fn world(game: &str, name: &str, mutable: bool) -> Result<Self> {
-        let game = fs::Dir::root(game)?;
+        Self::world_from_directory(fs::Dir::root(game)?, name, mutable)
+    }
+    pub(crate) fn world_native(game: &std::ffi::OsStr, name: &str, mutable: bool) -> Result<Self> {
+        Self::world_from_directory(fs::Dir::root_native(game)?, name, mutable)
+    }
+    fn world_from_directory(game: fs::Dir, name: &str, mutable: bool) -> Result<Self> {
         let saves = game.child("saves", false).map_err(world_error)?;
         if !valid_world(name) {
             return Err(Error::WorldInvalid);
@@ -73,9 +81,30 @@ impl Root {
         }
         Ok(Self(world))
     }
+    // Read-only callers always pass false; mutable byte worlds use the same guard
+    // as the existing String helper after acquiring the existing world child.
+    fn list_world_native(game: &std::ffi::OsStr, name: &[u8]) -> Result<Self> {
+        Self::world_bytes_native(game, name, false)
+    }
+    fn world_bytes_native(game: &std::ffi::OsStr, name: &[u8], mutable: bool) -> Result<Self> {
+        let game = fs::Dir::root_native(game)?;
+        let saves = game.child("saves", false).map_err(world_error)?;
+        if !valid_world_bytes(name) {
+            return Err(Error::WorldInvalid);
+        }
+        let world = saves.read_child_bytes(name).map_err(world_error)?;
+        if mutable && world.locked()? {
+            return Err(Error::WorldLocked);
+        }
+        Ok(Self(world))
+    }
     pub fn load(&self) -> Result<Registry> {
         self.load_with(registry::parse)
     }
+    pub(crate) fn load_listing(&self) -> Result<registry::ListingRegistry> {
+        self.load_with(registry::parse_listing)
+    }
+
     fn load_with<F: registry::RegistryFile>(
         &self,
         parse: fn(&[u8]) -> std::result::Result<registry::RegistryRecord<F>, &'static str>,
@@ -303,13 +332,52 @@ fn valid_world(n: &str) -> bool {
         && !n.bytes().any(|b| b == b'/' || b == b'\\' || b < 32)
 }
 
+fn valid_world_bytes(n: &[u8]) -> bool {
+    !n.is_empty()
+        && n.len() <= 255
+        && n.first() != Some(&b'.')
+        && !n.last().is_some_and(|b| *b == b' ' || *b == b'.')
+        && !n.iter().any(|b| *b == b'/' || *b == b'\\' || *b < 32)
+}
+
+// Byte names use the dynamic boundary. Existing mutable String inputs retain
+// their original String helper; byte mutations explicitly acquire its guard.
+#[derive(Serialize)]
+#[serde(untagged)]
+enum LocalWorld {
+    Text(String),
+    Bytes(ListedPath),
+}
+impl LocalWorld {
+    fn is_empty(&self) -> bool {
+        match self {
+            Self::Text(v) => v.is_empty(),
+            Self::Bytes(v) => v.0.is_empty(),
+        }
+    }
+}
+
+// Local list/toggle/remove directories use the source dynamic byte boundary.
+// Public String Root APIs and adoption/acquisition decoders remain unchanged.
+struct LocalDirectory(Vec<u8>);
+impl LocalDirectory {
+    fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+    fn open(&self) -> Result<Root> {
+        Root::open_native(&crate::store::path_from_bytes(&self.0)?)
+    }
+    fn world(&self, name: &str, mutable: bool) -> Result<Root> {
+        Root::world_native(&crate::store::path_from_bytes(&self.0)?, name, mutable)
+    }
+}
 struct Params {
-    directory: String,
-    world: Option<String>,
-    project: Option<String>,
+    directory: LocalDirectory,
+    world: Option<LocalWorld>,
+    project: Option<Vec<u8>>,
     file: Option<Vec<u8>>,
 }
-/// Only local content's file selector uses this dynamic byte-string boundary.
+/// Local content selectors use this dynamic byte-string boundary.
 /// Numeric JSON elements follow binary64 Value coercion; quoted numbers keep
 /// the typed numeric grammar. Do not use the typed metadata byte visitor here.
 pub(crate) fn dynamic_file(raw: &str) -> std::result::Result<Vec<u8>, ()> {
@@ -329,39 +397,49 @@ pub(crate) fn dynamic_file(raw: &str) -> std::result::Result<Vec<u8>, ()> {
         })
         .collect()
 }
+/// Validate only after the caller has acquired its root/world/guard. The source
+/// accepts bytes at parsing time but permits only ASCII project references.
+pub(crate) fn local_project(bytes: Option<&[u8]>) -> Result<Option<&str>> {
+    bytes
+        .map(|b| {
+            std::str::from_utf8(b)
+                .ok()
+                .filter(|s| registry::project_ref(s))
+                .ok_or(Error::Selector("InvalidModrinthProject"))
+        })
+        .transpose()
+}
 fn parse_params(raw: &str, world: bool, selector: bool) -> Option<Params> {
-    let value: Value = serde_json::from_str(raw).ok()?;
-    let o = value.as_object()?;
-    let directory = o.get("directory")?.as_str()?.to_string();
-    let required = |key: &str| -> Option<String> { Some(o.get(key)?.as_str()?.to_string()) };
-    let optional = |key: &str| -> Option<Option<String>> {
-        match o.get(key) {
-            None | Some(Value::Null) => Some(None),
-            Some(Value::String(v)) => Some(Some(v.clone())),
-            _ => None,
+    // Validate complete JSON strings even for direct callers, without coercing
+    // ignored numeric values into finite binary64. RPC also validates this
+    // lexical boundary and duplicate keys before dispatch.
+    crate::auth::json::Json::parse(raw).ok()?;
+    let fields: std::collections::BTreeMap<String, &RawValue> = serde_json::from_str(raw).ok()?;
+    let required =
+        |key: &str| -> Option<String> { serde_json::from_str(fields.get(key)?.get()).ok() };
+    let directory = LocalDirectory(dynamic_file(fields.get("directory")?.get()).ok()?);
+    let optional = |key: &str| -> Option<Option<Vec<u8>>> {
+        match fields.get(key) {
+            None => Some(None),
+            Some(v) if v.get().trim() == "null" => Some(None),
+            Some(v) => Some(Some(dynamic_file(v.get()).ok()?)),
         }
     };
     Some(Params {
         directory,
         world: if world {
-            Some(required("world")?)
+            Some(
+                if selector && fields.get("world")?.get().trim_start().starts_with('"') {
+                    LocalWorld::Text(required("world")?)
+                } else {
+                    LocalWorld::Bytes(ListedPath(dynamic_file(fields.get("world")?.get()).ok()?))
+                },
+            )
         } else {
             None
         },
         project: if selector { optional("project")? } else { None },
-        file: if selector {
-            // Match the existing Value map's last-key-wins semantics while
-            // preserving the file element lexemes for dynamic u8 conversion.
-            let fields: std::collections::BTreeMap<String, &RawValue> =
-                serde_json::from_str(raw).ok()?;
-            match fields.get("file") {
-                None => None,
-                Some(v) if v.get().trim() == "null" => None,
-                Some(v) => Some(dynamic_file(v.get()).ok()?),
-            }
-        } else {
-            None
-        },
+        file: if selector { optional("file")? } else { None },
     })
 }
 fn invalid(s: impl Into<String>) -> RpcError {
@@ -371,6 +449,13 @@ fn val<T: Serialize>(v: T) -> Value {
     serde_json::to_value(v).expect("public serializable content")
 }
 fn result(stage: &str, world: Option<&str>, fields: Vec<(&str, Value)>) -> Value {
+    result_with_world(stage, world, fields)
+}
+fn result_with_world<T: Serialize + ?Sized>(
+    stage: &str,
+    world: Option<&T>,
+    fields: Vec<(&str, Value)>,
+) -> Value {
     let mut m = Map::new();
     m.insert("stage".into(), val(stage));
     if let Some(w) = world {
@@ -482,6 +567,9 @@ pub fn handle(
             ) if datapack && op == "list" => {
                 invalid("Project, version, or Minecraft version identifiers are invalid")
             }
+            Error::Selector("InvalidModrinthProject") if datapack => {
+                invalid("Project, version, or Minecraft version identifiers are invalid")
+            }
             Error::Invalid | Error::Selector(_) => invalid("The selector is invalid"),
             Error::NotFound => RpcError::new(
                 "CONTENT_NOT_FOUND",
@@ -495,18 +583,32 @@ pub fn handle(
             }
             _ => RpcError::new(fallback.0, fallback.1),
         };
-        let world = if datapack { p.world.as_deref() } else { None };
+        let world = if datapack { p.world.as_ref() } else { None };
         let root = if datapack {
-            Root::world(&p.directory, world.unwrap(), op != "list").map_err(map)?
+            match world.unwrap() {
+                LocalWorld::Text(name) => p.directory.world(name, op != "list"),
+                LocalWorld::Bytes(name) => {
+                    let directory = crate::store::path_from_bytes(&p.directory.0)
+                        .map_err(Error::from)
+                        .map_err(map)?;
+                    if op == "list" {
+                        Root::list_world_native(&directory, &name.0)
+                    } else {
+                        Root::world_bytes_native(&directory, &name.0, true)
+                    }
+                }
+            }
+            .map_err(map)?
         } else {
-            Root::open(&p.directory).map_err(|_| {
+            p.directory.open().map_err(|_| {
                 RpcError::new("INSTALL_ROOT_ERROR", "Failed to open the install root")
             })?
         };
+        let project = local_project(p.project.as_deref()).map_err(map)?;
         match op {
             "list" => {
                 let (e, u) = root.list_paths(kind).map_err(map)?;
-                Ok(result(
+                Ok(result_with_world(
                     method,
                     world,
                     vec![("entries", val(e)), ("unmanaged", val(u))],
@@ -514,20 +616,15 @@ pub fn handle(
             }
             "remove" => {
                 let e = root
-                    .remove_bytes(kind, p.project.as_deref(), p.file.as_deref())
+                    .remove_bytes(kind, project, p.file.as_deref())
                     .map_err(map)?;
-                Ok(result(method, world, vec![("removed", val(e))]))
+                Ok(result_with_world(method, world, vec![("removed", val(e))]))
             }
             _ => {
                 let (c, e) = root
-                    .toggle_bytes(
-                        kind,
-                        p.project.as_deref(),
-                        p.file.as_deref(),
-                        op == "enable",
-                    )
+                    .toggle_bytes(kind, project, p.file.as_deref(), op == "enable")
                     .map_err(map)?;
-                Ok(result(
+                Ok(result_with_world(
                     method,
                     world,
                     vec![("changed", val(c)), ("entry", val(e))],
@@ -542,6 +639,113 @@ mod tests {
     use super::*;
     use registry::{Provider, Source};
     use std::fs;
+    #[test]
+    fn local_project_byte_parse_and_semantic_boundary() {
+        for raw in [
+            "[97,98,99]",
+            "[\"97\",98.0,99]",
+            "[97.0000000000000001,98,99]",
+        ] {
+            let p = parse_params(
+                &format!("{{\"directory\":\"root\",\"project\":{raw}}}"),
+                false,
+                true,
+            )
+            .unwrap();
+            assert_eq!(p.project.as_deref(), Some(b"abc".as_slice()));
+            assert_eq!(local_project(p.project.as_deref()).unwrap(), Some("abc"));
+        }
+        for raw in ["[255]", "[]", "[-0]", "[98,97,100,47,114,101,102]"] {
+            let p = parse_params(
+                &format!("{{\"directory\":\"root\",\"project\":{raw}}}"),
+                false,
+                true,
+            )
+            .unwrap();
+            assert!(matches!(
+                local_project(p.project.as_deref()),
+                Err(Error::Selector("InvalidModrinthProject"))
+            ));
+        }
+        for raw in ["[\"97.0000000000000001\"]", "[256]", "[true]", "[{}]"] {
+            assert!(
+                parse_params(
+                    &format!("{{\"directory\":\"root\",\"project\":{raw}}}"),
+                    false,
+                    true
+                )
+                .is_none()
+            );
+        }
+        assert!(local_project(Some(&[b'a'; 64])).is_ok());
+        assert!(local_project(Some(&[b'a'; 65])).is_err());
+        assert_eq!(local_project(None).unwrap(), None);
+        // Read/list ignores selectors, and public Root String APIs are unchanged.
+        assert!(
+            parse_params(r#"{"directory":"root","project":{}}"#, false, false)
+                .unwrap()
+                .project
+                .is_none()
+        );
+    }
+    #[test]
+    fn local_field_parser_ignores_unrelated_numbers_but_validates_strings() {
+        for huge in ["1e400", "-1e400", r#"{"nested":1e400}"#, "[1e400]"] {
+            for world in [false, true] {
+                for selector in [false, true] {
+                    let raw = format!(
+                        r#"{{"directory":"root","world":"World","file":"mods/a.jar","future":{huge}}}"#
+                    );
+                    assert!(parse_params(&raw, world, selector).is_some());
+                }
+            }
+            for ignored in ["project", "file", "world"] {
+                let raw = format!(r#"{{"directory":"root","{ignored}":{huge}}}"#);
+                assert!(parse_params(&raw, false, false).is_some());
+            }
+            for known in ["directory", "world", "project", "file"] {
+                let raw = if known == "directory" {
+                    format!(r#"{{"directory":{huge},"world":"World"}}"#)
+                } else if known == "world" {
+                    format!(r#"{{"directory":"root","world":{huge}}}"#)
+                } else {
+                    format!(r#"{{"directory":"root","world":"World","{known}":{huge}}}"#)
+                };
+                assert!(parse_params(&raw, true, true).is_none());
+            }
+        }
+        for raw in [
+            r#"{"directory":"root","future":"\ud800"}"#,
+            r#"{"directory":"root","future":{"nested":"\udc00"}}"#,
+            r#"{"directory":"root","future":01}"#,
+            r#"[]"#,
+        ] {
+            assert!(parse_params(raw, false, false).is_none());
+        }
+        // Direct helper keeps last-key behavior; RPC rejects duplicates earlier.
+        let p = parse_params(r#"{"directory":"first","directory":"last"}"#, false, false).unwrap();
+        assert_eq!(p.directory.0, b"last");
+    }
+    #[test]
+    fn string_world_result_wrapper_remains_unchanged() {
+        let fields = vec![("entries", val(Vec::<u8>::new()))];
+        assert_eq!(
+            result("datapacks.adopt", Some("World"), fields.clone()),
+            serde_json::json!({"stage":"datapacks.adopt","world":"World","entries":[]})
+        );
+        assert_eq!(
+            result("mods.adopt", None, fields.clone()),
+            serde_json::json!({"stage":"mods.adopt","entries":[]})
+        );
+        assert_eq!(
+            result_with_world(
+                "datapacks.list",
+                Some(&LocalWorld::Text("World".into())),
+                fields.clone()
+            ),
+            result("datapacks.list", Some("World"), fields)
+        );
+    }
     fn entry(kind: Kind, name: &str, provider: Provider, id: Option<&str>) -> Entry {
         Entry {
             kind,

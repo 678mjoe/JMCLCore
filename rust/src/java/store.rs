@@ -230,6 +230,57 @@ pub fn list(store: &str) -> Result<Vec<Document>, Error> {
     docs.sort_by(|a, b| a.name.cmp(&b.name));
     Ok(docs)
 }
+// A separate listing view deliberately leaves managed selection on list/Receipt.
+#[derive(Debug)]
+pub(super) struct ReadDocument {
+    pub name: String,
+    pub receipt: receipt::ReadReceipt,
+}
+pub(super) fn list_read(store: &str) -> Result<Vec<ReadDocument>, Error> {
+    let root = open(store)?;
+    let entries = fs::entries(&root).map_err(error)?;
+    for (name, isdir) in &entries {
+        if *isdir && name.to_str().is_some_and(|n| n.contains(".staging-")) {
+            let _ = fs::remove(&root, name);
+        }
+    }
+    let mut docs = vec![];
+    for (name, isdir) in fs::entries(&root).map_err(error)? {
+        if !isdir {
+            continue;
+        }
+        let Some(name) = name.to_str() else { continue };
+        if !receipt::valid_name(name) || name.contains(".staging-") {
+            continue;
+        }
+        if docs.len() >= receipt::MAX_RUNTIMES {
+            return Err("TooManyRuntimes");
+        };
+        let Ok(dir) = fs::dir(&root, name.as_ref(), false) else {
+            continue;
+        };
+        let Ok(file) = fs::read(&dir, receipt::NAME.as_ref()) else {
+            continue;
+        };
+        let mut bytes = vec![];
+        if file
+            .take((receipt::MAX_BYTES + 1) as u64)
+            .read_to_end(&mut bytes)
+            .is_err()
+        {
+            continue;
+        }
+        let Ok(receipt) = receipt::parse_read(&bytes) else {
+            continue;
+        };
+        docs.push(ReadDocument {
+            name: name.into(),
+            receipt,
+        })
+    }
+    docs.sort_by(|a, b| a.name.cmp(&b.name));
+    Ok(docs)
+}
 pub fn remove(store: &str, name: &str) -> Result<(), Error> {
     let root = open(store)?;
     if !receipt::valid_name(name) || name.contains(".staging-") {

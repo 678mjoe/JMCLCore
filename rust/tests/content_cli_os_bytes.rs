@@ -196,11 +196,11 @@ fn interception_does_not_claim_other_raw_routes_or_fields() {
             "--file".into(),
         ],
         vec![
-            "instance".into(),
+            "server".into(),
             "mods".into(),
             "remove".into(),
             "demo".into(),
-            "--instances-directory".into(),
+            "--servers-directory".into(),
         ],
         vec![
             "instance".into(),
@@ -229,4 +229,31 @@ fn interception_does_not_claim_other_raw_routes_or_fields() {
     .map(Into::into)
     .collect();
     assert!(local_cli_os(&args, &mut vec![], &mut vec![]).is_none());
+}
+
+#[test]
+fn native_instance_paths_reach_argument_validation_without_filesystem_access() {
+    use jmcl_core_rust::content::local_cli_os;
+    for (family, option, expected) in [
+        (
+            "mods",
+            "--instances-directory",
+            "instance mods remove requires exactly one of --project or --file\n",
+        ),
+        (
+            "datapacks",
+            "--world",
+            "instance datapacks remove requires exactly one of --project or --file\n",
+        ),
+    ] {
+        let mut args: Vec<OsString> = ["instance", family, "remove", "demo", option]
+            .into_iter()
+            .map(Into::into)
+            .collect();
+        args.push(raw_name(b"\xed\xa0\x80"));
+        let (mut out, mut err) = (vec![], vec![]);
+        assert_eq!(local_cli_os(&args, &mut out, &mut err).unwrap().unwrap(), 2);
+        assert!(out.is_empty());
+        assert_eq!(err, expected.as_bytes());
+    }
 }
