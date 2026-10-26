@@ -29,7 +29,7 @@ launch and server orchestration still lack automatic runtime acquisition.
 
 ## What the validator proves and does not prove
 
-The validator checks source SHA-256 fingerprints, source call/re-export/selector
+The validator checks source SHA-256 fingerprints (CRLF line endings canonicalized to LF), source call/re-export/selector
 anchors, ordering, method literals or finite product expansion, complete/disjoint
 inventory membership, platform labels and existence of related fixture sources.
 It fails closed when a pinned source changes. It is **not a Rust semantic parser**
@@ -64,7 +64,7 @@ python rust/compat/validate_coverage.py --oracle-source /path/to/pinned-zig-sour
 The last command also performs the existing inventory and original revision
 checks; it invokes only `git rev-parse`, not the original executable. The
 `--static-only` mode does not even invoke git. The normal workflow's existing
-validator call now includes the static audit. The 18 focused regression tests
+validator call now includes the static audit. The 22 focused regression tests
 cover source drift, absent handlers/calls, route ordering, missing/duplicate
 methods, wrong product expansion, unpinned selectors, false fallback/evidence
 associations, fixture-reference failures, path escape and Linux RPC boundaries.
@@ -85,3 +85,16 @@ Further executable contract work remains separate: current-frontend bridge
 fixtures, ordinary parameter/error matrices, native Java detect/select and byte
 path/disk-takeover gaps. This static audit is useful preparation, not a substitute
 for those bounded tests and not permission to run a blocked operation.
+
+## Checkout line endings
+
+The source digest encoding is explicitly `utf8_crlf_to_lf`: only paired CRLF
+bytes are changed to LF before fingerprinting and source-anchor checks. Git text
+checkout conversion must not invalidate an otherwise byte-identical reviewed
+source. Bare carriage returns, spaces, Unicode, escape sequences and changed
+routing tokens are not normalized. The validator reports exactly which files
+required CRLF canonicalization; all still must match the reviewed fingerprint.
+Controlled `core.autocrlf=true` checkout reproduces the original Windows-style
+15 failures / one error, while its normalized source equals the reviewed Git
+blob. New positive CRLF and negative changed-token/bare-CR/policy tests preserve
+the fail-closed boundary. Native CI confirms the actual runner checkout result.

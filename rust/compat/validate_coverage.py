@@ -46,9 +46,15 @@ def validate_dispatch(root, audit=None):
     require(audit["execution_policy"] == "static_only_no_core_invocation", "Unsafe audit policy")
     require(audit["full_compatibility"] is False and audit["replacement_allowed"] is False,
             "Static audit cannot authorize replacement")
-    sources = {}
+    require(audit.get("source_digest_encoding") == "utf8_crlf_to_lf", "Unsupported source digest encoding")
+    sources, normalized = {}, []
     for path, expected in audit["source_sha256"].items():
-        data = repository_file(root, path).read_bytes()
+        raw = repository_file(root, path).read_bytes()
+        # Git may check text out as CRLF on Windows. Normalize only paired
+        # CRLF, never whitespace, bare CR, tokens, or string escape sequences.
+        data = raw.replace(b"\r\n", b"\n")
+        if data != raw:
+            normalized.append(path)
         require(hashlib.sha256(data).hexdigest() == expected,
                 f"Routing source changed; review associations before repinning: {path}")
         sources[path] = data.decode("utf-8")
@@ -133,7 +139,7 @@ def validate_dispatch(root, audit=None):
     return {"audit_mode": "static_only", "inventoried_names": len(seen),
             "static_handler_associations": len(routed), "blocked_not_implemented": blocked,
             "core_requests_executed": 0, "runtime_coverage_claimed": False,
-            "replacement_allowed": False}
+            "replacement_allowed": False, "crlf_sources_normalized": normalized}
 
 def main():
     parser = argparse.ArgumentParser()

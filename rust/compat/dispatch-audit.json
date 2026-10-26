@@ -2,6 +2,7 @@
   "schema_version": 1,
   "reviewed_commit": "c0bda37fb66366123f3159fd0d9f99a00bd000b9",
   "oracle_commit": "5a4310debbcee26b3d2391bab2339f79cd6ec52e",
+  "source_digest_encoding": "utf8_crlf_to_lf",
   "source_sha256": {
     "rust/src/auth/mod.rs": "8f866931b0ffcdfa256049ac95c8b9b8d0eec7e810e001767fbf9977390b4eb5",
     "rust/src/content/rpc.rs": "31c43a2d4cb2f2d08f45743ded190358026655561b84d4a32f81abce45bd3e94",

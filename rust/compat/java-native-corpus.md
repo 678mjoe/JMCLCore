@@ -8,8 +8,13 @@ environment variables, so the positive result also checks option sanitization.
 
 The explicit fixture advertises Java 17 / x86_64 on every host. Tests assert that
 exact executable and metadata, successful selection for explicit x86_64, and
-`JAVA_INCOMPATIBLE` for arm64. This is explicit-architecture selection evidence,
-not default-host architecture or real-runtime acceptance. Existing Unix invalid
+`JAVA_INCOMPATIBLE` for an architecture absent from the full detection preflight. This is explicit-architecture selection evidence,
+not default-host architecture or real-runtime acceptance. Explicit paths augment platform discovery: an ARM hosted runner can legitimately
+select its installed ARM Java when asked for arm64. The negative control therefore
+chooses a genuinely absent architecture and rejects any successful result; it does
+not assume that every runtime other than the synthetic fixture is incompatible.
+The preflight and requested negative architecture are printed for review.
+Existing Unix invalid
 executable/permission cases remain Unix-only.
 
 A previously masked coverage defect was found: the old cache fixture omitted
@@ -23,4 +28,6 @@ metadata: selection does not fetch client artifacts or acquire Java.
 The script still uses the same pinned Core oracle and exact RPC/CLI byte/status
 comparison. Both official and mirror source paths are pre-seeded in the local
 cache. No provider requests, automatic acquisition, archives or production Java
-implementation are added by this test-only change.
+implementation are added by this test-only change. Ordinary platform discovery
+may execute existing host Java version probes; no game is started, and those
+probes are not real-runtime launch acceptance.

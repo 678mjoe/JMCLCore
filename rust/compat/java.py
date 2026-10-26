@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
-"""Offline Java detection/receipt differential corpus. No JVM/network install."""
+"""Cached Java detection/receipt corpus. Version probes only; no game or acquisition."""
 import argparse,json,os,pathlib,subprocess,tempfile,hashlib,time
 p=argparse.ArgumentParser();p.add_argument('--zig',required=True);p.add_argument('--rust',required=True);a=p.parse_args();zig=str(pathlib.Path(a.zig).resolve());rust=str(pathlib.Path(a.rust).resolve())
 def assert_selected(stdout, fake):
- result=json.loads(stdout)['result']
+ doc=json.loads(stdout)
+ assert 'result' in doc,doc
+ result=doc['result']
  assert result['required_major']==17 and result['required_arch']=='x86_64',result
  assert result['runtime']['major_version']==17 and pathlib.Path(result['runtime']['executable'])==fake,result
  return result
@@ -14,6 +16,16 @@ except (KeyError,AssertionError):
  pass
 else:
  raise AssertionError('positive-selection guard accepted METADATA_ERROR')
+def assert_incompatible(stdout):
+ doc=json.loads(stdout)
+ assert doc.get('error',{}).get('code')=='JAVA_INCOMPATIBLE',doc
+# A discovered compatible runtime is success, never an incompatibility result.
+try:
+ assert_incompatible(b'{"event":"result","result":{"runtime":{"major_version":17}}}')
+except AssertionError:
+ pass
+else:
+ raise AssertionError('incompatible-selection guard accepted a result')
 count=0
 with tempfile.TemporaryDirectory() as temp:
  root=pathlib.Path(temp); env=dict(os.environ);env.update({'JAVA_TOOL_OPTIONS':'must-be-cleared','_JAVA_OPTIONS':'must-be-cleared','JDK_JAVA_OPTIONS':'must-be-cleared'})
@@ -39,6 +51,13 @@ with tempfile.TemporaryDirectory() as temp:
  explicit=[v for v in doc['runtimes'] if pathlib.Path(v['executable'])==fake]
  assert len(explicit)==1 and explicit[0]['major_version']==17 and explicit[0]['vendor']=='Fixture',doc
  assert explicit[0]['architecture']=='x86_64' and explicit[0]['source']=='explicit',doc
+ # Explicit paths augment discovery; hosted ARM runners may have valid ARM Java.
+ # Derive a genuinely absent architecture from the full detection preflight,
+ # rather than mistaking legitimate host fallback for a selector regression.
+ present={v.get('architecture') for v in doc['runtimes'] if v['major_version']==17}
+ incompatible_arch=next((arch for arch in ['arm64','arm','x86'] if arch not in present),None)
+ assert incompatible_arch is not None,('no absent architecture for negative fixture',doc)
+ print(f'Java 17 detected architectures: {sorted(str(v) for v in present)}; incompatible control: {incompatible_arch}')
  for json_args in [['--json'],[]]:
   probe=compare(['java','detect','--path',str(fake),*json_args]);assert probe.returncode==0
   if json_args: assert json.loads(probe.stdout)['result']['runtimes'][0]['vendor']=='Fixture'
@@ -56,11 +75,11 @@ with tempfile.TemporaryDirectory() as temp:
  for params in [None,{},[],{'id':''},{'id':'missing'},{'id':'demo','arch':'amd64'},{'id':'demo','source':None},{'id':'demo','paths':None}]:rpc('java.select',params)
  for args in [['java','select'],['java','select','demo','--arch','bad'],['java','select','missing']]:compare(args)
  for source in ['official','bmclapi']:
-  for arch in ['x86_64','arm64']:
+  for arch in ['x86_64',incompatible_arch]:
    selected=rpc('java.select',{'id':'demo','source':source,'arch':arch,'paths':[str(fake)]})
    if arch=='x86_64':
     assert_selected(selected.stdout,fake)
-   else: assert json.loads(selected.stdout)['error']['code']=='JAVA_INCOMPATIBLE',selected.stdout
+   else: assert_incompatible(selected.stdout)
    for json_args in [[],['--json']]:
     chosen=compare(['java','select','demo','--source',source,'--arch',arch,'--path',str(fake),*json_args])
     assert chosen.returncode==(0 if arch=='x86_64' else 1),(arch,chosen.stdout,chosen.stderr)

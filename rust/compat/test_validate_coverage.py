@@ -34,6 +34,51 @@ class DispatchAuditTests(unittest.TestCase):
         self.assertFalse(result["runtime_coverage_claimed"])
         self.assertFalse(result["replacement_allowed"])
 
+    def copy_fixture(self, root, crlf=False):
+        paths = set(self.audit["source_sha256"])
+        paths.add("rust/compat/methods.json")
+        for route in self.audit["routes"]:
+            paths.update(route["runtime_evidence"]["paths"])
+        for relative in paths:
+            target = root / relative
+            target.parent.mkdir(parents=True, exist_ok=True)
+            data = (self.root / relative).read_bytes()
+            if crlf and relative in self.audit["source_sha256"]:
+                data = data.replace(b"\r\n", b"\n").replace(b"\n", b"\r\n")
+            target.write_bytes(data)
+
+    def test_crlf_checkout_preserves_reviewed_source(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            self.copy_fixture(root, crlf=True)
+            result = validator.validate_dispatch(root, self.audit)
+            self.assertEqual(set(result["crlf_sources_normalized"]), set(self.audit["source_sha256"]))
+            self.assertEqual(result["inventoried_names"], 106)
+
+    def test_crlf_checkout_does_not_hide_changed_routing(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            self.copy_fixture(root, crlf=True)
+            source = root / "rust/src/protocol.rs"
+            data = source.read_bytes()
+            self.assertIn(b"\r\n", data)
+            source.write_bytes(data.replace(b"crate::auth::handle(", b"crate::absent::handle("))
+            with self.assertRaisesRegex(validator.AuditError, "Routing source changed"):
+                validator.validate_dispatch(root, self.audit)
+
+    def test_bare_carriage_return_is_not_normalized(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            self.copy_fixture(root)
+            source = root / "rust/src/protocol.rs"
+            source.write_bytes(source.read_bytes() + b"\r")
+            with self.assertRaisesRegex(validator.AuditError, "Routing source changed"):
+                validator.validate_dispatch(root, self.audit)
+
+    def test_unknown_digest_encoding_is_rejected(self):
+        self.audit["source_digest_encoding"] = "strip_all_whitespace"
+        self.rejects("Unsupported source digest encoding")
+
     def test_stale_source_digest_is_rejected(self):
         self.audit["source_sha256"]["rust/src/protocol.rs"] = "0" * 64
         self.rejects("Routing source changed")
