@@ -265,7 +265,7 @@ fn numeric_id(s: &str) -> bool {
 pub fn relative_path(p: &str) -> bool {
     relative_path_bytes(p.as_bytes())
 }
-fn relative_path_bytes(p: &[u8]) -> bool {
+pub(super) fn relative_path_bytes(p: &[u8]) -> bool {
     !p.is_empty()
         && !p.contains(&b'\\')
         && p.split(|b| *b == b'/').all(|s| {

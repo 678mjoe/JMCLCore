@@ -135,7 +135,7 @@ mod linux {
         directory: String,
         id: String,
         project: Option<String>,
-        file: Option<String>,
+        file: Option<Vec<u8>>,
         version: Option<String>,
         provider: Option<String>,
         key: Option<Zeroizing<String>>,
@@ -182,7 +182,14 @@ mod linux {
                 } else {
                     None
                 },
-                file: if selector { optional("file")? } else { None },
+                file: if selector {
+                    j.field("file")?
+                        .filter(|v| !v.null())
+                        .map(|v| content::dynamic_file(v.0))
+                        .transpose()?
+                } else {
+                    None
+                },
                 version: if op == "set-version" {
                     Some(required("version_id")?)
                 } else if op == "install" {
@@ -683,11 +690,11 @@ mod linux {
                 Ok(json!({"entries": entries, "unmanaged": unmanaged}))
             }
             "remove" => Ok(
-                json!({"removed": root.remove_paths(kind, p.project.as_deref(), p.file.as_deref())?}),
+                json!({"removed": root.remove_bytes(kind, p.project.as_deref(), p.file.as_deref())?}),
             ),
             "adopt" => Ok(json!({"adopted": root.adopt(kind, cas.unwrap())?})),
             _ => {
-                let (changed, entry) = root.toggle_paths(
+                let (changed, entry) = root.toggle_bytes(
                     kind,
                     p.project.as_deref(),
                     p.file.as_deref(),

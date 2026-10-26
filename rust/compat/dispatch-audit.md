@@ -141,3 +141,12 @@ guards and platform gating. Existing remove/toggle calls now select the byte-awa
 registry view and retain existing filesystem operations and public String wrappers.
 Only the content root and server facade source fingerprints were refreshed; route
 membership and acquisition fallback classifications are unchanged.
+
+## Dynamic file-selector integration review
+
+Manual review confirmed unchanged method families, platform gates and operation
+selection. Only local file-selector decoding now preserves byte arrays with the
+existing dynamic-number helper; other parameter decoders and public String
+wrappers remain in place. The byte path validator visibility changed without
+changing its rules. The three affected source fingerprints were refreshed after
+review; the inventory still does not assert executable compatibility.

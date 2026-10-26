@@ -153,7 +153,7 @@ fn cli_params(args: &[String], op: &str) -> Result<(Params, bool), ()> {
             {
                 p.project = Some(v.clone())
             }
-            "--file" if matches!(op, "enable" | "disable" | "remove") => p.file = Some(v.clone()),
+            "--file" if matches!(op, "enable" | "disable" | "remove") => p.file = Some(v.as_bytes().to_vec()),
             "--version" if matches!(op, "install" | "set-version") => p.version = Some(v.clone()),
             "--provider" if op == "install" => {
                 if !matches!(v.as_str(), "modrinth" | "curseforge") {

@@ -160,7 +160,7 @@ impl Root {
         &self,
         kind: Kind,
         project: Option<&str>,
-        file: Option<&str>,
+        file: Option<&[u8]>,
         remove: bool,
         parse: fn(&[u8]) -> std::result::Result<registry::RegistryRecord<F>, &'static str>,
     ) -> Result<(registry::RegistryRecord<F>, usize)> {
@@ -170,7 +170,7 @@ impl Root {
         if project.is_some_and(|p| !registry::project_ref(p)) {
             return Err(Error::Selector("InvalidModrinthProject"));
         }
-        if file.is_some_and(|p| !registry::relative_path(p)) {
+        if file.is_some_and(|p| !registry::relative_path_bytes(p)) {
             return Err(Error::Selector("UnsafePath"));
         }
         if file.is_some_and(|p| p.len() > 512) {
@@ -188,14 +188,14 @@ impl Root {
                                 && (e.source.project_id.as_deref() == Some(p)
                                     || e.source.slug.as_deref() == Some(p))
                         }
-                        None => Some(e.file.file_bytes()) == file.map(str::as_bytes),
+                        None => Some(e.file.file_bytes()) == file,
                     }
             })
             .ok_or(Error::NotFound)?;
         Ok((r, index))
     }
     pub fn remove(&self, kind: Kind, project: Option<&str>, file: Option<&str>) -> Result<Entry> {
-        self.remove_with(kind, project, file, registry::parse)
+        self.remove_with(kind, project, file.map(str::as_bytes), registry::parse)
     }
     pub(crate) fn remove_paths(
         &self,
@@ -203,13 +203,21 @@ impl Root {
         project: Option<&str>,
         file: Option<&str>,
     ) -> Result<registry::ListingEntry> {
+        self.remove_bytes(kind, project, file.map(str::as_bytes))
+    }
+    pub(crate) fn remove_bytes(
+        &self,
+        kind: Kind,
+        project: Option<&str>,
+        file: Option<&[u8]>,
+    ) -> Result<registry::ListingEntry> {
         self.remove_with(kind, project, file, registry::parse_listing)
     }
     fn remove_with<F: registry::RegistryFile>(
         &self,
         kind: Kind,
         project: Option<&str>,
-        file: Option<&str>,
+        file: Option<&[u8]>,
         parse: fn(&[u8]) -> std::result::Result<registry::RegistryRecord<F>, &'static str>,
     ) -> Result<registry::EntryRecord<F>> {
         let (mut r, index) = self.selected(kind, project, file, true, parse)?;
@@ -237,7 +245,13 @@ impl Root {
         file: Option<&str>,
         enabled: bool,
     ) -> Result<(bool, Entry)> {
-        self.toggle_with(kind, project, file, enabled, registry::parse)
+        self.toggle_with(
+            kind,
+            project,
+            file.map(str::as_bytes),
+            enabled,
+            registry::parse,
+        )
     }
     pub(crate) fn toggle_paths(
         &self,
@@ -246,13 +260,22 @@ impl Root {
         file: Option<&str>,
         enabled: bool,
     ) -> Result<(bool, registry::ListingEntry)> {
+        self.toggle_bytes(kind, project, file.map(str::as_bytes), enabled)
+    }
+    pub(crate) fn toggle_bytes(
+        &self,
+        kind: Kind,
+        project: Option<&str>,
+        file: Option<&[u8]>,
+        enabled: bool,
+    ) -> Result<(bool, registry::ListingEntry)> {
         self.toggle_with(kind, project, file, enabled, registry::parse_listing)
     }
     fn toggle_with<F: registry::RegistryFile>(
         &self,
         kind: Kind,
         project: Option<&str>,
-        file: Option<&str>,
+        file: Option<&[u8]>,
         enabled: bool,
         parse: fn(&[u8]) -> std::result::Result<registry::RegistryRecord<F>, &'static str>,
     ) -> Result<(bool, registry::EntryRecord<F>)> {
@@ -299,7 +322,27 @@ struct Params {
     directory: String,
     world: Option<String>,
     project: Option<String>,
-    file: Option<String>,
+    file: Option<Vec<u8>>,
+}
+/// Only local content's file selector uses this dynamic byte-string boundary.
+/// Numeric JSON elements follow binary64 Value coercion; quoted numbers keep
+/// the typed numeric grammar. Do not use the typed metadata byte visitor here.
+pub(crate) fn dynamic_file(raw: &str) -> std::result::Result<Vec<u8>, ()> {
+    let raw = raw.trim();
+    if raw.starts_with('"') {
+        return serde_json::from_str::<String>(raw)
+            .map(String::into_bytes)
+            .map_err(|_| ());
+    }
+    let values: Vec<&RawValue> = serde_json::from_str(raw).map_err(|_| ())?;
+    values
+        .into_iter()
+        .map(|v| {
+            crate::json_number::dynamic_raw(v.get().trim(), 8)
+                .map(|v| v as u8)
+                .map_err(|_| ())
+        })
+        .collect()
 }
 fn parse_params(raw: &str, world: bool, selector: bool) -> Option<Params> {
     let value: Value = serde_json::from_str(raw).ok()?;
@@ -321,7 +364,19 @@ fn parse_params(raw: &str, world: bool, selector: bool) -> Option<Params> {
             None
         },
         project: if selector { optional("project")? } else { None },
-        file: if selector { optional("file")? } else { None },
+        file: if selector {
+            // Match the existing Value map's last-key-wins semantics while
+            // preserving the file element lexemes for dynamic u8 conversion.
+            let fields: std::collections::BTreeMap<String, &RawValue> =
+                serde_json::from_str(raw).ok()?;
+            match fields.get("file") {
+                None => None,
+                Some(v) if v.get().trim() == "null" => None,
+                Some(v) => Some(dynamic_file(v.get()).ok()?),
+            }
+        } else {
+            None
+        },
     })
 }
 fn invalid(s: impl Into<String>) -> RpcError {
@@ -474,13 +529,13 @@ pub fn handle(
             }
             "remove" => {
                 let e = root
-                    .remove_paths(kind, p.project.as_deref(), p.file.as_deref())
+                    .remove_bytes(kind, p.project.as_deref(), p.file.as_deref())
                     .map_err(map)?;
                 Ok(result(method, world, vec![("removed", val(e))]))
             }
             _ => {
                 let (c, e) = root
-                    .toggle_paths(
+                    .toggle_bytes(
                         kind,
                         p.project.as_deref(),
                         p.file.as_deref(),
