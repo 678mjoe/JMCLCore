@@ -25,11 +25,50 @@ pub struct Account {
 struct DiskAccount {
     #[serde(deserialize_with = "deserialize_u32")]
     schema_version: u32,
+    #[serde(deserialize_with = "deserialize_disk_string")]
     id: String,
+    #[serde(deserialize_with = "deserialize_disk_string")]
     player_name: String,
+    #[serde(deserialize_with = "deserialize_disk_string")]
     client_id: String,
+    #[serde(default, deserialize_with = "deserialize_disk_optional_string")]
     xuid: Option<String>,
 }
+// Zig's directly parsed []const u8 accepts strings or arrays of typed u8.
+// Keep this disk-only: RPC parameters use a different dynamic-number grammar.
+fn disk_string(raw: &RawValue) -> Result<String, &'static str> {
+    if raw.get().trim_start().starts_with('[') {
+        let elements: Vec<&RawValue> =
+            serde_json::from_str(raw.get()).map_err(|_| "invalid byte array")?;
+        let bytes = elements
+            .into_iter()
+            .map(|element| {
+                crate::json_number::typed_raw(element.get(), 8)
+                    .map(|n| n as u8)
+                    .map_err(|_| "invalid u8")
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        // Every valid account field is ASCII under validate(). Non-UTF8 byte
+        // arrays cannot form valid account metadata and stay rejected.
+        String::from_utf8(bytes).map_err(|_| "invalid account string")
+    } else {
+        serde_json::from_str(raw.get()).map_err(|_| "invalid account string")
+    }
+}
+fn deserialize_disk_string<'de, D: serde::Deserializer<'de>>(d: D) -> Result<String, D::Error> {
+    disk_string(<&RawValue>::deserialize(d)?).map_err(serde::de::Error::custom)
+}
+fn deserialize_disk_optional_string<'de, D: serde::Deserializer<'de>>(
+    d: D,
+) -> Result<Option<String>, D::Error> {
+    let raw = <&RawValue>::deserialize(d)?;
+    if raw.get().trim() == "null" {
+        Ok(None)
+    } else {
+        disk_string(raw).map(Some).map_err(serde::de::Error::custom)
+    }
+}
+
 fn deserialize_u32<'de, D: serde::Deserializer<'de>>(d: D) -> Result<u32, D::Error> {
     let raw = <&RawValue>::deserialize(d)?;
     crate::json_number::typed_raw(raw.get(), 32)
@@ -145,33 +184,91 @@ impl<'de, T: Deserialize<'de>> Deserialize<'de> for ObjectOnly<T> {
         deserializer.deserialize_map(Visitor(std::marker::PhantomData))
     }
 }
-fn deserialize_account<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Account, D::Error> {
-    ObjectOnly::<Account>::deserialize(d).map(|v| v.0)
+// Raw parameter byte strings must survive parsing even when non-UTF8: Zig
+// validates them only after empty checks and root opening. Keep disk decoding
+// and public serialized Account strings separate from this dynamic boundary.
+#[derive(Debug)]
+struct ParamBytes(Vec<u8>);
+impl ParamBytes {
+    fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+    fn text(&self) -> Result<&str, Error> {
+        std::str::from_utf8(&self.0).map_err(|_| Error::InvalidMetadata)
+    }
+    fn into_text(self) -> Result<String, Error> {
+        String::from_utf8(self.0).map_err(|_| Error::InvalidMetadata)
+    }
+}
+impl<'de> Deserialize<'de> for ParamBytes {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        let raw = <&RawValue>::deserialize(d)?;
+        if raw.get().trim_start().starts_with('[') {
+            let elements: Vec<&RawValue> =
+                serde_json::from_str(raw.get()).map_err(serde::de::Error::custom)?;
+            elements
+                .into_iter()
+                .map(|element| {
+                    crate::json_number::dynamic_raw(element.get(), 8)
+                        .map(|n| n as u8)
+                        .map_err(|_| serde::de::Error::custom("invalid parameter byte"))
+                })
+                .collect::<Result<Vec<_>, _>>()
+                .map(Self)
+        } else {
+            serde_json::from_str::<String>(raw.get())
+                .map(|s| Self(s.into_bytes()))
+                .map_err(serde::de::Error::custom)
+        }
+    }
+}
+#[derive(Deserialize)]
+struct ParamAccount {
+    #[serde(default = "default_schema", deserialize_with = "deserialize_param_u32")]
+    schema_version: u32,
+    id: ParamBytes,
+    player_name: ParamBytes,
+    client_id: ParamBytes,
+    xuid: Option<ParamBytes>,
+}
+impl ParamAccount {
+    fn into_account(self) -> Result<Account, Error> {
+        Ok(Account {
+            schema_version: self.schema_version,
+            id: self.id.into_text()?,
+            player_name: self.player_name.into_text()?,
+            client_id: self.client_id.into_text()?,
+            xuid: self.xuid.map(ParamBytes::into_text).transpose()?,
+        })
+    }
+}
+fn deserialize_account<'de, D: serde::Deserializer<'de>>(d: D) -> Result<ParamAccount, D::Error> {
+    ObjectOnly::<ParamAccount>::deserialize(d).map(|v| v.0)
 }
 
 fn default_schema() -> u32 {
     1
 }
-fn default_root() -> String {
-    DEFAULT_ROOT.to_owned()
+fn default_root() -> ParamBytes {
+    ParamBytes(DEFAULT_ROOT.as_bytes().to_vec())
 }
 #[derive(Deserialize)]
 struct DirectoryParams {
     #[serde(default = "default_root")]
-    directory: String,
+    directory: ParamBytes,
 }
 #[derive(Deserialize)]
 struct SaveParams {
     #[serde(default = "default_root")]
-    directory: String,
+    directory: ParamBytes,
     #[serde(deserialize_with = "deserialize_account")]
-    account: Account,
+    account: ParamAccount,
 }
 #[derive(Deserialize)]
 struct TargetParams {
     #[serde(default = "default_root")]
-    directory: String,
-    id: String,
+    directory: ParamBytes,
+    id: ParamBytes,
 }
 
 /// Only account.microsoft.* methods are claimed. All returned Values are result
@@ -203,9 +300,11 @@ fn handle_inner(method: &str, params: Option<&RawValue>) -> Result<Value, RpcErr
             if params.directory.is_empty() {
                 return Err(params_error("Account directory must not be empty"));
             }
-            let store = Store::open(&params.directory).map_err(Error::rpc)?;
-            store.save(&params.account).map_err(Error::rpc)?;
-            Ok(json!({"stage":"save","account":params.account}))
+            let store =
+                Store::open(params.directory.text().map_err(Error::rpc)?).map_err(Error::rpc)?;
+            let account = params.account.into_account().map_err(Error::rpc)?;
+            store.save(&account).map_err(Error::rpc)?;
+            Ok(json!({"stage":"save","account":account}))
         }
         "account.microsoft.list" => {
             let params: DirectoryParams = match params {
@@ -219,7 +318,8 @@ fn handle_inner(method: &str, params: Option<&RawValue>) -> Result<Value, RpcErr
             if params.directory.is_empty() {
                 return Err(params_error("Account directory must not be empty"));
             }
-            let store = Store::open(&params.directory).map_err(Error::rpc)?;
+            let store =
+                Store::open(params.directory.text().map_err(Error::rpc)?).map_err(Error::rpc)?;
             Ok(json!({"stage":"account_list","accounts":store.list().map_err(Error::rpc)?}))
         }
         _ => {
@@ -230,14 +330,14 @@ fn handle_inner(method: &str, params: Option<&RawValue>) -> Result<Value, RpcErr
             if params.directory.is_empty() || params.id.is_empty() {
                 return Err(params_error("Account directory and ID must not be empty"));
             }
-            let store = Store::open(&params.directory).map_err(Error::rpc)?;
+            let store =
+                Store::open(params.directory.text().map_err(Error::rpc)?).map_err(Error::rpc)?;
+            let id = params.id.text().map_err(Error::rpc)?;
             if method == "account.microsoft.get" {
-                Ok(
-                    json!({"stage":"account_get","account":store.load(&params.id).map_err(Error::rpc)?}),
-                )
+                Ok(json!({"stage":"account_get","account":store.load(id).map_err(Error::rpc)?}))
             } else {
-                store.delete(&params.id).map_err(Error::rpc)?;
-                Ok(json!({"stage":"account_delete","id":params.id,"deleted":true}))
+                store.delete(id).map_err(Error::rpc)?;
+                Ok(json!({"stage":"account_delete","id":id,"deleted":true}))
             }
         }
     }
@@ -601,5 +701,73 @@ mod tests {
         let mut other = a;
         other.id = "ffffffffffffffffffffffffffffffff".into();
         assert!(matches!(store.save(&other), Err(Error::Limit)));
+    }
+}
+
+#[cfg(test)]
+mod disk_byte_tests {
+    use super::*;
+    #[test]
+    fn disk_bytes_keep_typed_grammar_and_parameter_scope_separate() {
+        for raw in [
+            r#""Player_1""#,
+            "[80,108,97,121,101,114,95,49]",
+            r#"["80",108.0,97,121,101,114,95,49]"#,
+            "[80.00000000000000000000000000000000000001,108,97,121,101,114,95,49]",
+        ] {
+            assert_eq!(
+                disk_string(RawValue::from_string(raw.into()).unwrap().as_ref()).unwrap(),
+                "Player_1"
+            );
+        }
+        for raw in [
+            "[80.0000000000000001]",
+            "[256]",
+            "[-1]",
+            "[true]",
+            "[null]",
+            "[{}]",
+            "[[]]",
+            "[255]",
+            "null",
+            "{}",
+        ] {
+            assert!(
+                disk_string(RawValue::from_string(raw.into()).unwrap().as_ref()).is_err(),
+                "{raw}"
+            );
+        }
+        // Parameter decoding must not acquire the disk's typed array grammar.
+        let params = r#"{"id":"0123456789abcdef0123456789abcdef","player_name":[80],"client_id":"00001111-aaaa-2222-bbbb-3333cccc4444"}"#;
+        assert!(serde_json::from_str::<Account>(params).is_err());
+    }
+}
+
+#[cfg(test)]
+mod param_byte_tests {
+    use super::*;
+    #[test]
+    fn parameter_bytes_preserve_dynamic_rounding_and_semantic_boundaries() {
+        let rounded: ParamBytes = serde_json::from_str("[48.0000000000000001]").unwrap();
+        assert_eq!(rounded.0, b"0");
+        assert!(serde_json::from_str::<ParamBytes>(r#"["48.0000000000000001"]"#).is_err());
+        assert!(
+            disk_string(
+                RawValue::from_string("[48.0000000000000001]".into())
+                    .unwrap()
+                    .as_ref()
+            )
+            .is_err()
+        );
+        let opaque: ParamBytes = serde_json::from_str("[255,0]").unwrap();
+        assert_eq!(opaque.0, [255, 0]);
+        assert!(!opaque.is_empty());
+        assert!(opaque.text().is_err());
+        assert!(serde_json::from_str::<ParamBytes>("[]").unwrap().is_empty());
+        for raw in [
+            "[256]", "[-1]", "[null]", "[true]", "[{}]", "[[]]", "null", "{}",
+        ] {
+            assert!(serde_json::from_str::<ParamBytes>(raw).is_err(), "{raw}");
+        }
     }
 }

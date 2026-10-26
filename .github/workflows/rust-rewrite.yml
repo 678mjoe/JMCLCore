@@ -195,6 +195,17 @@ jobs:
             python rust/compat/check.py --zig .ci-oracle/zig-out/bin/jmcl-core --rust rust/target/release/jmcl-core-rust --oracle-source .ci-oracle --allow-approved-deviations
             python rust/compat/accounts.py --zig .ci-oracle/zig-out/bin/jmcl-core --rust rust/target/release/jmcl-core-rust
           fi
+      - name: Account byte-string disk and parameter boundaries
+        run: |
+          python - <<'PYTHON'
+          import os, subprocess, sys
+          suffix = ".exe" if os.name == "nt" else ""
+          for script in ["account_disk_bytes.py", "account_param_bytes.py"]:
+              subprocess.run([sys.executable, f"rust/compat/{script}",
+                              "--zig", f".ci-oracle/zig-out/bin/jmcl-core{suffix}",
+                              "--rust", f"rust/target/release/jmcl-core-rust{suffix}",
+                              "--oracle-source", ".ci-oracle"], check=True)
+          PYTHON
       - name: Offline metadata and Java raw-wire corpus
         run: |
           python - <<'PYTHON'

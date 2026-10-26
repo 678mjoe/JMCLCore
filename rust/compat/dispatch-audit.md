@@ -107,3 +107,11 @@ confirmed its method guards, handler calls, parameter dispatch and runtime-insta
 fallback are unchanged; its single source fingerprint was updated accordingly.
 The explicit-probe executable lookup regression is separate runtime evidence,
 not a change to the 106-name routing inventory.
+
+## Account metadata byte-parser review
+
+Manual review confirmed the same four account method guards and handler order.
+Private disk and parameter decoders now retain their distinct typed/dynamic byte
+grammars; parameter validation still follows the existing empty/root/metadata
+order. Public output models and routing membership are unchanged. Only the
+reviewed accounts source fingerprint was refreshed.

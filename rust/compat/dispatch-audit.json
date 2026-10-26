@@ -14,7 +14,7 @@
     "rust/src/launch/rpc.rs": "ceb84ea7bb890aecec89ac3b01388dcc76a84ff804148fad6a363ae6118e5dda",
     "rust/src/version.rs": "8d28bb5026e9aa834f57446d43cea64a6e3afc404c1b8491f21c8b2b38fc7d98",
     "rust/src/java/select.rs": "e8e9c0f07ad7eaad106d998489af240ff089079118ead7a3055a8fd2c43fec6e",
-    "rust/src/accounts.rs": "1485d3218cd5397a393554c6f4f4de957e549cd3c38ea1a1bf40cbef5a361526",
+    "rust/src/accounts.rs": "f1efb49ca4cc61a7f5a3fb6859a9d0e91aff6d4d66178dc4fa5795e8f0867117",
     "rust/src/instances.rs": "43874470f8962b1e84a8460525cf2c783825ad2d33fdc3137a80f75a619116b0",
     "rust/src/worlds/rpc.rs": "bede3fb6f1f9aa597cadc8e7c08f06437ac0cb940dc864fc9aceb7cc0d539184",
     "rust/src/worlds/mod.rs": "2d6b1d8791c441fca642054b4432455e55ccdbd2e832784b844599e3fb3a7f43",
