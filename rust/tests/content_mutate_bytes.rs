@@ -119,9 +119,6 @@ fn raw_entry_toggle_remove_preserve_immutable_shared_objects() {
                     for remove_enabled in [false, true] {
                         for array_selector in [false, true] {
                             for cli in [false, true] {
-                                if cli && array_selector {
-                                    continue;
-                                }
                                 let mut results = vec![];
                                 for exe in [zig.as_str(), env!("CARGO_BIN_EXE_jmcl-core-rust")] {
                                     let t = tempfile::tempdir().unwrap();
@@ -255,7 +252,29 @@ fn raw_entry_toggle_remove_preserve_immutable_shared_objects() {
                                         if !server && family == "datapacks" {
                                             args.extend(["--world".into(), "World".into()]);
                                         }
-                                        let output = run(exe, t.path(), &req, &args, cli);
+                                        let output = if cli && array_selector {
+                                            let mut os_args: Vec<std::ffi::OsString> =
+                                                args.iter().map(Into::into).collect();
+                                            let i =
+                                                args.iter().position(|a| a == "--project").unwrap();
+                                            os_args[i] = "--file".into();
+                                            let mut file =
+                                                std::ffi::OsString::from(format!("{family}/"));
+                                            file.push(&native);
+                                            os_args[i + 1] = file;
+                                            let output = Command::new(exe)
+                                                .args(os_args)
+                                                .current_dir(t.path())
+                                                .output()
+                                                .unwrap();
+                                            (
+                                                output.status.code().unwrap(),
+                                                output.stdout,
+                                                output.stderr,
+                                            )
+                                        } else {
+                                            run(exe, t.path(), &req, &args, cli)
+                                        };
                                         let disk = fs::read(&registry).unwrap();
                                         let value: Value = serde_json::from_slice(&disk).unwrap();
                                         assert_eq!(

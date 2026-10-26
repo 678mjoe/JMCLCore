@@ -212,6 +212,10 @@ pub(super) fn cli_run<M: remote::Metadata + curseforge::Metadata + Sync, T: inst
             return Ok(1);
         }
     };
+    cli_execute(family,op,(p,json_output),out,errors,metadata,transport)
+}
+fn cli_execute<M: remote::Metadata + curseforge::Metadata + Sync, T: install::Transport>(family:&str,op:&str,parsed:(Params,bool),out:&mut impl Write,errors:&mut impl Write,metadata:&M,transport:&T)->io::Result<u8>{
+    let (p,json_output)=parsed;
     if op == "install" && p.project.is_none() {
         writeln!(errors, "server {family} install requires --project")?;
         return Ok(2);
@@ -479,4 +483,28 @@ fn cli_number(s: &str) -> Option<u8> {
 fn write_content_file(out: &mut impl Write, file: &Value) -> io::Result<()> {
     if let Some(file)=file.as_str(){out.write_all(file.as_bytes())}
     else{let bytes:Vec<u8>=file.as_array().unwrap().iter().map(|b|b.as_u64().unwrap() as u8).collect();out.write_all(&bytes)}
+}
+
+pub(super) fn cli_local_bytes(family:&str,op:&str,args:&[crate::content::LocalArg<'_>],out:&mut impl Write,errors:&mut impl Write)->io::Result<u8>{
+    let parse=|| -> Result<Params,()> {
+        let id=args.first().and_then(|a|a.text()).ok_or(())?;
+        // Reuse existing validation/defaults; this does not parse network flags.
+        let (mut p,_)=cli_params(&[id.to_owned()],op)?;
+        let mut i=1;
+        while i<args.len(){
+            let key=args[i].text().ok_or(())?;
+            let v=args.get(i+1).ok_or(())?;
+            if v.bytes().is_empty(){return Err(());}
+            match key {
+                "--servers-directory"=>p.directory=v.text().ok_or(())?.to_owned(),
+                "--project"=>p.project=Some(v.text().ok_or(())?.to_owned()),
+                "--file"=>p.file=Some(v.bytes().to_vec()),
+                _=>return Err(()),
+            }
+            i+=2;
+        }
+        Ok(p)
+    };
+    let p=match parse(){Ok(p)=>p,Err(())=>{writeln!(errors,"error: InvalidArguments")?;return Ok(1);}};
+    cli_execute(family,op,(p,false),out,errors,&content::http::Native,&content::http::Native)
 }

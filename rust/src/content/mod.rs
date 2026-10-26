@@ -13,7 +13,9 @@ pub mod http;
 pub mod modrinth;
 pub mod remote;
 pub mod rpc;
-pub use cli::run as cli;
+#[cfg(target_os = "linux")]
+pub(crate) use cli::LocalArg;
+pub use cli::{local_cli_os, run as cli};
 pub mod registry;
 use registry::{Entry, Kind, Registry};
 
@@ -197,14 +199,6 @@ impl Root {
     pub fn remove(&self, kind: Kind, project: Option<&str>, file: Option<&str>) -> Result<Entry> {
         self.remove_with(kind, project, file.map(str::as_bytes), registry::parse)
     }
-    pub(crate) fn remove_paths(
-        &self,
-        kind: Kind,
-        project: Option<&str>,
-        file: Option<&str>,
-    ) -> Result<registry::ListingEntry> {
-        self.remove_bytes(kind, project, file.map(str::as_bytes))
-    }
     pub(crate) fn remove_bytes(
         &self,
         kind: Kind,
@@ -252,15 +246,6 @@ impl Root {
             enabled,
             registry::parse,
         )
-    }
-    pub(crate) fn toggle_paths(
-        &self,
-        kind: Kind,
-        project: Option<&str>,
-        file: Option<&str>,
-        enabled: bool,
-    ) -> Result<(bool, registry::ListingEntry)> {
-        self.toggle_bytes(kind, project, file.map(str::as_bytes), enabled)
     }
     pub(crate) fn toggle_bytes(
         &self,

@@ -150,3 +150,12 @@ existing dynamic-number helper; other parameter decoders and public String
 wrappers remain in place. The byte path validator visibility changed without
 changing its rules. The three affected source fingerprints were refreshed after
 review; the inventory still does not assert executable compatibility.
+
+## Native local file-argument review
+
+Manual review of the executable pre-dispatch hook confirmed interception only for
+existing local content mutation routes with non-UTF-8 `--file` values. All-UTF-8
+and unrelated routes remain on the existing dispatcher, including hidden server
+lifecycle commands. RPC method guards and membership did not change. The content
+root and server facade fingerprints were refreshed; broader native arguments are
+not covered by this static RPC inventory or this narrow CLI implementation.

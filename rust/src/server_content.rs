@@ -57,6 +57,16 @@ pub fn handle_with<
         ))
     }
 }
+#[cfg(target_os = "linux")]
+pub(crate) fn local_cli_bytes(
+    family: &str,
+    op: &str,
+    args: &[crate::content::LocalArg<'_>],
+    out: &mut impl Write,
+    errors: &mut impl Write,
+) -> io::Result<u8> {
+    linux::cli_local_bytes(family, op, args, out, errors)
+}
 pub fn cli(
     args: &[String],
     out: &mut impl Write,

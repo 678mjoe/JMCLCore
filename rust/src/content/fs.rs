@@ -136,7 +136,7 @@ mod platform {
     use windows_sys::Win32::Storage::FileSystem::{
         FILE_ATTRIBUTE_DIRECTORY, FILE_ATTRIBUTE_REPARSE_POINT,
     };
-    fn name_bytes(name: &OsStr) -> Vec<u8> {
+    pub(super) fn name_bytes(name: &OsStr) -> Vec<u8> {
         use std::os::windows::ffi::OsStrExt;
         let mut bytes = Vec::new();
         for value in char::decode_utf16(name.encode_wide()) {
@@ -305,5 +305,18 @@ impl Dir {
             Err(std::fs::TryLockError::WouldBlock) => Ok(true),
             Err(std::fs::TryLockError::Error(e)) => Err(e),
         }
+    }
+}
+
+/// Exact OS argument bytes: Unix bytes or Windows WTF-8, never lossy text.
+pub(super) fn argument_bytes(name: &std::ffi::OsStr) -> Vec<u8> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::ffi::OsStrExt;
+        name.as_bytes().to_vec()
+    }
+    #[cfg(windows)]
+    {
+        platform::name_bytes(name)
     }
 }

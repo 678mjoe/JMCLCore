@@ -64,11 +64,23 @@ fn inner(
     out: &mut impl Write,
     err: &mut impl Write,
 ) -> io::Result<u8> {
+    let args: Vec<_> = args.iter().map(|a| LocalArg::Text(a.as_str())).collect();
+    local_inner(kind, op, &args, out, err)
+}
+pub(super) fn local_inner(
+    kind: Kind,
+    op: &str,
+    args: &[LocalArg<'_>],
+    out: &mut impl Write,
+    err: &mut impl Write,
+) -> io::Result<u8> {
     if !matches!(op, "list" | "enable" | "disable" | "remove") || args.is_empty() {
         err.write_all(usage(kind, op).as_bytes())?;
         return Ok(2);
     }
-    let id = &args[0];
+    let Some(id) = args[0].text() else {
+        return bad(err);
+    };
     if crate::instances::validate_id(id).is_err() {
         return bad(err);
     }
@@ -79,7 +91,9 @@ fn inner(
     let mut json = false;
     let mut i = 1;
     while i < args.len() {
-        let a = &args[i];
+        let Some(a) = args[i].text() else {
+            return bad(err);
+        };
         if a == "--json" && op == "list" {
             json = true;
             i += 1;
@@ -88,14 +102,29 @@ fn inner(
         let Some(v) = args.get(i + 1) else {
             return bad(err);
         };
-        if v.is_empty() && !(op == "list" && !datapack && a == "--instances-directory") {
+        if v.bytes().is_empty() && !(op == "list" && !datapack && a == "--instances-directory") {
             return bad(err);
         }
-        match a.as_str() {
-            "--instances-directory" => directory = v.clone(),
-            "--world" if datapack => world = Some(v.as_str()),
-            "--project" if op != "list" => project = Some(v.as_str()),
-            "--file" if op != "list" => file = Some(v.as_str()),
+        match a {
+            "--instances-directory" => {
+                let Some(v) = v.text() else {
+                    return bad(err);
+                };
+                directory = v.to_owned();
+            }
+            "--world" if datapack => {
+                world = Some(match v.text() {
+                    Some(v) => v,
+                    None => return bad(err),
+                })
+            }
+            "--project" if op != "list" => {
+                project = Some(match v.text() {
+                    Some(v) => v,
+                    None => return bad(err),
+                })
+            }
+            "--file" if op != "list" => file = Some(v.bytes()),
             _ => return bad(err),
         }
         i += 2;
@@ -196,7 +225,7 @@ fn inner(
         return Ok(0);
     }
     if op == "remove" {
-        match root.remove_paths(kind, project, file) {
+        match root.remove_bytes(kind, project, file) {
             Ok(e) => {
                 out.write_all(b"removed\t")?;
                 out.write_all(&e.file.0)?;
@@ -208,7 +237,7 @@ fn inner(
             }
         }
     } else {
-        match root.toggle_paths(kind, project, file, op == "enable") {
+        match root.toggle_bytes(kind, project, file, op == "enable") {
             Ok((changed, e)) => {
                 let state = if op == "enable" {
                     "enabled"
@@ -384,4 +413,68 @@ mod native_error_tests {
         assert_eq!(super::name(&error), "BadPathName");
         assert_eq!(super::name(&super::Error::WorldLocked), "WorldLocked");
     }
+}
+
+/// A local CLI argument with one explicitly byte-preserving field.
+pub(crate) enum LocalArg<'a> {
+    Text(&'a str),
+    File(Vec<u8>),
+}
+impl LocalArg<'_> {
+    pub(crate) fn text(&self) -> Option<&str> {
+        match self {
+            Self::Text(v) => Some(v),
+            Self::File(_) => None,
+        }
+    }
+    pub(crate) fn bytes(&self) -> &[u8] {
+        match self {
+            Self::Text(v) => v.as_bytes(),
+            Self::File(v) => v,
+        }
+    }
+}
+/// Narrow pre-dispatch hook. Only non-UTF8 --file values on existing local
+/// mutation routes are intercepted; other arguments keep the old dispatcher.
+pub fn local_cli_os(
+    args: &[std::ffi::OsString],
+    out: &mut impl Write,
+    errors: &mut impl Write,
+) -> Option<io::Result<u8>> {
+    let family = args.get(1)?.to_str()?;
+    let kind = Kind::from_directory(family)?;
+    let op = args.get(2)?.to_str()?;
+    if !matches!(op, "enable" | "disable" | "remove") {
+        return None;
+    }
+    let server = match args.first()?.to_str()? {
+        "instance" => false,
+        "server" if cfg!(target_os = "linux") && matches!(family, "mods" | "datapacks") => true,
+        _ => return None,
+    };
+    let mut has_raw = false;
+    let mut local = Vec::new();
+    for (i, arg) in args.iter().enumerate().skip(3) {
+        if let Some(text) = arg.to_str() {
+            local.push(LocalArg::Text(text));
+        } else {
+            if i == 3 || args.get(i - 1)?.to_str() != Some("--file") {
+                return None;
+            }
+            has_raw = true;
+            local.push(LocalArg::File(super::fs::argument_bytes(arg)));
+        }
+    }
+    if !has_raw {
+        return None;
+    }
+    if server {
+        #[cfg(target_os = "linux")]
+        return Some(crate::server_content::local_cli_bytes(
+            family, op, &local, out, errors,
+        ));
+        #[cfg(not(target_os = "linux"))]
+        unreachable!();
+    }
+    Some(local_inner(kind, op, &local, out, errors))
 }
