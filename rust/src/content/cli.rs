@@ -149,7 +149,7 @@ fn inner(
         }
     };
     if op == "list" {
-        let (entries, unmanaged) = match root.list(kind) {
+        let (entries, unmanaged) = match root.list_paths(kind) {
             Ok(v) => v,
             Err(e) => {
                 if datapack {
@@ -188,7 +188,9 @@ fn inner(
                 )?;
             }
             for u in unmanaged {
-                writeln!(out, "unmanaged\t{u}")?;
+                out.write_all(b"unmanaged\t")?;
+                out.write_all(&u.0)?;
+                out.write_all(b"\n")?;
             }
         }
         return Ok(0);

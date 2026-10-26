@@ -679,7 +679,7 @@ mod linux {
         };
         match op {
             "list" => {
-                let (entries, unmanaged) = root.list(kind)?;
+                let (entries, unmanaged) = root.list_paths(kind)?;
                 Ok(json!({"entries": entries, "unmanaged": unmanaged}))
             }
             "remove" => {
