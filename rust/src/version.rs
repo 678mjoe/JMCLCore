@@ -111,11 +111,69 @@ pub enum Policy {
     Immutable,
     Ttl(u64),
 }
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize)]
 #[serde(untagged)]
 enum Payload {
     Text(String),
     Bytes(Vec<u8>),
+}
+// Cache envelopes are typed Zig JSON, not dynamic RPC numbers. Retain each
+// lexeme until the shared binary128/typed-integer coercion has run.
+impl<'de> Deserialize<'de> for Payload {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        use serde::de::Error;
+        let raw = Box::<RawValue>::deserialize(d)?;
+        if raw.get().starts_with('"') {
+            return serde_json::from_str(raw.get())
+                .map(Self::Text)
+                .map_err(D::Error::custom);
+        }
+        let values: Vec<Box<RawValue>> =
+            serde_json::from_str(raw.get()).map_err(D::Error::custom)?;
+        values
+            .iter()
+            .map(|v| {
+                crate::json_number::typed_raw(v.get(), 8)
+                    .map(|n| n as u8)
+                    .map_err(|e| D::Error::custom(e.name()))
+            })
+            .collect::<Result<Vec<_>, _>>()
+            .map(Self::Bytes)
+    }
+}
+fn cache_u32<'de, D: serde::Deserializer<'de>>(d: D) -> Result<u32, D::Error> {
+    use serde::de::Error;
+    let raw = Box::<RawValue>::deserialize(d)?;
+    crate::json_number::typed_raw(raw.get(), 32)
+        .map(|n| n as u32)
+        .map_err(|e| D::Error::custom(e.name()))
+}
+fn cache_i64<'de, D: serde::Deserializer<'de>>(d: D) -> Result<i64, D::Error> {
+    use serde::de::Error;
+    let raw = Box::<RawValue>::deserialize(d)?;
+    let text = if raw.get().starts_with('"') {
+        serde_json::from_str::<String>(raw.get()).map_err(D::Error::custom)?
+    } else {
+        raw.get().to_owned()
+    };
+    let negative = text.starts_with('-');
+    let magnitude = text.strip_prefix(['+', '-']).unwrap_or(&text);
+    if magnitude.starts_with(['+', '-']) {
+        return Err(D::Error::custom("InvalidCharacter"));
+    }
+    let n =
+        crate::json_number::unsigned_text(magnitude, 64).map_err(|e| D::Error::custom(e.name()))?;
+    if negative && n == 1u64 << 63 {
+        return Ok(i64::MIN);
+    }
+    let n = i64::try_from(n).map_err(|_| D::Error::custom("Overflow"))?;
+    Ok(if negative { -n } else { n })
+}
+fn cache_url<'de, D: serde::Deserializer<'de>>(d: D) -> Result<String, D::Error> {
+    use serde::de::Error;
+    // Requested URLs are UTF-8. A non-UTF-8 stored URL can never equal one;
+    // rejecting it has the same cache-miss/eviction effect as the source check.
+    String::from_utf8(Payload::deserialize(d)?.bytes()).map_err(D::Error::custom)
 }
 impl Payload {
     fn bytes(self) -> Vec<u8> {
@@ -133,8 +191,11 @@ impl Payload {
 }
 #[derive(Serialize, Deserialize)]
 struct Envelope {
+    #[serde(deserialize_with = "cache_u32")]
     v: u32,
+    #[serde(deserialize_with = "cache_url")]
     url: String,
+    #[serde(deserialize_with = "cache_i64")]
     fetched_at: i64,
     payload: Payload,
 }
@@ -176,6 +237,16 @@ impl<T: Transport> Service<T> {
         let limit = max.checked_add(64 * 1024)?;
         let mut bytes = Vec::new();
         if file.take(limit as u64 + 1).read_to_end(&mut bytes).is_err() || bytes.len() > limit {
+            return invalid();
+        }
+        // Ignored fields still must contain well-formed JSON strings, as in the
+        // original typed parser. Every malformed envelope has the same public
+        // miss/eviction outcome, so this does not change error precedence.
+        if std::str::from_utf8(&bytes)
+            .ok()
+            .and_then(|text| crate::auth::json::Json::parse(text).ok())
+            .is_none()
+        {
             return invalid();
         }
         let env: Envelope = match serde_json::from_slice(&bytes) {
