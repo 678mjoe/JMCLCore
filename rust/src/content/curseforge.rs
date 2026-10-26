@@ -33,8 +33,15 @@ fn number8<'de, D: serde::Deserializer<'de>>(d: D) -> Result<u8, D::Error> {
 }
 #[derive(Deserialize)]
 struct Envelope {
+    #[allow(dead_code)] // Retained raw schema check for download_url.
     data: Box<RawValue>,
     #[allow(dead_code)] // Still typed for single-record schema/error compatibility.
+    pagination: Option<Pagination>,
+}
+#[derive(Deserialize)]
+struct TypedEnvelope<T> {
+    data: T,
+    #[allow(dead_code)] // Typed in input order even when only data is consumed.
     pagination: Option<Pagination>,
 }
 #[derive(Deserialize)]
@@ -74,8 +81,8 @@ fn parse_project(bytes: &[u8]) -> mr::Result<Project> {
     if bytes.len() > 2 * 1024 * 1024 {
         return Err("CurseforgeResponseTooLarge".into());
     }
-    let env: Envelope = mr::parse(bytes, 2 * 1024 * 1024, false)?;
-    let p: Project = mr::parse(env.data.get().as_bytes(), 2 * 1024 * 1024, false)?;
+    let env: TypedEnvelope<Project> = mr::parse(bytes, 2 * 1024 * 1024, false)?;
+    let p = env.data;
     validate_completed_document(bytes)?;
     if p.id == 0 {
         return Err("InvalidCurseforgeId".into());
@@ -182,8 +189,8 @@ pub fn parse_file(bytes: &[u8]) -> mr::Result<File> {
     if bytes.len() > 2 * 1024 * 1024 {
         return Err("CurseforgeResponseTooLarge".into());
     }
-    let env: Envelope = mr::parse(bytes, 2 * 1024 * 1024, false)?;
-    let detail: Detail = mr::parse(env.data.get().as_bytes(), 2 * 1024 * 1024, false)?;
+    let env: TypedEnvelope<Detail> = mr::parse(bytes, 2 * 1024 * 1024, false)?;
+    let detail = env.data;
     validate_completed_document(bytes)?;
     validate_detail(detail)
 }
@@ -541,3 +548,7 @@ mod lexical_acceptance_tests;
 #[cfg(test)]
 #[path = "../../tests/support/curseforge_page_parser.rs"]
 mod page_parser_tests;
+
+#[cfg(test)]
+#[path = "../../tests/support/curseforge_typed_envelope.rs"]
+mod typed_envelope_tests;
