@@ -4,7 +4,7 @@
   "oracle_commit": "5a4310debbcee26b3d2391bab2339f79cd6ec52e",
   "source_digest_encoding": "utf8_crlf_to_lf",
   "source_sha256": {
-    "rust/src/auth/mod.rs": "cf5858b113ded1cbf6d63e2d4965ba8d4e2f0144c1fcba131767a197becaf6d9",
+    "rust/src/auth/mod.rs": "ebdfe18fd74fe31dc3a5572adb2937994513dddc473a48c19911774a1e888eab",
     "rust/src/content/rpc.rs": "305ef2ed5f8cadd7ea0aabc0d24696cc261199014024d1a42c25c780c00a0257",
     "rust/src/content/registry.rs": "3aaac2096515b10eced77ee2b0c890cf3d06926ab49f537a8947eca50724a9b9",
     "rust/src/server_content.rs": "08f47b123e4e2147ab3a3564faaccad1f8c0cf03f84487393b262036c5ea762f",
@@ -29,7 +29,7 @@
     "rust/src/servers/remote.rs": "b50b0b2e7ced8f5972a5695b4778cae1b9317311d1417f9fd46c936cd023b819",
     "rust/src/worlds/server.rs": "a697ad2741a3da5406cf3e271fa44c08737b42b5312d08b25dd8fe94515f7d61",
     "rust/src/protocol.rs": "a65e5405caf015d1eb9f3052df2df44fea6e0ff29003b69c5ddb28d4d8a10007",
-    "rust/src/worlds/read.rs": "c1441d1113c8fd11c44e1e9573dc88f51ebafbe1077c7b6edb60d1df1f2eb22e",
+    "rust/src/worlds/read.rs": "2b67a5dc92811daf7c43af6107d1a782205191ab58cd87aa79dc6fa3fa86998e",
     "rust/src/worlds/server_read.rs": "4efb5e0a4aad0c70f31b78751b9c2e13ea305b0b3a06b495d14ed0ee749aa2c2",
     "rust/src/instances/manifest_ordered.rs": "4e3157409b2784e718256aaac506986994d88a7169cc2ab8aa960f10b8bd7fef"
   },

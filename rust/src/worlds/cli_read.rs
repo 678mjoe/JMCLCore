@@ -206,11 +206,16 @@ fn server_read(
             return Ok(1);
         }
     };
+    let mut show_has_metadata = false;
     let result = if command == "list" {
         portable::list_read(&dir)
     } else {
-        read::world_read(&dir, &read::listed_name_bytes(world.unwrap()), None)
-            .map(|world| json!({"world":world}))
+        read::world_read_with_metadata(&dir, &read::listed_name_bytes(world.unwrap()), None).map(
+            |(world, has_metadata)| {
+                show_has_metadata = has_metadata;
+                json!({"world":world})
+            },
+        )
     };
     let result = match result {
         Ok(result) => result,
@@ -218,15 +223,7 @@ fn server_read(
             return portable::report(err, if command == "show" { "inspect" } else { "list" }, e);
         }
     };
-    // Preserve the preexisting CLI metadata-presence lookup policy separately
-    // from the named world metadata read, without broadening alias behavior.
-    render(
-        command,
-        &result,
-        json_output,
-        || metadata(dir.child(world.unwrap(), false)),
-        out,
-    )
+    render(command, &result, json_output, || show_has_metadata, out)
 }
 
 #[cfg(test)]

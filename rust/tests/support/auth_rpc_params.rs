@@ -12,18 +12,24 @@ fn mode(n: u8) -> (&'static str, Option<&'static str>) {
         _ => unreachable!(),
     }
 }
+fn bytes_value(v: &[u8]) -> Value {
+    match std::str::from_utf8(v) {
+        Ok(s) => json!(s),
+        Err(_) => json!(v),
+    }
+}
 fn result(raw: &str, n: u8) -> Value {
     let (stage, field) = mode(n);
     let raw = serde_json::value::RawValue::from_string(raw.to_owned()).unwrap();
     parse_rpc_params(&raw, field, stage)
         .map(|(client, secret, locale)| {
             // Only public fixture strings are exposed to this test comparison.
-            let mut v = json!({"client_id":client.expose()});
+            let mut v = json!({"client_id":bytes_value(&client)});
             if let Some(f) = field {
-                v[f] = json!(secret.as_ref().unwrap().expose());
+                v[f] = json!(bytes_value(secret.as_ref().unwrap()));
             }
             if n == 0 {
-                v["locale"] = json!(locale.as_ref().map(Secret::expose));
+                v["locale"] = json!(locale.as_ref().map(|v| bytes_value(v)));
             }
             json!({"value":v})
         })
@@ -79,13 +85,13 @@ fn pure_auth_request_arrays_are_decoded_before_semantics() {
 fn pure_auth_request_utf8_and_result_shape_controls() {
     // Decoded prefixes must still fail safely; these are error-path controls,
     // not a claim to observe allocator memory after the wiping drop.
-    for raw in ["[80,256]", "[80,255]", "[195,80]"] {
+    for raw in ["[80,256]", "[80,true]", "[80,1.5]"] {
         assert!(request_text(Json(raw)).is_err());
     }
 
     assert_eq!(
-        result(&token(0, "client_id", "[255]"), 0),
-        json!({"rejected":true})
+        result(&token(0, "client_id", "[255]"), 0)["value"]["client_id"],
+        json!([255])
     );
     assert_eq!(
         result(&token(0, "client_id", "[195,191]"), 0)["value"]["client_id"],
@@ -233,6 +239,9 @@ fn pure_auth_request_decode_matches_pinned_schemas() {
                 "[\"8_0\"]",
                 "[195,191]",
                 "[\"195\",191.0]",
+                "[255]",
+                "[80,255]",
+                "[195,80]",
                 "[256]",
                 "[80,256]",
                 "[-1]",

@@ -397,7 +397,7 @@ jobs:
           python - <<'PYTHON'
           import os, subprocess, sys
           suffix = ".exe" if os.name == "nt" else ""
-          for script in ("world_cli_metadata", "world_cli_list_names", "world_cli_native_args", "server_world_metadata", "server_world_root", "manifest_ordered", "server_manifest_read_limit", "world_read_manifest_names", "server_world_read_params", "server_world_icon_aliases"):
+          for script in ("world_cli_metadata", "world_cli_metadata_presence", "world_cli_list_names", "world_cli_native_args", "server_world_metadata", "server_world_root", "manifest_ordered", "server_manifest_read_limit", "world_read_manifest_names", "server_world_read_params", "server_world_icon_aliases"):
               subprocess.run([sys.executable, f"rust/compat/{script}.py",
                               "--zig", f".ci-oracle/zig-out/bin/jmcl-core{suffix}",
                               "--rust", f"rust/target/release/jmcl-core-rust{suffix}",

@@ -134,12 +134,19 @@ pub(super) fn run(
             Err(e) => return report(err, operation, e),
         }
     };
+    let mut show_has_metadata = false;
     let result = (|| -> Result<Value> {
         match command {
             "list" => list_read(&dir),
-            "show" => Ok(
-                json!({"world":super::read::world_read(&dir,world_name.unwrap().as_bytes(),None)?}),
-            ),
+            "show" => {
+                let (world, has_metadata) = super::read::world_read_with_metadata(
+                    &dir,
+                    world_name.unwrap().as_bytes(),
+                    None,
+                )?;
+                show_has_metadata = has_metadata;
+                Ok(json!({"world": world}))
+            }
             "backups" => {
                 let mut v = backups_in(&dir)?;
                 v.as_object_mut().unwrap().remove("stage");
@@ -192,13 +199,7 @@ pub(super) fn run(
             }
         }
         "show" => {
-            let has_metadata = dir
-                .child(world_name.unwrap(), false)
-                .ok()
-                .and_then(|d| d.read_alias("level.dat", 32 * 1024 * 1024).ok())
-                .and_then(|b| decode_level(&b).ok())
-                .is_some_and(|d| matches!(d.root.get("Data"), Some(nbt::Tag::Compound(_))));
-            super::cli::detail(out, &result["world"], has_metadata)?
+            super::cli::detail(out, &result["world"], show_has_metadata)?;
         }
         "backups" => {
             for b in result["backups"].as_array().unwrap() {

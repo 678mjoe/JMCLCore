@@ -383,8 +383,7 @@ fn https(s: &str) -> bool {
                 .all(|b| b.is_ascii_alphanumeric() || *b == b'-')
     })
 }
-pub fn begin(t: &mut impl Transport, client: &str, locale: Option<&str>) -> Result<Device, Error> {
-    validate_client(client)?;
+fn validate_locale(locale: Option<&str>) -> Result<(), Error> {
     if let Some(l) = locale
         && (l.is_empty()
             || l.len() > 35
@@ -394,6 +393,11 @@ pub fn begin(t: &mut impl Transport, client: &str, locale: Option<&str>) -> Resu
     {
         return Err(Error::InvalidParams);
     }
+    Ok(())
+}
+pub fn begin(t: &mut impl Transport, client: &str, locale: Option<&str>) -> Result<Device, Error> {
+    validate_client(client)?;
+    validate_locale(locale)?;
     let url = locale.map(|l| format!("{DEVICE}?mkt={l}"));
     let body = form(&[("client_id", client), ("scope", SCOPE)]);
     let r = request(
@@ -761,7 +765,8 @@ fn result(out: &mut impl Write, id: &str, stage: &str, data: &impl Serialize) ->
 // Request strings use dynamic JSON byte-element coercion. Response schemas
 // keep their existing decoders. Allocate once before writing decoded bytes so
 // secret-bearing data is never stranded in a superseded Vec allocation.
-fn request_text(j: Json<'_>) -> Result<Secret, Error> {
+type RawRequestText = Zeroizing<Vec<u8>>;
+fn request_text(j: Json<'_>) -> Result<RawRequestText, Error> {
     if j.0.starts_with('[') {
         let items = j.array()?;
         let mut bytes = Zeroizing::new(Vec::with_capacity(items.len()));
@@ -771,18 +776,25 @@ fn request_text(j: Json<'_>) -> Result<Secret, Error> {
                     as u8,
             );
         }
-        let text = std::str::from_utf8(&bytes).map_err(|_| Error::InvalidResponse)?;
-        Ok(Secret::new(Zeroizing::new(text.to_owned())))
+        Ok(bytes)
     } else {
-        j.string().map(Secret::new).map_err(Error::from)
+        let text = j.string()?;
+        let mut bytes = Zeroizing::new(Vec::with_capacity(text.len()));
+        bytes.extend_from_slice(text.as_bytes());
+        Ok(bytes)
     }
 }
+type RawRpcParams = (
+    RawRequestText,
+    Option<RawRequestText>,
+    Option<RawRequestText>,
+);
 type DecodedRpcParams = (Secret, Option<Secret>, Option<Secret>);
 fn parse_rpc_params(
     params: &serde_json::value::RawValue,
     secret_field: Option<&str>,
     stage: &str,
-) -> Result<DecodedRpcParams, Error> {
+) -> Result<RawRpcParams, Error> {
     let j = Json::parse(params.get())?;
     let client = request_text(j.required("client_id")?)?;
     let secret = secret_field
@@ -797,6 +809,53 @@ fn parse_rpc_params(
         None
     };
     Ok((client, secret, locale))
+}
+
+fn prepare_rpc_params(
+    params: Option<&serde_json::value::RawValue>,
+    secret_field: Option<&str>,
+    stage: &str,
+    missing: &'static str,
+    invalid: &'static str,
+) -> Result<DecodedRpcParams, &'static str> {
+    let Some(params) = params else {
+        return Err(missing);
+    };
+    let parsed_params = parse_rpc_params(params, secret_field, stage);
+    let (client, secret, locale) = match parsed_params {
+        Ok(v) => v,
+        Err(_) => return Err(invalid),
+    };
+    if let Some(s) = &secret
+        && (client.is_empty() || s.is_empty())
+    {
+        let message = match secret_field.unwrap() {
+            "device_code" => "Microsoft client ID and device code must not be empty",
+            "access_token" => "Microsoft client ID and access token must not be empty",
+            _ => "Microsoft client ID and refresh token must not be empty",
+        };
+        return Err(message);
+    }
+    // Complete typed decoding and protocol empty guards precede semantic
+    // UTF-8 rejection. No opaque request bytes cross into Secret/transport.
+    let client_text =
+        std::str::from_utf8(&client).map_err(|_| "Authentication parameters are invalid")?;
+    let secret_text = secret
+        .as_ref()
+        .map(|v| std::str::from_utf8(v))
+        .transpose()
+        .map_err(|_| "Authentication parameters are invalid")?;
+    let locale_text = locale
+        .as_ref()
+        .map(|v| std::str::from_utf8(v))
+        .transpose()
+        .map_err(|_| "Authentication parameters are invalid")?;
+    let into_secret = |s: &str| Secret::new(Zeroizing::new(s.to_owned()));
+    Ok((
+        into_secret(client_text),
+        secret_text.map(into_secret),
+        locale_text.map(into_secret),
+    ))
 }
 
 /// Recognized methods return Some, allowing centralized dispatch to continue for others.
@@ -842,24 +901,13 @@ pub fn handle_with_transport(
         _ => return None,
     };
     Some((|| {
-        let Some(params) = params else {
-            return crate::protocol::error(out, Some(id), "INVALID_PARAMS", missing);
-        };
-        let parsed_params = parse_rpc_params(params, secret_field, stage);
-        let (client, secret, locale) = match parsed_params {
-            Ok(v) => v,
-            Err(_) => return crate::protocol::error(out, Some(id), "INVALID_PARAMS", invalid),
-        };
-        if let Some(s) = &secret
-            && (client.expose().is_empty() || s.expose().is_empty())
-        {
-            let message = match secret_field.unwrap() {
-                "device_code" => "Microsoft client ID and device code must not be empty",
-                "access_token" => "Microsoft client ID and access token must not be empty",
-                _ => "Microsoft client ID and refresh token must not be empty",
+        let (client, secret, locale) =
+            match prepare_rpc_params(params, secret_field, stage, missing, invalid) {
+                Ok(v) => v,
+                Err(message) => {
+                    return crate::protocol::error(out, Some(id), "INVALID_PARAMS", message);
+                }
             };
-            return crate::protocol::error(out, Some(id), "INVALID_PARAMS", message);
-        }
         #[derive(Serialize)]
         struct CredentialResult {
             credential: Credential,
@@ -908,3 +956,7 @@ pub fn handle(
 #[cfg(test)]
 #[path = "../../tests/support/auth_rpc_params.rs"]
 mod request_param_tests;
+
+#[cfg(test)]
+#[path = "../../tests/support/auth_preflight.rs"]
+mod preflight_tests;

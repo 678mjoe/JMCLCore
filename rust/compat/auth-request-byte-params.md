@@ -16,24 +16,27 @@ invoke.
 
 ## Narrow fix and ownership
 
-Only private request string decoding changes. It reuses dynamic u8 numeric
-coercion and requires checked UTF-8 before creating the existing `Secret` type.
+Private request decoding now retains byte strings in preallocated wiping buffers
+through complete typed decoding and the existing protocol empty-field guards.
+Only then does preparation check UTF-8 and convert to the existing `Secret`.
+See [preflight rejection ordering](auth-preflight-order.md) for that follow-up.
+No opaque bytes enter forms, headers, URLs, or transport-facing strings.
+
 The temporary `Zeroizing<Vec<u8>>` is allocated from the complete borrowed
-element count **before** writing decoded bytes, so pushes cannot reallocate and
-strand decoded bytes in superseded allocations. Numeric or UTF-8 errors drop
-that wiping buffer; successful borrowed UTF-8 is copied once into a
-`Zeroizing<String>` and transferred to `Secret`.
+array element count **before** writing decoded bytes. String inputs copy from
+the existing wiping JSON string decoder into a once-allocated wiping buffer.
+All present buffers are checked before any `Secret` conversion. Numeric,
+empty-guard, and UTF-8 failures drop the wiping buffers. Prefix controls are
+error-path checks, not a proof of allocator memory erasure.
 
 Client ID, secondary field, then begin-only optional locale retain their original
 order. Missing/null locale remains absent; non-begin methods ignore it. Shared
-response `text`/`optional` helpers, auth JSON decoding, later semantic validation,
-token processing, transport construction, and request execution are unchanged.
-No generic JSON tree is introduced into production secret decoding.
-
-Opaque non-UTF8 arrays remain unsupported by the existing String/Secret
-representation. `[255]` is explicitly rejected, while `[195,191]` decodes as
-valid UTF-8. This is not full arbitrary-byte authentication parameter support;
-future widening requires review of downstream form/header/string consumers.
+response helpers, auth JSON decoding, later semantic validators, token processing
+and transport bodies remain unchanged. No generic JSON tree is introduced into
+production secret decoding. Private decode accepts `[255]` as bytes; wired
+preparation rejects it at the source-compatible semantic error boundary, unless
+an earlier typed error or protocol empty guard wins. `[195,191]` remains valid
+UTF-8. This does not widen the public `Secret` representation.
 
 ## Pure tests
 
@@ -50,7 +53,7 @@ cargo test --locked --manifest-path rust/Cargo.toml --lib \
   -- --exact --ignored --nocapture
 ```
 
-The 305-case matrix verifies accepted decoded values exactly and compares
+The 335-case matrix (including the original 305 and 30 opaque-byte controls) verifies accepted decoded values exactly and compares
 rejection acceptance separately: Rust's erased errors are not claimed equal to
 Zig's detailed parser error names. Strict result-shape negative controls prevent
 arbitrary oracle objects from being counted as rejection. Cases cover

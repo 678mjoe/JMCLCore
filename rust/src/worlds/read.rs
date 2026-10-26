@@ -132,6 +132,14 @@ fn metadata_text(bytes: Option<&[u8]>) -> Value {
     }
 }
 pub(super) fn world_read(parent: &fs::Dir, name: &[u8], version: Option<&[u8]>) -> Result<Value> {
+    world_read_with_metadata(parent, name, version).map(|(value, _)| value)
+}
+// Keep metadata presence beside the value, never as an additional wire field.
+pub(super) fn world_read_with_metadata(
+    parent: &fs::Dir,
+    name: &[u8],
+    version: Option<&[u8]>,
+) -> Result<(Value, bool)> {
     validate_read_name(name)?;
     let native_name = crate::store::path_from_bytes(name)?;
     let d = parent.child_alias_native(&native_name).map_err(absent)?;
@@ -139,6 +147,9 @@ pub(super) fn world_read(parent: &fs::Dir, name: &[u8], version: Option<&[u8]>) 
         .read_alias("level.dat", 32 * 1024 * 1024)
         .ok()
         .and_then(|b| decode_level(&b).ok());
+    let has_metadata = doc
+        .as_ref()
+        .is_some_and(|d| matches!(d.root.get("Data"), Some(nbt::Tag::Compound(_))));
     let mut obj = serde_json::Map::new();
     obj.insert(
         "name".into(),
@@ -167,7 +178,7 @@ pub(super) fn world_read(parent: &fs::Dir, name: &[u8], version: Option<&[u8]>) 
         _ => "unknown",
     };
     obj.insert("version_relation".into(), json!(relation));
-    Ok(Value::Object(obj))
+    Ok((Value::Object(obj), has_metadata))
 }
 pub(super) fn listed_name_bytes(name: &std::ffi::OsStr) -> Vec<u8> {
     #[cfg(unix)]
