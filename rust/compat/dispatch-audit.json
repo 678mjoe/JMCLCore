@@ -6,7 +6,7 @@
   "source_sha256": {
     "rust/src/auth/mod.rs": "8f866931b0ffcdfa256049ac95c8b9b8d0eec7e810e001767fbf9977390b4eb5",
     "rust/src/content/rpc.rs": "ee4decfd5d04e25804fd4afbdb17969360004f1bd62ba6308cbea04a9eef6ab5",
-    "rust/src/content/registry.rs": "d991b819091934fbea794dfbb5f5a170012d141648b2dfcbba0975b554adac7c",
+    "rust/src/content/registry.rs": "3aaac2096515b10eced77ee2b0c890cf3d06926ab49f537a8947eca50724a9b9",
     "rust/src/server_content.rs": "08f47b123e4e2147ab3a3564faaccad1f8c0cf03f84487393b262036c5ea762f",
     "rust/src/servers/installation.rs": "2f97795eaec4020b0f9ac278600ebda2f8c7745afa5c84aec2711efd745b00e6",
     "rust/src/install/rpc.rs": "84f3d4050fa7cb271e65f8e6adccb77e12f166d862f1f66e3aaaea5c8d825f50",
@@ -27,9 +27,9 @@
     "rust/src/servers/mod.rs": "21b312a4e2717b1c7f7f736698bb3f731da27e7cb4c588e0646d12f1913995b7",
     "rust/src/servers/rpc.rs": "e3799d267b4e237f923ba58b91c67ec9ff8ae2ca603a97107826951b378519a7",
     "rust/src/servers/remote.rs": "b50b0b2e7ced8f5972a5695b4778cae1b9317311d1417f9fd46c936cd023b819",
-    "rust/src/worlds/server.rs": "46af54419883e82e02e45953066144f20a1e2a02140e92d40cc8ac0d7a98869a",
+    "rust/src/worlds/server.rs": "1d4a34e7ec4cef13e7a6dd4e3e7597b12350151bf9d6ae400a9d87ecc9be11a2",
     "rust/src/protocol.rs": "a65e5405caf015d1eb9f3052df2df44fea6e0ff29003b69c5ddb28d4d8a10007",
-    "rust/src/worlds/read.rs": "6273ce7913eedeeed5e4a3cd4712257cb15c4ff28ca7ee410be3f5668e59dd54"
+    "rust/src/worlds/read.rs": "5d0e0eef0846312fc7baef3edebaa96b4f1bc0a49eb7b4f51174ff13695f7cf5"
   },
   "routes": [
     {
@@ -446,7 +446,8 @@
         "paths": [
           "rust/src/worlds/tests.rs",
           "rust/compat/world_read_parameters.py",
-          "rust/compat/world_list_names.py"
+          "rust/compat/world_list_names.py",
+          "rust/compat/world_metadata_bytes.py"
         ]
       }
     },

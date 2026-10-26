@@ -15,7 +15,13 @@ fn root(path: &str) -> Result<fs::Dir> {
     #[cfg(unix)]
     {
         use rustix::fs::{Mode, OFlags, open};
-        std::fs::create_dir_all(path)?;
+        match std::fs::create_dir_all(path) {
+            Ok(()) => {}
+            // Preserve the source create-then-open classification: the existing
+            // no-follow directory open diagnoses an already-present file.
+            Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {}
+            Err(e) => return Err(e.into()),
+        }
         Ok(fs::Dir(File::from(
             open(
                 path,
@@ -131,7 +137,7 @@ pub(super) fn run(
                     if validate_name(&n).is_err() {
                         continue;
                     }
-                    match super::world(&dir, &n, None) {
+                    match super::read::world_read(&dir, n.as_bytes(), None) {
                         Ok(w) => worlds.push(w),
                         Err(Error::WorldNotFound) => {}
                         Err(Error::Io(e)) if e.kind() == io::ErrorKind::NotADirectory => {}
@@ -140,7 +146,9 @@ pub(super) fn run(
                 }
                 Ok(json!({"worlds":worlds}))
             }
-            "show" => Ok(json!({"world":super::world(&dir,world_name.unwrap(),None)?})),
+            "show" => Ok(
+                json!({"world":super::read::world_read(&dir,world_name.unwrap().as_bytes(),None)?}),
+            ),
             "backups" => {
                 let mut v = backups_in(&dir)?;
                 v.as_object_mut().unwrap().remove("stage");
@@ -220,6 +228,30 @@ pub(super) fn run(
 }
 #[cfg(test)]
 mod tests {
+    #[cfg(unix)]
+    #[test]
+    fn root_only_classifies_existing_files_without_following_final_alias() {
+        use std::os::unix::fs::symlink;
+        let temp = tempfile::tempdir().unwrap();
+        let base = temp.path();
+        assert!(super::root(base.to_str().unwrap()).is_ok());
+        assert!(super::root(base.join("missing").to_str().unwrap()).is_ok());
+        std::fs::write(base.join("file"), b"inert").unwrap();
+        let error = super::root(base.join("file").to_str().unwrap())
+            .err()
+            .unwrap();
+        assert!(
+            matches!(error, super::Error::Io(ref e) if e.kind()==std::io::ErrorKind::NotADirectory)
+        );
+        assert!(super::root(base.join("file/child").to_str().unwrap()).is_err());
+        symlink(base.join("missing"), base.join("alias")).unwrap();
+        assert!(super::root(base.join("alias").to_str().unwrap()).is_err());
+        assert!(super::root(base.join("alias/child").to_str().unwrap()).is_ok());
+        assert!(super::root("").is_err());
+        assert!(super::root("\0").is_err());
+        assert_eq!(std::fs::read(base.join("file")).unwrap(), b"inert");
+    }
+
     use super::*;
     #[test]
     fn portable_listing_and_backup_removal_do_not_create_lifecycle_state() {

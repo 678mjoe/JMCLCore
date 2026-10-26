@@ -235,3 +235,29 @@ The `b1a171bf` private read collector preserves the same two-method route and
 object guard; it enumerates native byte names, checks the source count before
 inspection and sorts accepted records afterward. Read-handler fingerprint and
 fixture reference are updated after review; no mutation/archive route changes.
+
+The `659e17fa` private read metadata change preserves method/parameter guards
+and native lookup. It serializes two NBT display byte strings and compares raw
+version bytes only in list/get; shared operational metadata remains unchanged.
+The reviewed read-handler fingerprint and read-only fixture reference are updated.
+
+The `1ee5ef63` persisted registry wire-enum change leaves public `Kind`,
+`Provider`, and `Kind::from_directory` routing behavior unchanged. Only private
+wire-field deserializers and error classification change. The complete reviewed
+registry source digest is refreshed; dynamic RPC selectors and route inventory
+are unchanged.
+
+The `aded65fb` instance CLI read-view reuse exposes only two private read
+helpers to the sibling CLI module. RPC method guards, schemas and source links
+are unchanged; the read-handler digest changes only for helper visibility.
+Read-only row/detail formatting retains String/null behavior and supports the
+source byte-array representation; mutation/archive dispatch remains unchanged.
+
+The `96145419` private ordered persisted-registry parser preserves
+`Kind::from_directory`, public serde, semantic validation and route guards.
+The reviewed registry fingerprint changes for private schema parsing only;
+ordered lexical/type errors are covered by pure pinned-source fixtures.
+
+The `56a6b2b8` server world read change substitutes only the list/get
+metadata reader. Platform, parameter, target and lifecycle guards remain
+unchanged; no mutation route is widened. Its reviewed handler digest is updated.

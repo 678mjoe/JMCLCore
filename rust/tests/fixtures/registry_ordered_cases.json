@@ -1,0 +1,232 @@
+[
+  {
+    "name": "ff-root-type",
+    "hex": "7b22756e6b6e6f776e223a22ff222c22656e7472696573223a747275657d",
+    "zig": {
+      "error": "SyntaxError"
+    },
+    "rust": {
+      "error": "UnexpectedToken"
+    }
+  },
+  {
+    "name": "ff-root-duplicate",
+    "hex": "7b22756e6b6e6f776e223a22ff222c22656e7472696573223a5b5d2c22656e7472696573223a5b5d7d",
+    "zig": {
+      "error": "SyntaxError"
+    },
+    "rust": {
+      "error": "DuplicateField"
+    }
+  },
+  {
+    "name": "ff-root-eof",
+    "hex": "7b22756e6b6e6f776e223a22ff222c22656e7472696573223a",
+    "zig": {
+      "error": "SyntaxError"
+    },
+    "rust": {
+      "error": "UnexpectedEndOfInput"
+    }
+  },
+  {
+    "name": "ff-entry-type",
+    "hex": "7b22656e7472696573223a5b7b22756e6b6e6f776e223a22ff222c2273697a65223a747275657d5d7d",
+    "zig": {
+      "error": "SyntaxError"
+    },
+    "rust": {
+      "error": "UnexpectedToken"
+    }
+  },
+  {
+    "name": "ff-entry-missing",
+    "hex": "7b22656e7472696573223a5b7b22756e6b6e6f776e223a22ff222c22756e75736564223a307d5d7d",
+    "zig": {
+      "error": "SyntaxError"
+    },
+    "rust": {
+      "error": "MissingField"
+    }
+  },
+  {
+    "name": "ff-entry-duplicate",
+    "hex": "7b22656e7472696573223a5b7b22756e6b6e6f776e223a22ff222c2273697a65223a312c2273697a65223a327d5d7d",
+    "zig": {
+      "error": "SyntaxError"
+    },
+    "rust": {
+      "error": "DuplicateField"
+    }
+  },
+  {
+    "name": "ff-source-missing",
+    "hex": "7b22656e7472696573223a5b7b226b696e64223a226d6f64222c2266696c65223a226d6f64732f612e6a6172222c2273686131223a2261616161616161616161616161616161616161616161616161616161616161616161616161616161222c2273697a65223a312c22736f75726365223a7b22756e6b6e6f776e223a22ff222c2270726f6a6563745f6964223a2250726f6a31222c2276657273696f6e5f6964223a2256657231222c22736c7567223a2270726f6a656374227d2c22656e61626c6564223a747275652c2261735f646570656e64656e6379223a66616c73657d5d7d",
+    "zig": {
+      "error": "SyntaxError"
+    },
+    "rust": {
+      "error": "MissingField"
+    }
+  },
+  {
+    "name": "surrogate-root-type",
+    "hex": "7b22756e6b6e6f776e223a225c7564383030222c22656e7472696573223a747275657d",
+    "zig": {
+      "error": "SyntaxError"
+    },
+    "rust": {
+      "error": "UnexpectedToken"
+    }
+  },
+  {
+    "name": "surrogate-root-duplicate",
+    "hex": "7b22756e6b6e6f776e223a225c7564383030222c22656e7472696573223a5b5d2c22656e7472696573223a5b5d7d",
+    "zig": {
+      "error": "SyntaxError"
+    },
+    "rust": {
+      "error": "DuplicateField"
+    }
+  },
+  {
+    "name": "surrogate-root-eof",
+    "hex": "7b22756e6b6e6f776e223a225c7564383030222c22656e7472696573223a",
+    "zig": {
+      "error": "SyntaxError"
+    },
+    "rust": {
+      "error": "UnexpectedEndOfInput"
+    }
+  },
+  {
+    "name": "surrogate-entry-type",
+    "hex": "7b22656e7472696573223a5b7b22756e6b6e6f776e223a225c7564383030222c2273697a65223a747275657d5d7d",
+    "zig": {
+      "error": "SyntaxError"
+    },
+    "rust": {
+      "error": "UnexpectedToken"
+    }
+  },
+  {
+    "name": "surrogate-entry-missing",
+    "hex": "7b22656e7472696573223a5b7b22756e6b6e6f776e223a225c7564383030222c22756e75736564223a307d5d7d",
+    "zig": {
+      "error": "SyntaxError"
+    },
+    "rust": {
+      "error": "MissingField"
+    }
+  },
+  {
+    "name": "surrogate-entry-duplicate",
+    "hex": "7b22656e7472696573223a5b7b22756e6b6e6f776e223a225c7564383030222c2273697a65223a312c2273697a65223a327d5d7d",
+    "zig": {
+      "error": "SyntaxError"
+    },
+    "rust": {
+      "error": "DuplicateField"
+    }
+  },
+  {
+    "name": "surrogate-source-missing",
+    "hex": "7b22656e7472696573223a5b7b226b696e64223a226d6f64222c2266696c65223a226d6f64732f612e6a6172222c2273686131223a2261616161616161616161616161616161616161616161616161616161616161616161616161616161222c2273697a65223a312c22736f75726365223a7b22756e6b6e6f776e223a225c7564383030222c2270726f6a6563745f6964223a2250726f6a31222c2276657273696f6e5f6964223a2256657231222c22736c7567223a2270726f6a656374227d2c22656e61626c6564223a747275652c2261735f646570656e64656e6379223a66616c73657d5d7d",
+    "zig": {
+      "error": "SyntaxError"
+    },
+    "rust": {
+      "error": "MissingField"
+    }
+  },
+  {
+    "name": "escape-root-type",
+    "hex": "7b22756e6b6e6f776e223a225c71222c22656e7472696573223a747275657d",
+    "zig": {
+      "error": "SyntaxError"
+    },
+    "rust": {
+      "error": "UnexpectedToken"
+    }
+  },
+  {
+    "name": "escape-root-duplicate",
+    "hex": "7b22756e6b6e6f776e223a225c71222c22656e7472696573223a5b5d2c22656e7472696573223a5b5d7d",
+    "zig": {
+      "error": "SyntaxError"
+    },
+    "rust": {
+      "error": "UnexpectedToken"
+    }
+  },
+  {
+    "name": "escape-root-eof",
+    "hex": "7b22756e6b6e6f776e223a225c71222c22656e7472696573223a",
+    "zig": {
+      "error": "SyntaxError"
+    },
+    "rust": {
+      "error": "UnexpectedToken"
+    }
+  },
+  {
+    "name": "escape-entry-type",
+    "hex": "7b22656e7472696573223a5b7b22756e6b6e6f776e223a225c71222c2273697a65223a747275657d5d7d",
+    "zig": {
+      "error": "SyntaxError"
+    },
+    "rust": {
+      "error": "UnexpectedToken"
+    }
+  },
+  {
+    "name": "escape-entry-missing",
+    "hex": "7b22656e7472696573223a5b7b22756e6b6e6f776e223a225c71222c22756e75736564223a307d5d7d",
+    "zig": {
+      "error": "SyntaxError"
+    },
+    "rust": {
+      "error": "UnexpectedToken"
+    }
+  },
+  {
+    "name": "escape-entry-duplicate",
+    "hex": "7b22656e7472696573223a5b7b22756e6b6e6f776e223a225c71222c2273697a65223a312c2273697a65223a327d5d7d",
+    "zig": {
+      "error": "SyntaxError"
+    },
+    "rust": {
+      "error": "UnexpectedToken"
+    }
+  },
+  {
+    "name": "escape-source-missing",
+    "hex": "7b22656e7472696573223a5b7b226b696e64223a226d6f64222c2266696c65223a226d6f64732f612e6a6172222c2273686131223a2261616161616161616161616161616161616161616161616161616161616161616161616161616161222c2273697a65223a312c22736f75726365223a7b22756e6b6e6f776e223a225c71222c2270726f6a6563745f6964223a2250726f6a31222c2276657273696f6e5f6964223a2256657231222c22736c7567223a2270726f6a656374227d2c22656e61626c6564223a747275652c2261735f646570656e64656e6379223a66616c73657d5d7d",
+    "zig": {
+      "error": "SyntaxError"
+    },
+    "rust": {
+      "error": "UnexpectedToken"
+    }
+  },
+  {
+    "name": "escape-complete-root",
+    "hex": "7b22656e7472696573223a5b7b226b696e64223a226d6f64222c2266696c65223a226d6f64732f612e6a6172222c2273686131223a2261616161616161616161616161616161616161616161616161616161616161616161616161616161222c2273697a65223a312c22736f75726365223a7b2270726f7669646572223a226d6f6472696e7468222c2270726f6a6563745f6964223a2250726f6a31222c2276657273696f6e5f6964223a2256657231222c22736c7567223a2270726f6a656374227d2c22656e61626c6564223a747275652c2261735f646570656e64656e6379223a66616c73657d5d2c22756e6b6e6f776e223a225c71227d",
+    "zig": {
+      "error": "SyntaxError"
+    },
+    "rust": {
+      "error": "UnexpectedToken"
+    }
+  },
+  {
+    "name": "escape-complete-entry",
+    "hex": "7b22656e7472696573223a5b7b226b696e64223a226d6f64222c2266696c65223a226d6f64732f612e6a6172222c2273686131223a2261616161616161616161616161616161616161616161616161616161616161616161616161616161222c2273697a65223a312c22736f75726365223a7b2270726f7669646572223a226d6f6472696e7468222c2270726f6a6563745f6964223a2250726f6a31222c2276657273696f6e5f6964223a2256657231222c22736c7567223a2270726f6a656374227d2c22656e61626c6564223a747275652c2261735f646570656e64656e6379223a66616c73652c22756e6b6e6f776e223a225c71227d5d7d",
+    "zig": {
+      "error": "SyntaxError"
+    },
+    "rust": {
+      "error": "UnexpectedToken"
+    }
+  }
+]

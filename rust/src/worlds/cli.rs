@@ -73,13 +73,31 @@ fn invalid(err: &mut impl Write) -> io::Result<u8> {
 fn text<'a>(v: &'a Value, key: &str) -> &'a str {
     v.get(key).and_then(Value::as_str).unwrap_or("-")
 }
+// Display byte arrays verbatim, matching Zig's {s} writer. This helper is
+// only used for the three world display strings, never request decoding.
+fn display_bytes(out: &mut impl Write, v: &Value, key: &str) -> io::Result<()> {
+    match v.get(key) {
+        Some(Value::String(s)) => out.write_all(s.as_bytes()),
+        Some(Value::Array(bytes)) => {
+            for byte in bytes {
+                let byte = byte.as_u64().filter(|b| *b <= 255).ok_or_else(|| {
+                    io::Error::new(io::ErrorKind::InvalidData, "invalid display byte")
+                })?;
+                out.write_all(&[byte as u8])?;
+            }
+            Ok(())
+        }
+        _ => out.write_all(b"-"),
+    }
+}
 pub(super) fn row(out: &mut impl Write, v: &Value) -> io::Result<()> {
+    for key in ["name", "level_name", "version_name"] {
+        display_bytes(out, v, key)?;
+        out.write_all(b"\t")?;
+    }
     writeln!(
         out,
-        "{}\t{}\t{}\t{}\t{}\t{}\t{}",
-        text(v, "name"),
-        text(v, "level_name"),
-        text(v, "version_name"),
+        "{}\t{}\t{}\t{}",
         text(v, "game_mode"),
         v["size_bytes"],
         if v["locked"] == true {
@@ -91,14 +109,15 @@ pub(super) fn row(out: &mut impl Write, v: &Value) -> io::Result<()> {
     )
 }
 pub(super) fn detail(out: &mut impl Write, v: &Value, meta: bool) -> io::Result<()> {
-    writeln!(out, "name: {}", text(v, "name"))?;
+    out.write_all(b"name: ")?;
+    display_bytes(out, v, "name")?;
+    out.write_all(b"\n")?;
     if meta {
-        writeln!(
-            out,
-            "level_name: {}\nversion_name: {}",
-            text(v, "level_name"),
-            text(v, "version_name")
-        )?;
+        out.write_all(b"level_name: ")?;
+        display_bytes(out, v, "level_name")?;
+        out.write_all(b"\nversion_name: ")?;
+        display_bytes(out, v, "version_name")?;
+        out.write_all(b"\n")?;
         for k in [
             "version_id",
             "game_mode",
@@ -221,9 +240,9 @@ fn run(args: &[String], out: &mut impl Write, err: &mut impl Write) -> io::Resul
         c => c,
     };
     let result = match command {
-        "list" => list(&path, version),
+        "list" => read::list_read(Path::new(&path), version.map(str::as_bytes)),
         "show" => saves(&path)
-            .and_then(|s| world(&s, name, version))
+            .and_then(|s| read::world_read(&s, name.as_bytes(), version.map(str::as_bytes)))
             .map(|w| json!({"world":w})),
         "rename" => rename(&path, name, o.new.unwrap(), version),
         "duplicate" => duplicate(&path, name, o.new.unwrap(), version),
@@ -310,5 +329,37 @@ mod native_error_tests {
         let mut out = Vec::new();
         assert_eq!(super::report(&mut out, "import", error).unwrap(), 1);
         assert_eq!(out, b"failed to import world: BadPathName\n");
+    }
+}
+
+#[cfg(test)]
+mod display_tests {
+    use super::*;
+    #[test]
+    fn byte_display_preserves_string_null_empty_and_rejects_invalid_arrays() {
+        for (value, expected) in [
+            (json!("世界"), "世界".as_bytes().to_vec()),
+            (Value::Null, b"-".to_vec()),
+            (json!(""), vec![]),
+            (json!([255, 0, 10]), vec![255, 0, 10]),
+        ] {
+            let mut out = vec![];
+            display_bytes(&mut out, &json!({"field": value}), "field").unwrap();
+            assert_eq!(out, expected);
+        }
+        for value in [json!([256]), json!([-1]), json!(["65"])] {
+            assert_eq!(
+                display_bytes(&mut vec![], &json!({"field":value}), "field")
+                    .unwrap_err()
+                    .kind(),
+                io::ErrorKind::InvalidData
+            );
+        }
+        let mut out = vec![];
+        row(&mut out, &json!({"name":"world","level_name":null,"version_name":"","game_mode":"creative","size_bytes":3,"locked":false,"version_relation":"unknown"})).unwrap();
+        assert_eq!(out, b"world\t-\t\tcreative\t3\tidle\tunknown\n");
+        out.clear();
+        detail(&mut out, &json!({"name":"world","level_name":null,"version_name":"","size_bytes":3,"has_icon":false,"locked":false,"version_relation":"unknown"}), true).unwrap();
+        assert_eq!(out, b"name: world\nlevel_name: -\nversion_name: \nsize_bytes: 3\nhas_icon: false\nlocked: false\nversion_relation: unknown\n");
     }
 }

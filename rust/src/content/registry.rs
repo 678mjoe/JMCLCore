@@ -1,3 +1,5 @@
+#[path = "registry_ordered.rs"]
+mod ordered;
 use serde::{Deserialize, Serialize};
 pub const MAX_BYTES: usize = 256 * 1024;
 fn yes() -> bool {
@@ -127,39 +129,39 @@ fn number<'de, D: serde::Deserializer<'de>>(d: D) -> Result<u64, D::Error> {
 fn schema<'de, D: serde::Deserializer<'de>>(d: D) -> Result<u32, D::Error> {
     typed_number(d, 32).map(|n| n as u32)
 }
+// Private persisted-schema enum coercion; public serde enum contracts stay named-only.
+fn wire_enum_index(text: &str, names: &[&str]) -> Result<usize, &'static str> {
+    if let Some(i) = names.iter().position(|name| *name == text) {
+        return Ok(i);
+    }
+    if text.starts_with('-') || text.bytes().any(|b| matches!(b, b'.' | b'e' | b'E')) {
+        return Err("InvalidEnumTag");
+    }
+    let n = crate::json_number::unsigned_text(text, 2).map_err(|_| "InvalidEnumTag")? as usize;
+    if n >= names.len() {
+        return Err("InvalidEnumTag");
+    }
+    Ok(n)
+}
 // Disk parsing retains every typed byte slice through full deserialization and
 // ordered validation. Public storage/mutation structs still contain Strings.
-#[derive(Deserialize)]
 struct WireSource {
     provider: Provider,
-    #[serde(default)]
     project_id: Option<super::modrinth::MetadataBytes>,
-    #[serde(default)]
     version_id: Option<super::modrinth::MetadataBytes>,
-    #[serde(default)]
     slug: Option<super::modrinth::MetadataBytes>,
 }
-#[derive(Deserialize)]
-#[serde(bound(deserialize = "F: RegistryFile"))]
 struct WireEntry<F: RegistryFile> {
     kind: Kind,
-    #[serde(deserialize_with = "file")]
     file: F,
     sha1: super::modrinth::MetadataBytes,
-    #[serde(deserialize_with = "number")]
     size: u64,
     source: WireSource,
-    #[serde(default = "yes")]
     enabled: bool,
-    #[serde(default)]
     as_dependency: bool,
 }
-#[derive(Deserialize)]
-#[serde(bound(deserialize = "F: RegistryFile"))]
 struct WireRegistry<F: RegistryFile> {
-    #[serde(default = "one", deserialize_with = "schema")]
     schema_version: u32,
-    #[serde(default)]
     entries: Vec<WireEntry<F>>,
 }
 struct SourceView<'a> {
@@ -231,45 +233,11 @@ pub fn parse(bytes: &[u8]) -> Result<Registry, &'static str> {
 pub(super) fn parse_listing(bytes: &[u8]) -> Result<ListingRegistry, &'static str> {
     parse_as(bytes)
 }
-fn parse_as<F: RegistryFile>(bytes: &[u8]) -> Result<RegistryRecord<F>, &'static str> {
+fn parse_as<F: ordered::WireFile>(bytes: &[u8]) -> Result<RegistryRecord<F>, &'static str> {
     if bytes.len() > MAX_BYTES {
         return Err("ContentRegistryTooLarge");
     }
-    if !bytes
-        .iter()
-        .find(|b| !b.is_ascii_whitespace())
-        .is_some_and(|b| *b == b'{')
-    {
-        return Err(if bytes.iter().all(u8::is_ascii_whitespace) {
-            "UnexpectedEndOfInput"
-        } else {
-            "UnexpectedToken"
-        });
-    };
-    let r: WireRegistry<F> = serde_json::from_slice(bytes).map_err(|e| {
-        let m = e.to_string();
-        if m.starts_with("Zig:InvalidNumber") || m.starts_with("InvalidNumber") {
-            "InvalidNumber"
-        } else if m.starts_with("Zig:InvalidCharacter") || m.starts_with("InvalidCharacter") {
-            "InvalidCharacter"
-        } else if m.starts_with("Zig:Overflow") || m.starts_with("Overflow") {
-            "Overflow"
-        } else if e.is_eof() {
-            "UnexpectedEndOfInput"
-        } else if m.starts_with("missing field") {
-            "MissingField"
-        } else if m.starts_with("unknown variant") {
-            "InvalidEnumTag"
-        } else if m.starts_with("duplicate field") {
-            "DuplicateField"
-        } else {
-            "UnexpectedToken"
-        }
-    })?;
-    // The complete typed document has parsed. Unknown fields are ignored, but
-    // their JSON strings must still be well formed before semantic validation.
-    let text = std::str::from_utf8(bytes).map_err(|_| "SyntaxError")?;
-    crate::auth::json::Json::parse(text).map_err(|_| "SyntaxError")?;
+    let r = ordered::parse::<F>(bytes)?;
     r.into_validated()
 }
 impl<F: RegistryFile> RegistryRecord<F> {

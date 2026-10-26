@@ -218,8 +218,11 @@ pub(super) fn cli_run<M: remote::Metadata + curseforge::Metadata + Sync, T: inst
 // Only local operations discard the display name; preserve real operational
 // fields in this tuple without changing the network/adoption target helper.
 fn cli_read_target(p: &Params) -> Result<(File, String, Option<&'static str>), String> {
-    let root = store::open_root(&p.directory).map_err(|_| "ServerNotFound")?;
-    let m = store::load_read(&root, &p.id).map_err(|e| {
+    cli_read_target_native(std::ffi::OsStr::new(&p.directory), &p.id)
+}
+fn cli_read_target_native(directory: &std::ffi::OsStr, id: &str) -> Result<(File, String, Option<&'static str>), String> {
+    let root = store::open_root_native(directory).map_err(|_| "ServerNotFound")?;
+    let m = store::load_read(&root, id).map_err(|e| {
         if e.kind() == io::ErrorKind::NotFound || e.to_string() == "InvalidServerId" {
             "ServerNotFound".to_owned()
         } else {
@@ -235,7 +238,7 @@ fn cli_read_target(p: &Params) -> Result<(File, String, Option<&'static str>), S
     } else {
         None
     };
-    let dir = store::open_server(&root, &p.id).map_err(|_| "ServerNotFound")?;
+    let dir = store::open_server(&root, id).map_err(|_| "ServerNotFound")?;
     Ok((dir, m.version_id, loader))
 }
 fn cli_execute<M: remote::Metadata + curseforge::Metadata + Sync, T: install::Transport>(family:&str,op:&str,parsed:(Params,bool),out:&mut impl Write,errors:&mut impl Write,metadata:&M,transport:&T)->io::Result<u8>{
@@ -373,6 +376,9 @@ fn cli_execute<M: remote::Metadata + curseforge::Metadata + Sync, T: install::Tr
     } else {
         local(&p, op, kind, root.as_ref(), cas.as_ref()).map_err(local_name)
     };
+    cli_emit(family,op,json_output,fields,out,errors)
+}
+fn cli_emit(family:&str,op:&str,json_output:bool,fields:Result<Value,String>,out:&mut impl Write,errors:&mut impl Write)->io::Result<u8>{
     let v = match fields {
         Ok(v) => v,
         Err(e) => return cli_error(errors, &e, family, op),
@@ -491,20 +497,28 @@ fn write_content_file(out: &mut impl Write, file: &Value) -> io::Result<()> {
     else{let bytes:Vec<u8>=file.as_array().unwrap().iter().map(|b|b.as_u64().unwrap() as u8).collect();out.write_all(&bytes)}
 }
 
+struct LocalCliParams {
+    id: String,
+    directory: Vec<u8>,
+    project: Option<String>,
+    file: Option<Vec<u8>>,
+    json: bool,
+}
 pub(super) fn cli_local_bytes(family:&str,op:&str,args:&[crate::content::LocalArg<'_>],out:&mut impl Write,errors:&mut impl Write)->io::Result<u8>{
-    let parse=|| -> Result<Params,()> {
+    let parse=|| -> Result<LocalCliParams,()> {
         let id=args.first().and_then(|a|a.text()).ok_or(())?;
-        // Reuse existing validation/defaults; this does not parse network flags.
-        let (mut p,_)=cli_params(&[id.to_owned()],op)?;
+        crate::instances::validate_id(id).map_err(|_| ())?;
+        let mut p=LocalCliParams { id:id.to_owned(),directory:b"servers".to_vec(),project:None,file:None,json:false };
         let mut i=1;
         while i<args.len(){
             let key=args[i].text().ok_or(())?;
+            if key=="--json" && op=="list" { p.json=true;i+=1;continue; }
             let v=args.get(i+1).ok_or(())?;
-            if v.bytes().is_empty(){return Err(());}
+            if v.bytes().is_empty() && op!="list" {return Err(());}
             match key {
-                "--servers-directory"=>p.directory=v.text().ok_or(())?.to_owned(),
-                "--project"=>p.project=Some(v.text().ok_or(())?.to_owned()),
-                "--file"=>p.file=Some(v.bytes().to_vec()),
+                "--servers-directory"=>p.directory=v.bytes().to_vec(),
+                "--project" if op!="list"=>p.project=Some(v.text().ok_or(())?.to_owned()),
+                "--file" if op!="list"=>p.file=Some(v.bytes().to_vec()),
                 _=>return Err(()),
             }
             i+=2;
@@ -512,5 +526,24 @@ pub(super) fn cli_local_bytes(family:&str,op:&str,args:&[crate::content::LocalAr
         Ok(p)
     };
     let p=match parse(){Ok(p)=>p,Err(())=>{writeln!(errors,"error: InvalidArguments")?;return Ok(1);}};
-    cli_execute(family,op,(p,false),out,errors,&content::http::Native,&content::http::Native)
+    if op!="list" && p.project.is_some()==p.file.is_some() {
+        writeln!(errors,"server {family} {op} requires exactly one of --project or --file")?;
+        return Ok(2);
+    }
+    let prepared=(|| -> Result<_,String> {
+        let directory=crate::store::path_from_bytes(&p.directory).map_err(|_| "ServerNotFound")?;
+        let (dir,_,_)=cli_read_target_native(&directory,&p.id)?;
+        let guard=if op=="list" { None } else { Some(lifecycle::lock_stopped(&dir).map_err(str::to_owned)?) };
+        let directory=if family=="datapacks" { world(&dir,op!="list")? } else {Some(dir)};
+        Ok((directory.map(Root::from_directory),guard))
+    })();
+    let (root,_guard)=match prepared {Ok(value)=>value,Err(e)=>return cli_error(errors,&e,family,op)};
+    let kind=if family=="mods" {Kind::Mod} else {Kind::Datapack};
+    let fields=match root.as_ref() {
+        Some(root) if op=="list"=>list_fields(Some(root),kind),
+        Some(root)=>content::local_project(p.project.as_deref().map(str::as_bytes))
+            .and_then(|project|selected_fields(root,op,kind,project,p.file.as_deref())),
+        None=>Ok(json!({"entries":[],"unmanaged":[]})),
+    }.map_err(local_name);
+    cli_emit(family,op,p.json,fields,out,errors)
 }

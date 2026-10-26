@@ -225,7 +225,11 @@ pub fn handle(
                         if validate_name(&n).is_err() {
                             continue;
                         }
-                        match super::world(&dir, &n, version) {
+                        match super::read::world_read(
+                            &dir,
+                            n.as_bytes(),
+                            version.map(str::as_bytes),
+                        ) {
                             Ok(w) => worlds.push(w),
                             Err(Error::WorldNotFound) => {}
                             Err(Error::Io(e)) if e.raw_os_error() == Some(20) => {}
@@ -237,7 +241,8 @@ pub fn handle(
                 "server.worlds.get" => {
                     use base64::Engine;
                     let name = world.as_deref().unwrap();
-                    let w = super::world(&dir, name, version)?;
+                    let w =
+                        super::read::world_read(&dir, name.as_bytes(), version.map(str::as_bytes))?;
                     let icon = dir
                         .child(name, false)?
                         .read("icon.png", 65536)

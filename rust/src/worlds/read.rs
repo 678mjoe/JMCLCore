@@ -104,7 +104,34 @@ fn validate_read_name(name: &[u8]) -> Result<()> {
         Ok(())
     }
 }
-fn world_read(parent: &fs::Dir, name: &[u8], version: Option<&[u8]>) -> Result<Value> {
+// Listing metadata retains the source NBT byte strings without changing the
+// String-oriented operational world APIs.
+fn metadata_bytes(doc: Option<&nbt::Document>) -> (Option<&[u8]>, Option<&[u8]>) {
+    let data = doc.and_then(|d| d.root.get("Data"));
+    fn bytes(tag: Option<&nbt::Tag>) -> Option<&[u8]> {
+        match tag {
+            Some(nbt::Tag::String(bytes)) => Some(bytes.as_slice()),
+            _ => None,
+        }
+    }
+    (
+        bytes(data.and_then(|d| d.get("LevelName"))),
+        bytes(
+            data.and_then(|d| d.get("Version"))
+                .and_then(|v| v.get("Name")),
+        ),
+    )
+}
+fn metadata_text(bytes: Option<&[u8]>) -> Value {
+    match bytes {
+        None => Value::Null,
+        Some(bytes) => match std::str::from_utf8(bytes) {
+            Ok(text) => json!(text),
+            Err(_) => json!(bytes),
+        },
+    }
+}
+pub(super) fn world_read(parent: &fs::Dir, name: &[u8], version: Option<&[u8]>) -> Result<Value> {
     validate_read_name(name)?;
     let native_name = crate::store::path_from_bytes(name)?;
     let d = parent.child_alias_native(&native_name).map_err(absent)?;
@@ -126,10 +153,12 @@ fn world_read(parent: &fs::Dir, name: &[u8], version: Option<&[u8]>) -> Result<V
     obj.insert("size_bytes".into(), json!(d.size()));
     obj.insert("has_icon".into(), json!(d.exists("icon.png")));
     obj.insert("locked".into(), json!(d.locked().unwrap_or(true)));
-    let world_version = obj.get("version_name").and_then(Value::as_str);
+    let (level_name, world_version) = metadata_bytes(doc.as_ref());
+    obj.insert("level_name".into(), metadata_text(level_name));
+    obj.insert("version_name".into(), metadata_text(world_version));
     let relation = match (world_version, version) {
         (Some(a), Some(b)) if !a.is_empty() && !b.is_empty() => {
-            if a.as_bytes() == b {
+            if a == b {
                 "same"
             } else {
                 "different"
@@ -174,7 +203,7 @@ fn listed_name_is_temp(name: &[u8]) -> bool {
         .iter()
         .any(|marker| name.windows(marker.len()).any(|part| part == *marker))
 }
-fn list_read(path: &Path, version: Option<&[u8]>) -> Result<Value> {
+pub(super) fn list_read(path: &Path, version: Option<&[u8]>) -> Result<Value> {
     let s = match saves_read(path) {
         Ok(s) => s,
         Err(Error::WorldNotFound) => return Ok(json!({"stage":"worlds.list","worlds":[]})),

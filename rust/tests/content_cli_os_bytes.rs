@@ -200,7 +200,7 @@ fn interception_does_not_claim_other_raw_routes_or_fields() {
             "mods".into(),
             "remove".into(),
             "demo".into(),
-            "--servers-directory".into(),
+            "--project".into(),
         ],
         vec![
             "instance".into(),
@@ -213,7 +213,17 @@ fn interception_does_not_claim_other_raw_routes_or_fields() {
         args.push(raw.clone());
         let mut out = vec![];
         let mut err = vec![];
-        assert!(local_cli_os(&args, &mut out, &mut err).is_none());
+        let result = local_cli_os(&args, &mut out, &mut err);
+        if cfg!(not(target_os = "linux")) && args[0] == "server" {
+            assert_eq!(result.unwrap().unwrap(), 1);
+            assert!(out.is_empty());
+            assert_eq!(
+                err,
+                b"Server management is currently supported only on Linux\n"
+            );
+            continue;
+        }
+        assert!(result.is_none());
         assert!(out.is_empty());
         assert!(err.is_empty());
     }

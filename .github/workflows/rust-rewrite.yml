@@ -371,6 +371,37 @@ jobs:
                           "--rust", f"rust/target/release/jmcl-core-rust{suffix}",
                           "--oracle-source", ".ci-oracle"], check=True)
           PYTHON
+      - name: Read-only NBT display metadata byte compatibility
+        run: |
+          python - <<'PYTHON'
+          import os, subprocess, sys
+          suffix = ".exe" if os.name == "nt" else ""
+          subprocess.run([sys.executable, "rust/compat/world_metadata_bytes.py",
+                          "--zig", f".ci-oracle/zig-out/bin/jmcl-core{suffix}",
+                          "--rust", f"rust/target/release/jmcl-core-rust{suffix}",
+                          "--oracle-source", ".ci-oracle"], check=True)
+          PYTHON
+      - name: Native server local CLI roots and platform gates
+        run: |
+          python - <<'PYTHON'
+          import os, subprocess, sys
+          suffix = ".exe" if os.name == "nt" else ""
+          subprocess.run([sys.executable, "rust/compat/server_cli_native_root.py",
+                          "--zig", f".ci-oracle/zig-out/bin/jmcl-core{suffix}",
+                          "--rust", f"rust/target/release/jmcl-core-rust{suffix}",
+                          "--oracle-source", ".ci-oracle"], check=True)
+          PYTHON
+      - name: Read-only world metadata and CLI name bytes
+        run: |
+          python - <<'PYTHON'
+          import os, subprocess, sys
+          suffix = ".exe" if os.name == "nt" else ""
+          for script in ("world_cli_metadata", "world_cli_list_names", "server_world_metadata", "server_world_root"):
+              subprocess.run([sys.executable, f"rust/compat/{script}.py",
+                              "--zig", f".ci-oracle/zig-out/bin/jmcl-core{suffix}",
+                              "--rust", f"rust/target/release/jmcl-core-rust{suffix}",
+                              "--oracle-source", ".ci-oracle"], check=True)
+          PYTHON
       - name: Native instance content CLI path contracts
         run: |
           python - <<'PYTHON'

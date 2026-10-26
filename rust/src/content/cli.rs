@@ -427,7 +427,7 @@ impl LocalArg<'_> {
     }
 }
 /// Narrow pre-dispatch hook for native instance-local path arguments. Server
-/// interception remains limited to the existing non-UTF8 mutation --file path.
+/// interception is limited to local native server-root and mutation --file paths.
 pub fn local_cli_os(
     args: &[std::ffi::OsString],
     out: &mut impl Write,
@@ -438,11 +438,23 @@ pub fn local_cli_os(
     let op = args.get(2)?.to_str()?;
     let server = match args.first()?.to_str()? {
         "instance" => false,
-        "server" if cfg!(target_os = "linux") && matches!(family, "mods" | "datapacks") => true,
+        "server" if matches!(family, "mods" | "datapacks") => true,
         _ => return None,
     };
-    if !matches!(op, "enable" | "disable" | "remove") && (server || op != "list") {
+    if !matches!(op, "list" | "enable" | "disable" | "remove") {
         return None;
+    }
+    // The source rejects unsupported platforms before inspecting local args.
+    // Keep this gate confined to the four already-recognized local routes.
+    #[cfg(not(target_os = "linux"))]
+    if server {
+        return Some(
+            writeln!(
+                errors,
+                "Server management is currently supported only on Linux"
+            )
+            .map(|_| 1),
+        );
     }
     let mut has_raw = false;
     let mut local = Vec::new();
@@ -452,6 +464,7 @@ pub fn local_cli_os(
         } else {
             let previous = args.get(i.wrapping_sub(1))?.to_str();
             let allowed = previous == Some("--file") && op != "list"
+                || server && previous == Some("--servers-directory")
                 || !server
                     && (previous == Some("--instances-directory")
                         || kind == Kind::Datapack && previous == Some("--world"));
