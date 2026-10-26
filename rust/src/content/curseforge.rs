@@ -55,8 +55,7 @@ struct Project {
     id: u32,
     #[serde(deserialize_with = "mr::string")]
     slug: String,
-    #[serde(deserialize_with = "mr::string")]
-    name: String,
+    name: mr::MetadataBytes,
     #[serde(rename = "classId", deserialize_with = "number32")]
     class_id: u32,
     #[serde(default = "yes", rename = "isAvailable")]
@@ -123,8 +122,7 @@ fn yes() -> bool {
 }
 #[derive(Deserialize)]
 struct Hash {
-    #[serde(deserialize_with = "mr::string")]
-    value: String,
+    value: mr::MetadataBytes,
     #[serde(deserialize_with = "number8")]
     algo: u8,
 }
@@ -141,8 +139,8 @@ struct Detail {
     #[serde(rename = "releaseType", deserialize_with = "number8")]
     release: u8,
     hashes: Vec<Hash>,
-    #[serde(rename = "fileDate", deserialize_with = "mr::string")]
-    date: String,
+    #[serde(rename = "fileDate")]
+    date: mr::MetadataBytes,
     #[serde(rename = "fileLength", deserialize_with = "mr::number")]
     size: u64,
     #[serde(
@@ -151,8 +149,8 @@ struct Detail {
         deserialize_with = "mr::optional_string"
     )]
     url: Option<String>,
-    #[serde(rename = "gameVersions", deserialize_with = "mr::strings")]
-    games: Vec<String>,
+    #[serde(rename = "gameVersions")]
+    games: Vec<mr::MetadataBytes>,
     #[serde(default)]
     dependencies: Vec<Dependency>,
 }
@@ -166,8 +164,8 @@ pub struct File {
     pub url: Option<String>,
     pub available: bool,
     pub release: u8,
-    pub date: String,
-    pub games: Vec<String>,
+    pub date: mr::MetadataBytes,
+    pub games: Vec<mr::MetadataBytes>,
     pub dependencies: Vec<Dependency>,
 }
 pub fn parse_file(bytes: &[u8]) -> mr::Result<File> {
@@ -204,7 +202,9 @@ fn parse_file_data(bytes: &[u8], max: usize) -> mr::Result<File> {
     }
     if d.games.is_empty()
         || d.games.len() > 128
-        || d.games.iter().any(|s| s.is_empty() || s.len() > 64)
+        || d.games
+            .iter()
+            .any(|s| s.as_bytes().is_empty() || s.as_bytes().len() > 64)
     {
         return Err("InvalidCurseforgeGameVersions".into());
     }
@@ -214,11 +214,14 @@ fn parse_file_data(bytes: &[u8], max: usize) -> mr::Result<File> {
     let mut sha1 = None;
     for h in d.hashes {
         if h.algo == 1 {
-            if h.value.len() != 40 || !h.value.bytes().all(|b| b.is_ascii_hexdigit()) {
+            if h.value.as_bytes().len() != 40
+                || !h.value.as_bytes().iter().all(u8::is_ascii_hexdigit)
+            {
                 return Err("InvalidCurseforgeHash".into());
             }
             if sha1.is_none() {
-                sha1 = Some(h.value)
+                // Conversion is safe only AFTER exact ASCII-hex integrity validation.
+                sha1 = Some(String::from_utf8(h.value.into_bytes()).expect("validated ASCII SHA1"))
             }
         }
     }
@@ -257,8 +260,12 @@ fn parse_file_data(bytes: &[u8], max: usize) -> mr::Result<File> {
 
 pub fn supports(f: &File, game: &str, loader: Option<&str>) -> bool {
     let loader = loader.filter(|l| matches!(*l, "fabric" | "forge" | "neoforge"));
-    f.games.iter().any(|s| s == game)
-        && loader.is_none_or(|l| f.games.iter().any(|s| s.eq_ignore_ascii_case(l)))
+    f.games.iter().any(|s| s.as_bytes() == game.as_bytes())
+        && loader.is_none_or(|l| {
+            f.games
+                .iter()
+                .any(|s| s.as_bytes().eq_ignore_ascii_case(l.as_bytes()))
+        })
 }
 pub fn select<'a>(files: &'a [File], ext: Option<&str>) -> Option<&'a File> {
     let mut best: Option<&File> = None;
@@ -266,8 +273,10 @@ pub fn select<'a>(files: &'a [File], ext: Option<&str>) -> Option<&'a File> {
         if !f.available || ext.is_some_and(|e| !f.name.ends_with(e)) {
             continue;
         }
-        if best.is_none_or(|b| f.release < b.release || (f.release == b.release && f.date > b.date))
-        {
+        if best.is_none_or(|b| {
+            f.release < b.release
+                || (f.release == b.release && f.date.as_bytes() > b.date.as_bytes())
+        }) {
             best = Some(f)
         }
     }
@@ -493,3 +502,7 @@ pub fn resolve<T: Metadata>(
     r.resolve(project, file, false, 0)?;
     Ok(r.result)
 }
+
+#[cfg(test)]
+#[path = "../../tests/support/curseforge_metadata_bytes.rs"]
+mod byte_metadata_tests;

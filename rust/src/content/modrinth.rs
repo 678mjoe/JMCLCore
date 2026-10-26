@@ -315,11 +315,14 @@ pub fn versions_url(s: &str, g: &str, l: Option<&str>) -> Result<String> {
     Ok(u)
 }
 
-/// Byte-preserving supplemental metadata, not an operational filesystem path.
+/// Byte-preserving metadata (including selection fields), not a filesystem path.
 /// The original typed JSON schema emits UTF-8 as strings and other bytes as arrays.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct MetadataBytes(Vec<u8>);
 impl MetadataBytes {
+    pub(super) fn as_bytes(&self) -> &[u8] {
+        &self.0
+    }
     pub(super) fn into_bytes(self) -> Vec<u8> {
         self.0
     }
