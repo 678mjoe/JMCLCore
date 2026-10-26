@@ -107,3 +107,11 @@ confirmed its method guards, handler calls, parameter dispatch and runtime-insta
 fallback are unchanged; its single source fingerprint was updated accordingly.
 The explicit-probe executable lookup regression is separate runtime evidence,
 not a change to the 106-name routing inventory.
+
+## Typed string-array parser integration review
+
+Manual review of the registry parser correction confirmed that `Kind` variants,
+`Kind::from_directory` and content family routing anchors are unchanged. Only
+string deserialization and ordered persisted-source validation changed. The
+registry source fingerprint was refreshed after this review; the route map and
+all 106 inventory classifications remain unchanged.
