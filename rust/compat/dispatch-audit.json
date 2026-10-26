@@ -1,0 +1,795 @@
+{
+  "schema_version": 1,
+  "reviewed_commit": "c0bda37fb66366123f3159fd0d9f99a00bd000b9",
+  "oracle_commit": "5a4310debbcee26b3d2391bab2339f79cd6ec52e",
+  "source_sha256": {
+    "rust/src/auth/mod.rs": "8f866931b0ffcdfa256049ac95c8b9b8d0eec7e810e001767fbf9977390b4eb5",
+    "rust/src/content/rpc.rs": "31c43a2d4cb2f2d08f45743ded190358026655561b84d4a32f81abce45bd3e94",
+    "rust/src/content/registry.rs": "07fb67c28f6aa97fad20e7942e0333ded39632d1368890d39da60d54806e797e",
+    "rust/src/server_content.rs": "cd6c20a0b4913735a1ccdcccff37f50c8987852f428f8599c7ee8bd1d6dcf982",
+    "rust/src/servers/installation.rs": "2f97795eaec4020b0f9ac278600ebda2f8c7745afa5c84aec2711efd745b00e6",
+    "rust/src/install/rpc.rs": "84f3d4050fa7cb271e65f8e6adccb77e12f166d862f1f66e3aaaea5c8d825f50",
+    "rust/src/modpack/rpc.rs": "e521da6aa00f9468e3637b43e059e3d79ef7ea76e13d86092fae4a1768383dda",
+    "rust/src/launch/rpc.rs": "ceb84ea7bb890aecec89ac3b01388dcc76a84ff804148fad6a363ae6118e5dda",
+    "rust/src/version.rs": "8d28bb5026e9aa834f57446d43cea64a6e3afc404c1b8491f21c8b2b38fc7d98",
+    "rust/src/java/select.rs": "e8e9c0f07ad7eaad106d998489af240ff089079118ead7a3055a8fd2c43fec6e",
+    "rust/src/accounts.rs": "1485d3218cd5397a393554c6f4f4de957e549cd3c38ea1a1bf40cbef5a361526",
+    "rust/src/instances.rs": "43874470f8962b1e84a8460525cf2c783825ad2d33fdc3137a80f75a619116b0",
+    "rust/src/worlds/rpc.rs": "bede3fb6f1f9aa597cadc8e7c08f06437ac0cb940dc864fc9aceb7cc0d539184",
+    "rust/src/worlds/mod.rs": "2d6b1d8791c441fca642054b4432455e55ccdbd2e832784b844599e3fb3a7f43",
+    "rust/src/content/mod.rs": "aacd339dd95bc65f493c75f43c0b1258171393591fda1e67126fc9b0de898781",
+    "rust/src/content/adopt.rs": "fe6af9c68516f1b2d5be671cc8ebfbc3aae7fc365567179b38d90dcf0b0986e6",
+    "rust/src/java/mod.rs": "e0f712a7916c29417f4102cbd8281b96d0891908a13f1bfa2d21310c0e3261ad",
+    "rust/src/store/commands.rs": "078920c8e80734d070a910de377d270da56942d623eb0d203be90a2e4d4f9efc",
+    "rust/src/store/mod.rs": "1c8215f96e9371a8263c515aed34fe1d50209950ca59e0672f4d3bc7cf34b47d",
+    "rust/src/servers/creation.rs": "38419fe848c53c5fe9cf3a74331a54eb19231702d1d8838ba08bb5be7b409d0e",
+    "rust/src/servers/mod.rs": "21b312a4e2717b1c7f7f736698bb3f731da27e7cb4c588e0646d12f1913995b7",
+    "rust/src/servers/rpc.rs": "14cc10d65cef2c6a991135ff720d620d516f7b15f0e47d7bc7db6f35d1563447",
+    "rust/src/servers/remote.rs": "b50b0b2e7ced8f5972a5695b4778cae1b9317311d1417f9fd46c936cd023b819",
+    "rust/src/worlds/server.rs": "46af54419883e82e02e45953066144f20a1e2a02140e92d40cc8ac0d7a98869a",
+    "rust/src/protocol.rs": "a65e5405caf015d1eb9f3052df2df44fea6e0ff29003b69c5ddb28d4d8a10007"
+  },
+  "routes": [
+    {
+      "id": "auth",
+      "methods": [
+        "auth.microsoft.device.begin",
+        "auth.microsoft.device.poll",
+        "auth.microsoft.refresh",
+        "auth.minecraft.refresh_exchange",
+        "auth.minecraft.exchange"
+      ],
+      "protocol_anchor": "crate::auth::handle(",
+      "source_links": [
+        {
+          "path": "rust/src/auth/mod.rs",
+          "anchor": "pub fn handle"
+        },
+        {
+          "path": "rust/src/auth/mod.rs",
+          "anchor": "handle_with_transport(out, id, method, params, &mut http::HttpsTransport)"
+        }
+      ],
+      "selector": {
+        "kind": "literals",
+        "path": "rust/src/auth/mod.rs"
+      },
+      "platform": "supported_desktop_targets",
+      "status": "static_handler_reviewed",
+      "runtime_evidence": {
+        "status": "referenced_not_run",
+        "scope": "related_group_fixtures_not_per_method_or_platform_completion",
+        "paths": [
+          "rust/tests/auth_oracle.rs"
+        ]
+      }
+    },
+    {
+      "id": "content_remote",
+      "methods": [
+        "mods.install",
+        "mods.set-version",
+        "resourcepacks.install",
+        "resourcepacks.set-version",
+        "shaderpacks.install",
+        "shaderpacks.set-version",
+        "datapacks.install",
+        "datapacks.set-version"
+      ],
+      "protocol_anchor": "crate::content::rpc::handle(",
+      "source_links": [
+        {
+          "path": "rust/src/content/rpc.rs",
+          "anchor": "pub fn handle"
+        },
+        {
+          "path": "rust/src/content/registry.rs",
+          "anchor": "pub fn from_directory"
+        }
+      ],
+      "selector": {
+        "kind": "product",
+        "path": "rust/src/content/rpc.rs",
+        "prefix": "",
+        "families": [
+          "mods",
+          "resourcepacks",
+          "shaderpacks",
+          "datapacks"
+        ],
+        "family_path": "rust/src/content/registry.rs",
+        "operations": [
+          "install",
+          "set-version"
+        ],
+        "anchors": [
+          "method.split_once('.')?",
+          "Kind::from_directory(family)?",
+          "if !matches!(op, \"install\" | \"set-version\")"
+        ]
+      },
+      "platform": "supported_desktop_targets",
+      "status": "static_handler_reviewed",
+      "runtime_evidence": {
+        "status": "referenced_not_run",
+        "scope": "related_group_fixtures_not_per_method_or_platform_completion",
+        "paths": [
+          "rust/tests/content_install_wire.rs"
+        ]
+      }
+    },
+    {
+      "id": "server_content",
+      "methods": [
+        "server.mods.list",
+        "server.mods.install",
+        "server.mods.set-version",
+        "server.mods.enable",
+        "server.mods.disable",
+        "server.mods.remove",
+        "server.mods.adopt",
+        "server.datapacks.list",
+        "server.datapacks.install",
+        "server.datapacks.set-version",
+        "server.datapacks.enable",
+        "server.datapacks.disable",
+        "server.datapacks.remove",
+        "server.datapacks.adopt"
+      ],
+      "protocol_anchor": "crate::server_content::handle(",
+      "source_links": [
+        {
+          "path": "rust/src/server_content.rs",
+          "anchor": "pub fn handle"
+        }
+      ],
+      "selector": {
+        "kind": "product",
+        "path": "rust/src/server_content.rs",
+        "prefix": "server.",
+        "families": [
+          "mods",
+          "datapacks"
+        ],
+        "family_path": "rust/src/server_content.rs",
+        "operations": [
+          "list",
+          "install",
+          "set-version",
+          "enable",
+          "disable",
+          "remove",
+          "adopt"
+        ],
+        "anchors": [
+          "method.strip_prefix(\"server.\")?",
+          "rest.split_once('.')?",
+          "#[cfg(not(target_os = \"linux\"))]"
+        ]
+      },
+      "platform": "linux_rpc_other_targets_reject",
+      "status": "static_handler_reviewed",
+      "runtime_evidence": {
+        "status": "referenced_not_run",
+        "scope": "related_group_fixtures_not_per_method_or_platform_completion",
+        "paths": [
+          "rust/tests/server_content.rs"
+        ]
+      }
+    },
+    {
+      "id": "server_install",
+      "methods": [
+        "server.install"
+      ],
+      "protocol_anchor": "crate::servers::installation::handle(",
+      "source_links": [
+        {
+          "path": "rust/src/servers/installation.rs",
+          "anchor": "pub fn handle"
+        }
+      ],
+      "selector": {
+        "kind": "literals",
+        "path": "rust/src/servers/installation.rs"
+      },
+      "platform": "linux_rpc_other_targets_reject",
+      "status": "static_handler_reviewed",
+      "runtime_evidence": {
+        "status": "referenced_not_run",
+        "scope": "related_group_fixtures_not_per_method_or_platform_completion",
+        "paths": [
+          "rust/compat/server_install.py"
+        ]
+      }
+    },
+    {
+      "id": "installation",
+      "methods": [
+        "install.execute",
+        "install.prepare"
+      ],
+      "protocol_anchor": "crate::install::rpc::handle(",
+      "source_links": [
+        {
+          "path": "rust/src/install/rpc.rs",
+          "anchor": "pub fn handle"
+        }
+      ],
+      "selector": {
+        "kind": "literals",
+        "path": "rust/src/install/rpc.rs"
+      },
+      "platform": "supported_desktop_targets",
+      "status": "static_handler_reviewed",
+      "runtime_evidence": {
+        "status": "referenced_not_run",
+        "scope": "related_group_fixtures_not_per_method_or_platform_completion",
+        "paths": [
+          "rust/tests/install_rpc_differential.rs"
+        ]
+      }
+    },
+    {
+      "id": "modpack",
+      "methods": [
+        "modpack.install"
+      ],
+      "protocol_anchor": "crate::modpack::rpc::handle(",
+      "source_links": [
+        {
+          "path": "rust/src/modpack/rpc.rs",
+          "anchor": "pub fn handle"
+        }
+      ],
+      "selector": {
+        "kind": "literals",
+        "path": "rust/src/modpack/rpc.rs"
+      },
+      "platform": "supported_desktop_targets",
+      "status": "static_handler_reviewed",
+      "runtime_evidence": {
+        "status": "referenced_not_run",
+        "scope": "related_group_fixtures_not_per_method_or_platform_completion",
+        "paths": [
+          "rust/tests/modpack_wire.rs"
+        ]
+      }
+    },
+    {
+      "id": "launch",
+      "methods": [
+        "launch.plan",
+        "launch.execute"
+      ],
+      "protocol_anchor": "crate::launch::rpc::handle(",
+      "source_links": [
+        {
+          "path": "rust/src/launch/rpc.rs",
+          "anchor": "pub fn handle"
+        }
+      ],
+      "selector": {
+        "kind": "literals",
+        "path": "rust/src/launch/rpc.rs"
+      },
+      "platform": "supported_desktop_targets",
+      "status": "static_handler_reviewed",
+      "runtime_evidence": {
+        "status": "referenced_not_run",
+        "scope": "related_group_fixtures_not_per_method_or_platform_completion",
+        "paths": [
+          "rust/tests/launch_plan_differential.rs",
+          "rust/tests/launch_process_differential.rs"
+        ]
+      }
+    },
+    {
+      "id": "version",
+      "methods": [
+        "version.list",
+        "version.get",
+        "version.resolve",
+        "install.plan"
+      ],
+      "protocol_anchor": "crate::version::handle(",
+      "source_links": [
+        {
+          "path": "rust/src/version.rs",
+          "anchor": "pub fn handle"
+        }
+      ],
+      "selector": {
+        "kind": "literals",
+        "path": "rust/src/version.rs"
+      },
+      "platform": "supported_desktop_targets",
+      "status": "static_handler_reviewed",
+      "runtime_evidence": {
+        "status": "referenced_not_run",
+        "scope": "related_group_fixtures_not_per_method_or_platform_completion",
+        "paths": [
+          "rust/compat/version_check.py"
+        ]
+      }
+    },
+    {
+      "id": "java_select",
+      "methods": [
+        "java.select"
+      ],
+      "protocol_anchor": "crate::java::select::handle(",
+      "source_links": [
+        {
+          "path": "rust/src/java/select.rs",
+          "anchor": "pub fn handle"
+        }
+      ],
+      "selector": {
+        "kind": "literals",
+        "path": "rust/src/java/select.rs"
+      },
+      "platform": "supported_desktop_targets",
+      "status": "static_handler_reviewed",
+      "runtime_evidence": {
+        "status": "referenced_not_run",
+        "scope": "related_group_fixtures_not_per_method_or_platform_completion",
+        "paths": [
+          "rust/compat/java.py"
+        ]
+      }
+    },
+    {
+      "id": "accounts",
+      "methods": [
+        "account.microsoft.save",
+        "account.microsoft.list",
+        "account.microsoft.get",
+        "account.microsoft.delete"
+      ],
+      "protocol_anchor": "crate::accounts::handle(",
+      "source_links": [
+        {
+          "path": "rust/src/accounts.rs",
+          "anchor": "pub fn handle"
+        }
+      ],
+      "selector": {
+        "kind": "literals",
+        "path": "rust/src/accounts.rs"
+      },
+      "platform": "supported_desktop_targets",
+      "status": "static_handler_reviewed",
+      "runtime_evidence": {
+        "status": "referenced_not_run",
+        "scope": "related_group_fixtures_not_per_method_or_platform_completion",
+        "paths": [
+          "rust/compat/accounts.py"
+        ]
+      }
+    },
+    {
+      "id": "instances",
+      "methods": [
+        "instance.create",
+        "instance.list",
+        "instance.get",
+        "instance.delete"
+      ],
+      "protocol_anchor": "crate::instances::handle(",
+      "source_links": [
+        {
+          "path": "rust/src/instances.rs",
+          "anchor": "pub fn handle"
+        }
+      ],
+      "selector": {
+        "kind": "literals",
+        "path": "rust/src/instances.rs"
+      },
+      "platform": "supported_desktop_targets",
+      "status": "static_handler_reviewed",
+      "runtime_evidence": {
+        "status": "referenced_not_run",
+        "scope": "related_group_fixtures_not_per_method_or_platform_completion",
+        "paths": [
+          "rust/tests/instance_differential.rs",
+          "rust/compat/instance_validation_check.py"
+        ]
+      }
+    },
+    {
+      "id": "worlds",
+      "methods": [
+        "worlds.list",
+        "worlds.get",
+        "worlds.rename",
+        "worlds.duplicate",
+        "worlds.delete",
+        "worlds.export",
+        "worlds.import",
+        "worlds.backup",
+        "worlds.backups",
+        "worlds.restore",
+        "worlds.backups.delete"
+      ],
+      "protocol_anchor": "crate::worlds::handle(",
+      "source_links": [
+        {
+          "path": "rust/src/worlds/rpc.rs",
+          "anchor": "pub fn handle"
+        },
+        {
+          "path": "rust/src/worlds/mod.rs",
+          "anchor": "pub use rpc::handle;"
+        }
+      ],
+      "selector": {
+        "kind": "literals",
+        "path": "rust/src/worlds/rpc.rs"
+      },
+      "platform": "supported_desktop_targets",
+      "status": "static_handler_reviewed",
+      "runtime_evidence": {
+        "status": "referenced_not_run",
+        "scope": "related_group_fixtures_not_per_method_or_platform_completion",
+        "paths": [
+          "rust/src/worlds/tests.rs"
+        ]
+      }
+    },
+    {
+      "id": "content_local",
+      "methods": [
+        "mods.list",
+        "mods.enable",
+        "mods.disable",
+        "mods.remove",
+        "mods.adopt",
+        "resourcepacks.list",
+        "resourcepacks.enable",
+        "resourcepacks.disable",
+        "resourcepacks.remove",
+        "resourcepacks.adopt",
+        "shaderpacks.list",
+        "shaderpacks.enable",
+        "shaderpacks.disable",
+        "shaderpacks.remove",
+        "shaderpacks.adopt",
+        "datapacks.list",
+        "datapacks.enable",
+        "datapacks.disable",
+        "datapacks.remove",
+        "datapacks.adopt"
+      ],
+      "protocol_anchor": "crate::content::handle(",
+      "source_links": [
+        {
+          "path": "rust/src/content/mod.rs",
+          "anchor": "pub fn handle"
+        },
+        {
+          "path": "rust/src/content/registry.rs",
+          "anchor": "pub fn from_directory"
+        },
+        {
+          "path": "rust/src/content/adopt.rs",
+          "anchor": "pub(super) fn handle("
+        }
+      ],
+      "selector": {
+        "kind": "product",
+        "path": "rust/src/content/mod.rs",
+        "prefix": "",
+        "families": [
+          "mods",
+          "resourcepacks",
+          "shaderpacks",
+          "datapacks"
+        ],
+        "family_path": "rust/src/content/registry.rs",
+        "operations": [
+          "list",
+          "enable",
+          "disable",
+          "remove",
+          "adopt"
+        ],
+        "anchors": [
+          "method.split_once('.')?",
+          "Kind::from_directory(family)?",
+          "if op == \"adopt\""
+        ]
+      },
+      "platform": "supported_desktop_targets",
+      "status": "static_handler_reviewed",
+      "runtime_evidence": {
+        "status": "referenced_not_run",
+        "scope": "related_group_fixtures_not_per_method_or_platform_completion",
+        "paths": [
+          "rust/tests/content_oracle.rs",
+          "rust/tests/content_adopt.rs"
+        ]
+      }
+    },
+    {
+      "id": "java_local",
+      "methods": [
+        "java.detect",
+        "java.runtime.list",
+        "java.runtime.remove"
+      ],
+      "protocol_anchor": "crate::java::handle(",
+      "source_links": [
+        {
+          "path": "rust/src/java/mod.rs",
+          "anchor": "pub fn handle"
+        }
+      ],
+      "selector": {
+        "kind": "literals",
+        "path": "rust/src/java/mod.rs"
+      },
+      "platform": "supported_desktop_targets",
+      "status": "static_handler_reviewed",
+      "runtime_evidence": {
+        "status": "referenced_not_run",
+        "scope": "related_group_fixtures_not_per_method_or_platform_completion",
+        "paths": [
+          "rust/compat/java.py",
+          "rust/tests/java_receipts.rs"
+        ]
+      }
+    },
+    {
+      "id": "store",
+      "methods": [
+        "store.gc"
+      ],
+      "protocol_anchor": "crate::store::handle(",
+      "source_links": [
+        {
+          "path": "rust/src/store/commands.rs",
+          "anchor": "pub fn handle"
+        },
+        {
+          "path": "rust/src/store/mod.rs",
+          "anchor": "pub use commands::{cli, handle};"
+        }
+      ],
+      "selector": {
+        "kind": "literals",
+        "path": "rust/src/store/commands.rs"
+      },
+      "platform": "supported_desktop_targets",
+      "status": "static_handler_reviewed",
+      "runtime_evidence": {
+        "status": "referenced_not_run",
+        "scope": "related_group_fixtures_not_per_method_or_platform_completion",
+        "paths": [
+          "rust/tests/store_differential.rs"
+        ]
+      }
+    },
+    {
+      "id": "server_create",
+      "methods": [
+        "server.create"
+      ],
+      "protocol_anchor": "crate::servers::handle(",
+      "source_links": [
+        {
+          "path": "rust/src/servers/creation.rs",
+          "anchor": "pub fn handle"
+        },
+        {
+          "path": "rust/src/servers/mod.rs",
+          "anchor": "pub use rpc::handle;"
+        },
+        {
+          "path": "rust/src/servers/rpc.rs",
+          "anchor": "pub fn handle"
+        },
+        {
+          "path": "rust/src/servers/rpc.rs",
+          "anchor": "super::creation::handle(method, params)"
+        }
+      ],
+      "selector": {
+        "kind": "literals",
+        "path": "rust/src/servers/creation.rs"
+      },
+      "platform": "linux_rpc_other_targets_reject",
+      "status": "static_handler_reviewed",
+      "runtime_evidence": {
+        "status": "referenced_not_run",
+        "scope": "related_group_fixtures_not_per_method_or_platform_completion",
+        "paths": [
+          "rust/compat/server_install.py"
+        ]
+      }
+    },
+    {
+      "id": "server_remote",
+      "methods": [
+        "server.rcon.command",
+        "server.query"
+      ],
+      "protocol_anchor": "crate::servers::handle(",
+      "source_links": [
+        {
+          "path": "rust/src/servers/remote.rs",
+          "anchor": "pub fn handle"
+        },
+        {
+          "path": "rust/src/servers/mod.rs",
+          "anchor": "pub use rpc::handle;"
+        },
+        {
+          "path": "rust/src/servers/rpc.rs",
+          "anchor": "pub fn handle"
+        },
+        {
+          "path": "rust/src/servers/rpc.rs",
+          "anchor": "super::remote::handle(method, params)"
+        }
+      ],
+      "selector": {
+        "kind": "literals",
+        "path": "rust/src/servers/remote.rs"
+      },
+      "platform": "linux_rpc_other_targets_reject",
+      "status": "static_handler_reviewed",
+      "runtime_evidence": {
+        "status": "referenced_not_run",
+        "scope": "related_group_fixtures_not_per_method_or_platform_completion",
+        "paths": [
+          "rust/compat/server_remote.py"
+        ]
+      }
+    },
+    {
+      "id": "server_worlds",
+      "methods": [
+        "server.worlds.list",
+        "server.worlds.get",
+        "server.worlds.rename",
+        "server.worlds.delete",
+        "server.worlds.backup",
+        "server.worlds.backups",
+        "server.worlds.restore",
+        "server.worlds.backups.delete"
+      ],
+      "protocol_anchor": "crate::servers::handle(",
+      "source_links": [
+        {
+          "path": "rust/src/worlds/server.rs",
+          "anchor": "pub fn handle"
+        },
+        {
+          "path": "rust/src/servers/mod.rs",
+          "anchor": "pub use rpc::handle;"
+        },
+        {
+          "path": "rust/src/servers/rpc.rs",
+          "anchor": "pub fn handle"
+        },
+        {
+          "path": "rust/src/servers/rpc.rs",
+          "anchor": "crate::worlds::server::handle(method, params)"
+        }
+      ],
+      "selector": {
+        "kind": "literals",
+        "path": "rust/src/worlds/server.rs"
+      },
+      "platform": "linux_rpc_other_targets_reject",
+      "status": "static_handler_reviewed",
+      "runtime_evidence": {
+        "status": "referenced_not_run",
+        "scope": "related_group_fixtures_not_per_method_or_platform_completion",
+        "paths": [
+          "rust/tests/server_worlds_portable.rs"
+        ]
+      }
+    },
+    {
+      "id": "server_local",
+      "methods": [
+        "server.list",
+        "server.get",
+        "server.delete",
+        "server.start",
+        "server.stop",
+        "server.restart",
+        "server.status",
+        "server.logs",
+        "server.command",
+        "server.properties.get",
+        "server.properties.set"
+      ],
+      "protocol_anchor": "crate::servers::handle(",
+      "source_links": [
+        {
+          "path": "rust/src/servers/rpc.rs",
+          "anchor": "pub fn handle"
+        },
+        {
+          "path": "rust/src/servers/mod.rs",
+          "anchor": "pub use rpc::handle;"
+        },
+        {
+          "path": "rust/src/servers/rpc.rs",
+          "anchor": "pub fn handle"
+        }
+      ],
+      "selector": {
+        "kind": "literals",
+        "path": "rust/src/servers/rpc.rs"
+      },
+      "platform": "linux_rpc_other_targets_reject",
+      "status": "static_handler_reviewed",
+      "runtime_evidence": {
+        "status": "referenced_not_run",
+        "scope": "related_group_fixtures_not_per_method_or_platform_completion",
+        "paths": [
+          "rust/compat/server_oracle.py"
+        ]
+      }
+    },
+    {
+      "id": "protocol_builtin",
+      "methods": [
+        "ping",
+        "core.version"
+      ],
+      "protocol_anchor": "match request.method.as_ref() {",
+      "source_links": [
+        {
+          "path": "rust/src/protocol.rs",
+          "anchor": "match request.method.as_ref() {"
+        }
+      ],
+      "selector": {
+        "kind": "literals",
+        "path": "rust/src/protocol.rs"
+      },
+      "platform": "supported_desktop_targets",
+      "status": "static_handler_reviewed",
+      "runtime_evidence": {
+        "status": "referenced_not_run",
+        "scope": "related_group_fixtures_not_per_method_or_platform_completion",
+        "paths": [
+          "rust/compat/check.py"
+        ]
+      }
+    },
+    {
+      "id": "blocked_runtime_install",
+      "methods": [
+        "java.runtime.install"
+      ],
+      "protocol_anchor": "method if known_method(method) => error(",
+      "source_links": [
+        {
+          "path": "rust/src/protocol.rs",
+          "anchor": "\"NOT_IMPLEMENTED\""
+        }
+      ],
+      "selector": {
+        "kind": "inventory_fallback",
+        "path": "rust/src/protocol.rs"
+      },
+      "platform": "all_targets_not_implemented",
+      "status": "blocked_not_implemented",
+      "runtime_evidence": {
+        "status": "not_executed_blocked",
+        "scope": "No Java installer or archive operation executed by this audit.",
+        "paths": []
+      }
+    }
+  ],
+  "execution_policy": "static_only_no_core_invocation",
+  "full_compatibility": false,
+  "replacement_allowed": false
+}
