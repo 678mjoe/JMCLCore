@@ -156,13 +156,14 @@ impl Root {
         }
         Ok((entries, unmanaged))
     }
-    fn selected(
+    fn selected<F: registry::RegistryFile>(
         &self,
         kind: Kind,
         project: Option<&str>,
         file: Option<&str>,
         remove: bool,
-    ) -> Result<(Registry, usize)> {
+        parse: fn(&[u8]) -> std::result::Result<registry::RegistryRecord<F>, &'static str>,
+    ) -> Result<(registry::RegistryRecord<F>, usize)> {
         if project.is_some() == file.is_some() {
             return Err(Error::Invalid);
         }
@@ -175,7 +176,7 @@ impl Root {
         if file.is_some_and(|p| p.len() > 512) {
             return Err(Error::Selector("InvalidContentFile"));
         }
-        let r = self.load()?;
+        let r = self.load_with(parse)?;
         let index = r
             .entries
             .iter()
@@ -187,22 +188,38 @@ impl Root {
                                 && (e.source.project_id.as_deref() == Some(p)
                                     || e.source.slug.as_deref() == Some(p))
                         }
-                        None => Some(e.file.as_str()) == file,
+                        None => Some(e.file.file_bytes()) == file.map(str::as_bytes),
                     }
             })
             .ok_or(Error::NotFound)?;
         Ok((r, index))
     }
     pub fn remove(&self, kind: Kind, project: Option<&str>, file: Option<&str>) -> Result<Entry> {
-        let (mut r, index) = self.selected(kind, project, file, true)?;
+        self.remove_with(kind, project, file, registry::parse)
+    }
+    pub(crate) fn remove_paths(
+        &self,
+        kind: Kind,
+        project: Option<&str>,
+        file: Option<&str>,
+    ) -> Result<registry::ListingEntry> {
+        self.remove_with(kind, project, file, registry::parse_listing)
+    }
+    fn remove_with<F: registry::RegistryFile>(
+        &self,
+        kind: Kind,
+        project: Option<&str>,
+        file: Option<&str>,
+        parse: fn(&[u8]) -> std::result::Result<registry::RegistryRecord<F>, &'static str>,
+    ) -> Result<registry::EntryRecord<F>> {
+        let (mut r, index) = self.selected(kind, project, file, true, parse)?;
         let e = r.entries.remove(index);
-        let path = if e.enabled {
-            e.file.clone()
-        } else {
-            format!("{}.disabled", e.file)
-        };
-        match self.0.parent(&path) {
-            Ok((parent, name)) => match parent.unlink(&name) {
+        let mut path = e.file.file_bytes().to_vec();
+        if !e.enabled {
+            path.extend_from_slice(b".disabled");
+        }
+        match self.0.parent_bytes(&path) {
+            Ok((parent, name)) => match parent.unlink_bytes(&name) {
                 Ok(()) => (),
                 Err(e) if e.kind() == io::ErrorKind::NotFound => (),
                 Err(e) => return Err(e.into()),
@@ -210,7 +227,7 @@ impl Root {
             Err(e) if e.kind() == io::ErrorKind::NotFound => (),
             Err(e) => return Err(e.into()),
         }
-        self.save(&r)?;
+        self.save_record(&r)?;
         Ok(e)
     }
     pub fn toggle(
@@ -220,17 +237,36 @@ impl Root {
         file: Option<&str>,
         enabled: bool,
     ) -> Result<(bool, Entry)> {
-        let (mut r, index) = self.selected(kind, project, file, false)?;
+        self.toggle_with(kind, project, file, enabled, registry::parse)
+    }
+    pub(crate) fn toggle_paths(
+        &self,
+        kind: Kind,
+        project: Option<&str>,
+        file: Option<&str>,
+        enabled: bool,
+    ) -> Result<(bool, registry::ListingEntry)> {
+        self.toggle_with(kind, project, file, enabled, registry::parse_listing)
+    }
+    fn toggle_with<F: registry::RegistryFile>(
+        &self,
+        kind: Kind,
+        project: Option<&str>,
+        file: Option<&str>,
+        enabled: bool,
+        parse: fn(&[u8]) -> std::result::Result<registry::RegistryRecord<F>, &'static str>,
+    ) -> Result<(bool, registry::EntryRecord<F>)> {
+        let (mut r, index) = self.selected(kind, project, file, false, parse)?;
         let e = &r.entries[index];
-        match self.0.parent(&e.file) {
+        match self.0.parent_bytes(e.file.file_bytes()) {
             Ok((parent, name)) => {
-                let disabled = format!("{name}.disabled");
-                let canonical = parent.exists(&name)?;
-                let off = parent.exists(&disabled)?;
+                let disabled = [name.as_slice(), b".disabled"].concat();
+                let canonical = parent.exists_bytes(&name)?;
+                let off = parent.exists_bytes(&disabled)?;
                 if enabled && !canonical && off {
-                    parent.rename(&disabled, &name)?
+                    parent.rename_bytes(&disabled, &name)?
                 } else if !enabled && canonical {
-                    parent.rename(&name, &disabled)?
+                    parent.rename_bytes(&name, &disabled)?
                 }
             }
             Err(e) if e.kind() == io::ErrorKind::NotFound => (),
@@ -239,7 +275,7 @@ impl Root {
         let changed = e.enabled != enabled;
         r.entries[index].enabled = enabled;
         if changed {
-            self.save(&r)?
+            self.save_record(&r)?
         }
         Ok((changed, r.entries.remove(index)))
     }
@@ -438,13 +474,13 @@ pub fn handle(
             }
             "remove" => {
                 let e = root
-                    .remove(kind, p.project.as_deref(), p.file.as_deref())
+                    .remove_paths(kind, p.project.as_deref(), p.file.as_deref())
                     .map_err(map)?;
                 Ok(result(method, world, vec![("removed", val(e))]))
             }
             _ => {
                 let (c, e) = root
-                    .toggle(
+                    .toggle_paths(
                         kind,
                         p.project.as_deref(),
                         p.file.as_deref(),

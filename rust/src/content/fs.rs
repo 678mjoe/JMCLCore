@@ -78,7 +78,9 @@ mod platform {
             }
             Ok(out)
         }
-        pub fn exists(&self, name: &str) -> io::Result<bool> {
+        pub fn exists_bytes(&self, bytes: &[u8]) -> io::Result<bool> {
+            let name = crate::store::path_from_bytes(bytes)?;
+            let name = name.as_os_str();
             match fs::statat(&self.0, name, AtFlags::empty()) {
                 Ok(_) => Ok(true),
                 Err(rustix::io::Errno::NOENT) => Ok(false),
@@ -86,9 +88,20 @@ mod platform {
             }
         }
         pub fn unlink(&self, name: &str) -> io::Result<()> {
+            self.unlink_bytes(name.as_bytes())
+        }
+        pub fn unlink_bytes(&self, bytes: &[u8]) -> io::Result<()> {
+            let name = crate::store::path_from_bytes(bytes)?;
+            let name = name.as_os_str();
             Ok(fs::unlinkat(&self.0, name, AtFlags::empty())?)
         }
         pub fn rename(&self, from: &str, to: &str) -> io::Result<()> {
+            self.rename_bytes(from.as_bytes(), to.as_bytes())
+        }
+        pub fn rename_bytes(&self, from: &[u8], to: &[u8]) -> io::Result<()> {
+            let from = crate::store::path_from_bytes(from)?;
+            let to = crate::store::path_from_bytes(to)?;
+            let (from, to) = (from.as_os_str(), to.as_os_str());
             Ok(fs::renameat(&self.0, from, &self.0, to)?)
         }
         pub fn atomic_write(&self, name: &str, data: &[u8]) -> io::Result<()> {
@@ -205,23 +218,23 @@ mod platform {
                 })
                 .collect())
         }
-        pub fn exists(&self, name: &str) -> io::Result<bool> {
-            match self.file(name, false) {
+        pub fn exists_bytes(&self, bytes: &[u8]) -> io::Result<bool> {
+            match self.file_bytes(bytes, false) {
                 Ok(_) => Ok(true),
                 Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(false),
                 Err(e) => Err(e),
             }
         }
-        pub fn unlink(&self, name: &str) -> io::Result<()> {
-            fs::unlink(&fs::file_at(&self.0, OsStr::new(name))?)
+        pub fn unlink_bytes(&self, bytes: &[u8]) -> io::Result<()> {
+            let name = crate::store::path_from_bytes(bytes)?;
+            let name = name.as_os_str();
+            fs::unlink(&fs::file_at(&self.0, name)?)
         }
-        pub fn rename(&self, from: &str, to: &str) -> io::Result<()> {
-            fs::named_op(
-                &fs::file_at(&self.0, OsStr::new(from))?,
-                &self.0,
-                OsStr::new(to),
-                true,
-            )
+        pub fn rename_bytes(&self, from: &[u8], to: &[u8]) -> io::Result<()> {
+            let from = crate::store::path_from_bytes(from)?;
+            let to = crate::store::path_from_bytes(to)?;
+            let (from, to) = (from.as_os_str(), to.as_os_str());
+            fs::named_op(&fs::file_at(&self.0, from)?, &self.0, to, true)
         }
         pub fn atomic_write(&self, name: &str, data: &[u8]) -> io::Result<()> {
             let tmp = format!(

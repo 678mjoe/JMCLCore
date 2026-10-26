@@ -437,12 +437,11 @@ pub(super) fn cli_run<M: remote::Metadata + curseforge::Metadata + Sync, T: inst
             }
             writeln!(out, "adoptedCount\t{}", a.len())?;
         }
-        "remove" => writeln!(
-            out,
-            "removed\t{}\t{}",
-            s(&v["removed"], "file"),
-            s(&v["removed"], "sha1")
-        )?,
+        "remove" => {
+            out.write_all(b"removed\t")?;
+            write_content_file(out, &v["removed"]["file"])?;
+            writeln!(out,"\t{}",s(&v["removed"],"sha1"))?;
+        }
         _ => {
             let state = if op == "enable" {
                 "enabled"
@@ -450,9 +449,9 @@ pub(super) fn cli_run<M: remote::Metadata + curseforge::Metadata + Sync, T: inst
                 "disabled"
             };
             if v["changed"] == true {
-                writeln!(out, "{state}\t{}", s(&v["entry"], "file"))?;
+                write!(out,"{state}\t")?; write_content_file(out,&v["entry"]["file"])?; writeln!(out)?;
             } else {
-                writeln!(out, "unchanged\t{}\t{state}", s(&v["entry"], "file"))?;
+                out.write_all(b"unchanged\t")?; write_content_file(out,&v["entry"]["file"])?; writeln!(out,"\t{state}")?;
             }
         }
     }
@@ -475,4 +474,9 @@ fn cli_number(s: &str) -> Option<u8> {
         n = n.checked_mul(10)?.checked_add(b - b'0')?;
     }
     Some(n)
+}
+
+fn write_content_file(out: &mut impl Write, file: &Value) -> io::Result<()> {
+    if let Some(file)=file.as_str(){out.write_all(file.as_bytes())}
+    else{let bytes:Vec<u8>=file.as_array().unwrap().iter().map(|b|b.as_u64().unwrap() as u8).collect();out.write_all(&bytes)}
 }

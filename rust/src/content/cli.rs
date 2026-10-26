@@ -196,15 +196,19 @@ fn inner(
         return Ok(0);
     }
     if op == "remove" {
-        match root.remove(kind, project, file) {
-            Ok(e) => writeln!(out, "removed\t{}\t{}", e.file, e.sha1)?,
+        match root.remove_paths(kind, project, file) {
+            Ok(e) => {
+                out.write_all(b"removed\t")?;
+                out.write_all(&e.file.0)?;
+                writeln!(out, "\t{}", e.sha1)?;
+            }
             Err(e) => {
                 mutation_error(err, &e, kind, op)?;
                 return Ok(1);
             }
         }
     } else {
-        match root.toggle(kind, project, file, op == "enable") {
+        match root.toggle_paths(kind, project, file, op == "enable") {
             Ok((changed, e)) => {
                 let state = if op == "enable" {
                     "enabled"
@@ -212,9 +216,13 @@ fn inner(
                     "disabled"
                 };
                 if changed {
-                    writeln!(out, "{state}\t{}", e.file)?
+                    write!(out, "{state}\t")?;
+                    out.write_all(&e.file.0)?;
+                    writeln!(out)?
                 } else {
-                    writeln!(out, "unchanged\t{}\t{state}", e.file)?
+                    out.write_all(b"unchanged\t")?;
+                    out.write_all(&e.file.0)?;
+                    writeln!(out, "\t{state}")?
                 }
             }
             Err(e) => {

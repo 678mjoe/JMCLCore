@@ -133,3 +133,11 @@ primitives; additive content byte-parent wrappers do not alter dispatcher routes
 or existing archive/native callers. The content root, adoption and store module
 fingerprints were refreshed after reviewing these changes. Inventory membership
 and the blocked acquisition fallback remain unchanged.
+
+## Local raw-record mutation review
+
+Manual review confirmed unchanged client and server method selection, parameter
+guards and platform gating. Existing remove/toggle calls now select the byte-aware
+registry view and retain existing filesystem operations and public String wrappers.
+Only the content root and server facade source fingerprints were refreshed; route
+membership and acquisition fallback classifications are unchanged.

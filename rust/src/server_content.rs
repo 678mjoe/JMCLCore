@@ -682,12 +682,12 @@ mod linux {
                 let (entries, unmanaged) = root.list_paths(kind)?;
                 Ok(json!({"entries": entries, "unmanaged": unmanaged}))
             }
-            "remove" => {
-                Ok(json!({"removed": root.remove(kind, p.project.as_deref(), p.file.as_deref())?}))
-            }
+            "remove" => Ok(
+                json!({"removed": root.remove_paths(kind, p.project.as_deref(), p.file.as_deref())?}),
+            ),
             "adopt" => Ok(json!({"adopted": root.adopt(kind, cas.unwrap())?})),
             _ => {
-                let (changed, entry) = root.toggle(
+                let (changed, entry) = root.toggle_paths(
                     kind,
                     p.project.as_deref(),
                     p.file.as_deref(),
