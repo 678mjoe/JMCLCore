@@ -11,10 +11,15 @@ pub fn main(init: std.process.Init) !void {
 }
 fn run(init: std.process.Init, args: []const []const u8, json: *std.json.Stringify) !void {
     const a = init.arena.allocator();
-    const bytes = try std.Io.Dir.cwd().readFileAlloc(init.io, args[2], a, .limited(4 * 1024 * 1024));
+    const bytes = try std.Io.Dir.cwd().readFileAlloc(init.io, args[2], a, .limited(8 * 1024 * 1024 + 2));
     if (std.mem.eql(u8, args[1], "project")) {
         const p = try core.curseforge.parseMod(a, bytes); defer p.deinit();
         try json.write(.{ .name = p.value.data.name });
+    } else if (std.mem.eql(u8, args[1], "page")) {
+        const p = try core.curseforge.parseFilesPage(a, bytes); defer p.deinit();
+        const ids = try a.alloc(u32, p.value.data.len);
+        for (p.value.data, ids) |f, *id| id.* = f.id;
+        try json.write(.{ .ids=ids, .pagination=p.value.pagination });
     } else if (std.mem.eql(u8, args[1], "select")) {
         const p = try core.curseforge.parseFilesPage(a, bytes); defer p.deinit();
         const selected = if (std.mem.eql(u8,args[3],"none")) core.curseforge.selectFile(p.value.data) else core.curseforge.selectFileWithExtension(p.value.data,args[3]);

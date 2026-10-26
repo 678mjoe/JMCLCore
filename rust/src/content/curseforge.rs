@@ -34,6 +34,7 @@ fn number8<'de, D: serde::Deserializer<'de>>(d: D) -> Result<u8, D::Error> {
 #[derive(Deserialize)]
 struct Envelope {
     data: Box<RawValue>,
+    #[allow(dead_code)] // Still typed for single-record schema/error compatibility.
     pagination: Option<Pagination>,
 }
 #[derive(Deserialize)]
@@ -186,10 +187,6 @@ pub fn parse_file(bytes: &[u8]) -> mr::Result<File> {
     validate_completed_document(bytes)?;
     validate_detail(detail)
 }
-// Page callers deliberately retain their prior per-item parse/validate order.
-fn parse_file_data(bytes: &[u8], max: usize) -> mr::Result<File> {
-    validate_detail(mr::parse(bytes, max, false)?)
-}
 fn validate_detail(d: Detail) -> mr::Result<File> {
     if d.id == 0 || d.project == 0 {
         return Err("InvalidCurseforgeId".into());
@@ -324,6 +321,29 @@ pub fn page_url(project: &str, game: &str, loader: Option<&str>, index: u32) -> 
     u.push_str(&format!("&index={index}&pageSize=50"));
     Ok(u)
 }
+// The source types the entire page before length and per-file semantic checks.
+#[derive(Deserialize)]
+struct PageEnvelope {
+    data: Vec<Detail>,
+    pagination: Option<Pagination>,
+}
+fn parse_page(bytes: &[u8]) -> mr::Result<(Vec<File>, Option<Pagination>)> {
+    const LIMIT: usize = 8 * 1024 * 1024;
+    if bytes.len() > LIMIT {
+        return Err("CurseforgeResponseTooLarge".into());
+    }
+    let page: PageEnvelope = mr::parse(bytes, LIMIT, false)?;
+    validate_completed_document(bytes)?;
+    if page.data.len() > 50 {
+        return Err("TooManyCurseforgeFiles".into());
+    }
+    let files = page
+        .data
+        .into_iter()
+        .map(validate_detail)
+        .collect::<mr::Result<_>>()?;
+    Ok((files, page.pagination))
+}
 struct Resolver<'a, T> {
     transport: &'a T,
     key: &'a str,
@@ -351,21 +371,14 @@ impl<T: Metadata> Resolver<'_, T> {
                 &page_url(project, self.game, self.loader, index)?,
                 8 * 1024 * 1024,
             )?;
-            let e: Envelope = mr::parse(&bytes, 8 * 1024 * 1024, false)?;
-            let raw: Vec<Box<RawValue>> =
-                mr::parse(e.data.get().as_bytes(), 8 * 1024 * 1024, true)?;
-            if raw.len() > 50 {
-                return Err("TooManyCurseforgeFiles".into());
-            }
-            let count = raw.len();
-            for f in raw {
-                files.push(parse_file_data(f.get().as_bytes(), 8 * 1024 * 1024)?)
-            }
+            let (page, pagination) = parse_page(&bytes)?;
+            let count = page.len();
+            files.extend(page);
             if files.len() > 512 {
                 return Err("TooManyCurseforgeFiles".into());
             }
             if count == 0
-                || e.pagination
+                || pagination
                     .as_ref()
                     .is_none_or(|p| files.len() >= p.total as usize)
                 || count < 50
@@ -524,3 +537,7 @@ mod byte_metadata_tests;
 #[cfg(test)]
 #[path = "../../tests/support/curseforge_lexical_acceptance.rs"]
 mod lexical_acceptance_tests;
+
+#[cfg(test)]
+#[path = "../../tests/support/curseforge_page_parser.rs"]
+mod page_parser_tests;
