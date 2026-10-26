@@ -38,30 +38,79 @@ impl Default for Params {
         }
     }
 }
+// RPC byte paths are independent from the CLI's String argument contract.
+fn rpc_directory() -> Vec<u8> {
+    DEFAULT_DIRECTORY.as_bytes().to_vec()
+}
+fn rpc_path<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Vec<u8>, D::Error> {
+    let raw = <&RawValue>::deserialize(d)?;
+    if raw.get().starts_with('"') {
+        return serde_json::from_str::<String>(raw.get())
+            .map(String::into_bytes)
+            .map_err(serde::de::Error::custom);
+    }
+    let elements: Vec<&RawValue> =
+        serde_json::from_str(raw.get()).map_err(serde::de::Error::custom)?;
+    elements
+        .into_iter()
+        .map(|v| {
+            crate::json_number::dynamic_raw(v.get(), 8)
+                .map(|n| n as u8)
+                .map_err(|e| serde::de::Error::custom(e.name()))
+        })
+        .collect()
+}
+#[derive(Deserialize)]
+struct RpcParams {
+    #[serde(default = "rpc_directory", deserialize_with = "rpc_path")]
+    store_directory: Vec<u8>,
+    #[serde(default = "yes")]
+    dry_run: bool,
+    #[serde(default = "age", deserialize_with = "number")]
+    min_age_seconds: u64,
+}
+impl Default for RpcParams {
+    fn default() -> Self {
+        Self {
+            store_directory: rpc_directory(),
+            dry_run: true,
+            min_age_seconds: age(),
+        }
+    }
+}
+fn prepared_root(p: &RpcParams) -> Result<std::ffi::OsString, RpcError> {
+    super::path_from_bytes(&p.store_directory)
+        .map_err(|_| RpcError::new("STORE_ROOT_ERROR", "Failed to open the artifact store"))
+}
+fn prepare_params(params: Option<&RawValue>) -> Result<RpcParams, RpcError> {
+    let p: RpcParams = if let Some(raw) = params {
+        if !raw.get().trim_start().starts_with('{') {
+            return Err(RpcError::new(
+                "INVALID_PARAMS",
+                "store.gc parameters are invalid",
+            ));
+        }
+        serde_json::from_str(raw.get())
+            .map_err(|_| RpcError::new("INVALID_PARAMS", "store.gc parameters are invalid"))?
+    } else {
+        RpcParams::default()
+    };
+    if p.store_directory.is_empty() {
+        return Err(RpcError::new(
+            "INVALID_PARAMS",
+            "store.gc store_directory must not be empty",
+        ));
+    }
+    Ok(p)
+}
 pub fn handle(method: &str, params: Option<&RawValue>) -> Option<Result<Value, RpcError>> {
     if method != "store.gc" {
         return None;
     }
     Some((|| {
-        let p: Params = if let Some(raw) = params {
-            if !raw.get().trim_start().starts_with('{') {
-                return Err(RpcError::new(
-                    "INVALID_PARAMS",
-                    "store.gc parameters are invalid",
-                ));
-            }
-            serde_json::from_str(raw.get())
-                .map_err(|_| RpcError::new("INVALID_PARAMS", "store.gc parameters are invalid"))?
-        } else {
-            Params::default()
-        };
-        if p.store_directory.is_empty() {
-            return Err(RpcError::new(
-                "INVALID_PARAMS",
-                "store.gc store_directory must not be empty",
-            ));
-        }
-        let store = Store::open_existing(&p.store_directory)
+        let p = prepare_params(params)?;
+        let root = prepared_root(&p)?;
+        let store = Store::open_existing(&root)
             .map_err(|_| RpcError::new("STORE_ROOT_ERROR", "Failed to open the artifact store"))?;
         let summary = store
             .collect(GcOptions {
@@ -182,3 +231,7 @@ pub fn cli(args: &[String], out: &mut impl Write, err: &mut impl Write) -> io::R
     }
     Ok(u8::from(summary.errors != 0))
 }
+
+#[cfg(test)]
+#[path = "../../tests/support/store_params.rs"]
+mod params_tests;

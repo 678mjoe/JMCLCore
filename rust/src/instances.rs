@@ -323,23 +323,49 @@ pub(crate) fn lookup_target(
     }
     serde_json::from_str(p.get()).map_err(|_| invalid(bad))
 }
+// Create retains String operational consumers. Accept source-compatible UTF-8
+// byte arrays without widening those consumers to opaque byte strings here.
+fn create_text<'de, D: serde::Deserializer<'de>>(d: D) -> Result<String, D::Error> {
+    let bytes = LookupId::deserialize(d)?;
+    String::from_utf8(bytes.0).map_err(serde::de::Error::custom)
+}
+fn create_optional_text<'de, D: serde::Deserializer<'de>>(
+    d: D,
+) -> Result<Option<String>, D::Error> {
+    Option::<LookupId>::deserialize(d)?
+        .map(|bytes| String::from_utf8(bytes.0).map_err(serde::de::Error::custom))
+        .transpose()
+}
 #[derive(Deserialize)]
 struct Create {
+    #[serde(deserialize_with = "create_text")]
     directory: String,
+    #[serde(deserialize_with = "create_text")]
     id: String,
+    #[serde(deserialize_with = "create_text")]
     version_id: String,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "create_optional_text")]
     name: Option<String>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "create_optional_text")]
     fabric_loader: Option<String>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "create_optional_text")]
     neoforge_version: Option<String>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "create_optional_text")]
     forge_version: Option<String>,
-    #[serde(default = "official")]
+    #[serde(default = "official", deserialize_with = "create_text")]
     source: String,
     #[serde(default = "yes")]
     validate: bool,
+}
+fn parse_create(p: Option<&RawValue>) -> Result<Create, RpcError> {
+    if p.is_some_and(|raw| !raw.get().trim_start().starts_with('{')) {
+        return Err(invalid("instance creation parameters are invalid"));
+    }
+    parse(
+        p,
+        "instance creation requires directory, id, and version_id",
+        "instance creation parameters are invalid",
+    )
 }
 /// Resolve before opening the instances root, matching Service.resolveMetadataPreferred.
 /// Validation never installs artifacts or creates an instance directory.
@@ -423,11 +449,7 @@ fn handle_unix(method: &str, p: Option<&RawValue>) -> Result<Value, RpcError> {
     };
     match method {
         "instance.create" => {
-            let c: Create = parse(
-                p,
-                "instance creation requires directory, id, and version_id",
-                "instance creation parameters are invalid",
-            )?;
+            let c = parse_create(p)?;
             if c.directory.is_empty() || c.id.is_empty() || c.version_id.is_empty() {
                 return Err(invalid("instance creation parameters are out of range"));
             }
@@ -973,13 +995,13 @@ mod lookup_id_tests {
         }
     }
     #[test]
-    fn lookup_params_ignore_unrelated_fields_without_changing_create() {
+    fn lookup_params_ignore_unrelated_fields_and_create_accepts_utf8_arrays() {
         let bytes = r#"{"directory":"instances","id":[100,101,109,111],"unknown":1e400,"java_paths":false}"#;
         let raw = RawValue::from_string(bytes.into()).unwrap();
         let p = lookup_target(Some(&raw), "missing", "invalid").unwrap();
         assert_eq!(p.id.validated(), Some("demo"));
         let create = r#"{"directory":"instances","id":[100,101,109,111],"version_id":"fake"}"#;
-        assert!(serde_json::from_str::<Create>(create).is_err());
+        assert!(serde_json::from_str::<Create>(create).is_ok());
         let raw = RawValue::from_string(r#"["instances","demo"]"#.into()).unwrap();
         assert!(lookup_target(Some(&raw), "missing", "invalid").is_err());
     }
@@ -1016,5 +1038,283 @@ mod lookup_directory_tests {
         let empty: LookupDirectory = serde_json::from_str("[]").unwrap();
         assert!(empty.is_empty());
         assert!(serde_json::from_str::<LookupDirectory>("[256]").is_err());
+    }
+}
+
+#[cfg(test)]
+mod create_params_tests {
+    use super::*;
+    use std::process::Command;
+
+    // Parse only: never call handle, validate_selection, Root, or a create method.
+    // Lexical/duplicate controls characterize this helper boundary, not whether
+    // outer protocol guards permit the same input to reach an actual RPC.
+    fn normalized(raw: &str) -> Value {
+        let raw = match RawValue::from_string(raw.to_owned()) {
+            Ok(raw) => raw,
+            Err(_) => return json!({"invalid":true}),
+        };
+        match parse_create(Some(&raw)) {
+            Err(_) => json!({"invalid":true}),
+            Ok(c) => json!({"value": {
+                "directory":c.directory,"id":c.id,"name":c.name,"version_id":c.version_id,
+                "fabric_loader":c.fabric_loader,"neoforge_version":c.neoforge_version,
+                "forge_version":c.forge_version,"source":c.source,"validate":c.validate
+            }}),
+        }
+    }
+
+    #[test]
+    fn create_parameter_defaults_and_optional_nulls() {
+        let raw = RawValue::from_string(r#"{"directory":"unused","id":"demo","version_id":"1.20","name":null,"fabric_loader":null,"neoforge_version":null,"forge_version":null}"#.into()).unwrap();
+        let c = parse_create(Some(&raw)).unwrap();
+        assert_eq!(c.source, "official");
+        assert!(
+            c.validate
+                && c.name.is_none()
+                && c.fabric_loader.is_none()
+                && c.neoforge_version.is_none()
+                && c.forge_version.is_none()
+        );
+        for field in ["source", "validate", "directory", "id", "version_id"] {
+            let mut value: Value = serde_json::from_str(raw.get()).unwrap();
+            value[field] = Value::Null;
+            let invalid = RawValue::from_string(value.to_string()).unwrap();
+            assert!(
+                parse_create(Some(&invalid)).is_err(),
+                "{field} must not accept null"
+            );
+        }
+        assert!(parse_create(None).is_err());
+    }
+
+    #[test]
+    #[ignore = "pure source-pinned UTF-8 parameter slice; nine residual rows remain explicit"]
+    fn pinned_create_utf8_parameter_schema_only() {
+        run_schema();
+    }
+    fn run_schema() {
+        let source =
+            std::path::PathBuf::from(std::env::var_os("JMCL_ZIG_SOURCE").expect("JMCL_ZIG_SOURCE"));
+        let head = Command::new("git")
+            .args(["rev-parse", "HEAD"])
+            .current_dir(&source)
+            .output()
+            .unwrap();
+        assert!(head.status.success());
+        assert_eq!(
+            String::from_utf8(head.stdout).unwrap().trim(),
+            "5a4310debbcee26b3d2391bab2339f79cd6ec52e"
+        );
+        let clean = Command::new("git")
+            .args([
+                "diff",
+                "--exit-code",
+                "HEAD",
+                "--",
+                "src/protocol/instance.zig",
+            ])
+            .current_dir(&source)
+            .output()
+            .unwrap();
+        assert!(
+            clean.status.success(),
+            "pinned parameter source has local changes"
+        );
+        let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/instance_create_params.zig");
+        let adapter = std::fs::read_to_string(&fixture)
+            .unwrap()
+            .replace("\r\n", "\n");
+        let original = std::fs::read_to_string(source.join("src/protocol/instance.zig"))
+            .unwrap()
+            .replace("\r\n", "\n");
+        let declaration = |text: &str| {
+            let begin = text.find("const InstanceCreateParams = struct {").unwrap();
+            let end = begin + text[begin..].find("\n};").unwrap() + 3;
+            text[begin..end].to_owned()
+        };
+        assert_eq!(declaration(&adapter), declaration(&original));
+        // Adapter has no Core import or handler; only std JSON parsing + owned fixture IO.
+        assert!(!adapter.contains("jmcl_core") && !adapter.contains("writeCreateResult"));
+        let zig = std::env::var_os("JMCL_ZIG_COMPILER").unwrap_or_else(|| "zig".into());
+        let version = Command::new(&zig).arg("version").output().unwrap();
+        assert!(version.status.success());
+        assert_eq!(String::from_utf8(version.stdout).unwrap().trim(), "0.16.0");
+        let temp = tempfile::tempdir().unwrap();
+        let executable = temp.path().join(if cfg!(windows) {
+            "params.exe"
+        } else {
+            "params"
+        });
+        let build = Command::new(&zig)
+            .arg("build-exe")
+            .arg(&fixture)
+            .arg("-OReleaseSafe")
+            .arg(format!("-femit-bin={}", executable.display()))
+            .output()
+            .unwrap();
+        assert!(
+            build.status.success(),
+            "{}",
+            String::from_utf8_lossy(&build.stderr)
+        );
+        let base = json!({"directory":"owned-unused-root","id":"demo","version_id":"1.20"});
+        let mut cases = vec![("defaults".to_owned(), base.to_string(), true)];
+        let fields = [
+            "directory",
+            "id",
+            "name",
+            "version_id",
+            "fabric_loader",
+            "neoforge_version",
+            "forge_version",
+            "source",
+        ];
+        let mut all = base.clone();
+        for field in fields {
+            all[field] = json!([65, 83, 67, 73, 73]);
+        }
+        cases.push(("all-eight-ascii-arrays".into(), all.to_string(), true));
+        for field in fields {
+            for (label, bytes) in [
+                ("unicode", vec![195, 169]),
+                ("opaque", vec![255]),
+                ("empty", vec![]),
+            ] {
+                let mut v = base.clone();
+                v[field] = json!(bytes);
+                cases.push((format!("{field}-{label}-array"), v.to_string(), true));
+            }
+        }
+        for field in ["directory", "id", "version_id"] {
+            let mut missing = base.clone();
+            missing.as_object_mut().unwrap().remove(field);
+            cases.push((format!("{field}-missing"), missing.to_string(), false));
+            let mut null = base.clone();
+            null[field] = Value::Null;
+            cases.push((format!("{field}-null"), null.to_string(), false));
+        }
+        for (label, field, value, accepted) in [
+            ("optional-null", "name", Value::Null, true),
+            ("validate-false", "validate", json!(false), true),
+            ("validate-number", "validate", json!(0), false),
+            ("source-ordinal-not-enum", "source", json!(0), false),
+            (
+                "unknown-source-is-parse-valid",
+                "source",
+                json!("not-a-source"),
+                true,
+            ),
+            ("overflow-byte", "name", json!([256]), false),
+            ("negative-byte", "name", json!([-1]), false),
+            ("bool-byte", "name", json!([true]), false),
+            ("null-byte", "name", json!([null]), false),
+            ("nested-byte", "name", json!([[65]]), false),
+        ] {
+            let mut v = base.clone();
+            v[field] = value;
+            cases.push((label.into(), v.to_string(), accepted));
+        }
+        for (label, value, accepted) in [
+            ("raw-rounded-byte", "[100.0000000000000001]", true),
+            ("quoted-precise-byte", "[\"100.0000000000000001\"]", false),
+            ("quoted-underscore-byte", "[\"1_0_0\"]", true),
+        ] {
+            cases.push((
+                label.into(),
+                format!(
+                    "{{\"directory\":\"owned-unused-root\",\"id\":{value},\"version_id\":\"1.20\"}}"
+                ),
+                accepted,
+            ));
+        }
+        for (label, raw) in [
+            ("null-object", "null"),
+            ("scalar-object", "42"),
+            (
+                "positional-sequence",
+                r#"["owned-unused-root","demo","1.20",null,null,null,null,"official",false]"#,
+            ),
+        ] {
+            cases.push((label.into(), raw.into(), false));
+        }
+        let mut unknown = base.to_string();
+        unknown.pop();
+        unknown.push_str(",\"unused\":1e400}");
+        cases.push(("unknown-large-number".into(), unknown, true));
+        for (label, tail, accepted) in [
+            ("duplicate-known-field", ",\"id\":\"last\"}", false),
+            ("unknown-lone-surrogate", ",\"unused\":\"\\ud800\"}", false),
+            (
+                "unknown-paired-surrogate",
+                ",\"unused\":\"\\ud83d\\ude00\"}",
+                true,
+            ),
+            ("unknown-malformed-token", ",\"unused\":!}", false),
+        ] {
+            let mut raw = base.to_string();
+            raw.pop();
+            raw.push_str(tail);
+            cases.push((label.into(), raw, accepted));
+        }
+        let mut differences = vec![];
+        for (label, raw, accepted) in &cases {
+            let input = temp.path().join("input.json");
+            std::fs::write(&input, raw).unwrap();
+            let result = Command::new(&executable).arg(&input).output().unwrap();
+            assert!(
+                result.status.success() && result.stderr.is_empty(),
+                "{label}"
+            );
+            let expected: Value = serde_json::from_slice(&result.stdout).unwrap();
+            assert_eq!(
+                expected.get("value").is_some(),
+                *accepted,
+                "source acceptance {label}: {expected}"
+            );
+            if label == "defaults" {
+                assert_eq!(expected["value"]["source"], "official");
+                assert_eq!(expected["value"]["validate"], true);
+            }
+            let actual = normalized(raw);
+            eprintln!(
+                "CREATE_PARAMS_ROW {}",
+                json!({"case":label,"input":raw,"source":expected,"rust":actual})
+            );
+            if label.ends_with("-opaque-array") {
+                // These source-accepted opaque fields remain unsupported by
+                // the existing operational String consumer, not parity.
+                let field = label.strip_suffix("-opaque-array").unwrap();
+                assert!(fields.contains(&field));
+                assert_eq!(expected["value"][field], json!([255]));
+                assert_eq!(actual, json!({"invalid":true}));
+            } else if label == "unknown-lone-surrogate" {
+                // The outer RPC already rejects this; helper boundary only.
+                assert_eq!(expected, json!({"invalid":true}));
+                assert_eq!(actual, normalized(&base.to_string()));
+            } else {
+                assert_eq!(actual, expected, "strict UTF-8/object subset {label}");
+            }
+            if actual != expected {
+                differences.push(label.clone());
+                eprintln!("CREATE_PARAMS_DIFFERENCE {label}: source={expected} rust={actual}");
+            }
+        }
+        eprintln!(
+            "pure instance.create parameter schema: {} cases; {} differences; no handler calls",
+            cases.len(),
+            differences.len()
+        );
+        let mut residual: Vec<String> =
+            fields.iter().map(|f| format!("{f}-opaque-array")).collect();
+        residual.push("unknown-lone-surrogate".into());
+        assert_eq!(
+            differences, residual,
+            "exact remaining identities, not wildcard acceptance"
+        );
+        eprintln!(
+            "PASS: 44 strict source-equivalent Create UTF-8/object cases; 8 opaque-field gaps and 1 outer-guarded helper-only difference explicitly asserted"
+        );
     }
 }

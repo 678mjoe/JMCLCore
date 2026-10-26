@@ -403,6 +403,17 @@ jobs:
                               "--rust", f"rust/target/release/jmcl-core-rust{suffix}",
                               "--oracle-source", ".ci-oracle"], check=True)
           PYTHON
+      - name: Guarded explicit-root store GC dry-run bytes
+        run: |
+          python - <<'PYTHON'
+          import hashlib, os, pathlib, subprocess, sys
+          suffix = ".exe" if os.name == "nt" else ""
+          args = [sys.executable, "rust/compat/store_gc_dry_run_bytes.py"]
+          for kind, source, binary in (("zig", pathlib.Path(".ci-oracle"), pathlib.Path(f".ci-oracle/zig-out/bin/jmcl-core{suffix}")), ("rust", pathlib.Path("."), pathlib.Path(f"rust/target/release/jmcl-core-rust{suffix}"))):
+              head = subprocess.check_output(["git", "-C", str(source), "rev-parse", "HEAD"], text=True).strip()
+              args += [f"--{kind}", str(binary.resolve()), f"--{kind}-sha256", hashlib.sha256(binary.read_bytes()).hexdigest(), f"--{kind}-source", str(source.resolve()), f"--{kind}-head", head]
+          subprocess.run(args, check=True)
+          PYTHON
       - name: Native instance content CLI path contracts
         run: |
           python - <<'PYTHON'

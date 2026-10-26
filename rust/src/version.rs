@@ -659,6 +659,129 @@ fn parse_params(params: Option<&RawValue>) -> Result<Option<Value>, Error> {
         .map(|v| metadata::parse_json(v.get().as_bytes()))
         .transpose()
 }
+// Canonicalize declared enums and UTF-8 byte arrays for these request schemas.
+// Borrow ordinary strings; clone only for accepted alternative representations.
+// The caller's Value and unrelated fields remain unchanged.
+fn canonical_params_view<'a>(
+    method: &str,
+    value: Option<&'a Value>,
+) -> Result<Option<std::borrow::Cow<'a, Value>>, RpcError> {
+    use std::borrow::Cow;
+    if !matches!(
+        method,
+        "version.list" | "version.get" | "version.resolve" | "install.plan"
+    ) {
+        return Ok(value.map(Cow::Borrowed));
+    }
+    fn tag(value: &Value, tags: &[&str]) -> Option<usize> {
+        let ordinal = match value {
+            Value::String(text) => {
+                if let Some(index) = tags.iter().position(|tag| *tag == text) {
+                    return Some(index);
+                }
+                // Zig's dynamic enum parser accepts integer-shaped strings,
+                // but not float spellings (including the special string -0).
+                if text == "-0" || text.bytes().any(|b| matches!(b, b'.' | b'e' | b'E')) {
+                    return None;
+                }
+                crate::json_number::unsigned_text(text, 64).ok()?
+            }
+            // Do not coerce floating Values, even an integral 0.0 or -0.
+            Value::Number(number) => number.as_u64()?,
+            _ => return None,
+        };
+        let index = usize::try_from(ordinal).ok()?;
+        (index < tags.len()).then_some(index)
+    }
+    let Some(value) = value else { return Ok(None) };
+    let fields = value.as_object().ok_or_else(|| param_error(method))?;
+    let mut view = Cow::Borrowed(value);
+    for (key, tags, nullable, relevant) in [
+        ("source", &["official", "bmclapi"][..], false, true),
+        (
+            "type",
+            &["release", "snapshot", "old_beta", "old_alpha"][..],
+            true,
+            method == "version.list",
+        ),
+        (
+            "os",
+            &["windows", "linux", "osx"][..],
+            true,
+            method == "install.plan",
+        ),
+        (
+            "arch",
+            &["x86", "x86_64", "arm", "arm64"][..],
+            true,
+            method == "install.plan",
+        ),
+    ] {
+        if !relevant {
+            continue;
+        }
+        let Some(field) = fields.get(key) else {
+            continue;
+        };
+        if nullable && field.is_null() {
+            continue;
+        }
+        let name = tags[tag(field, tags).ok_or_else(|| param_error(method))?];
+        if field.as_str() != Some(name) {
+            view.to_mut()
+                .as_object_mut()
+                .expect("object checked")
+                .insert(key.into(), Value::String(name.into()));
+        }
+    }
+    for (key, nullable, relevant) in [
+        ("id", false, method != "version.list"),
+        (
+            "fabric_loader",
+            true,
+            matches!(method, "version.resolve" | "install.plan"),
+        ),
+        (
+            "neoforge_version",
+            true,
+            matches!(method, "version.resolve" | "install.plan"),
+        ),
+        (
+            "forge_version",
+            true,
+            matches!(method, "version.resolve" | "install.plan"),
+        ),
+    ] {
+        if !relevant {
+            continue;
+        }
+        let Some(field) = fields.get(key) else {
+            continue;
+        };
+        if field.is_string() || (nullable && field.is_null()) {
+            continue;
+        }
+        let elements = field.as_array().ok_or_else(|| param_error(method))?;
+        let bytes = elements
+            .iter()
+            .map(|element| {
+                // Value numbers already underwent dynamic binary64 parsing; strings
+                // retain their exact contents for the typed quoted-number branch.
+                crate::json_number::dynamic_raw(&element.to_string(), 8)
+                    .map(|byte| byte as u8)
+                    .map_err(|_| param_error(method))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        // Opaque byte IDs/loaders still need their source-ordered operational
+        // consumers. Never silently replace bytes or mislabel early rejection.
+        let text = String::from_utf8(bytes).map_err(|_| param_error(method))?;
+        view.to_mut()
+            .as_object_mut()
+            .expect("object checked")
+            .insert(key.into(), Value::String(text));
+    }
+    Ok(Some(view))
+}
 fn source(p: &Map<String, Value>) -> Result<Source, Error> {
     p.get("source")
         .map(|s| s.as_str().and_then(Source::parse).ok_or(Error::InvalidJson))
@@ -690,7 +813,12 @@ pub fn handle(method: &str, params: Option<&RawValue>) -> Option<Result<Response
         Ok(x) => x,
         Err(_) => return Some(Err(param_error(method))),
     };
-    if let Err(e) = validate_params(method, parsed.as_ref()) {
+    let canonical = match canonical_params_view(method, parsed.as_ref()) {
+        Ok(value) => value,
+        Err(error) => return Some(Err(error)),
+    };
+    let parsed = canonical.as_deref();
+    if let Err(e) = validate_params(method, parsed) {
         return Some(Err(e));
     }
     let transport = match HttpTransport::new() {
@@ -700,7 +828,7 @@ pub fn handle(method: &str, params: Option<&RawValue>) -> Option<Result<Response
     Some(handle_with(
         &Service::new(transport, Path::new(".jmclcore/metadata-cache")),
         method,
-        parsed.as_ref(),
+        parsed,
     ))
 }
 fn param_error(method: &str) -> RpcError {
@@ -784,6 +912,8 @@ pub fn handle_with<T: Transport>(
     method: &str,
     value: Option<&Value>,
 ) -> Result<Response, RpcError> {
+    let canonical = canonical_params_view(method, value)?;
+    let value = canonical.as_deref();
     validate_params(method, value)?;
     let empty = Map::new();
     let p = value.and_then(Value::as_object).unwrap_or(&empty);
@@ -1434,3 +1564,7 @@ mod fabric_transport_tests {
 #[cfg(target_os = "linux")]
 #[path = "version_server.rs"]
 pub mod server;
+
+#[cfg(test)]
+#[path = "../tests/support/version_params_contract.rs"]
+mod params_contract_tests;
