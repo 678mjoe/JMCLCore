@@ -46,20 +46,20 @@ fn cosmetic_fields_preserve_non_utf8_without_lossy_replacement() {
 }
 #[test]
 fn operational_fields_do_not_gain_lossy_or_raw_path_conversion() {
-    for pointer in [
-        "/id",
-        "/project_id",
-        "/files/0/filename",
-        "/files/0/url",
-        "/files/0/hashes/sha1",
-        "/game_versions/0",
-        "/loaders/0",
+    for (pointer, error) in [
+        ("/id", "InvalidModrinthVersionId"),
+        ("/project_id", "InvalidModrinthVersionId"),
+        ("/files/0/filename", "UnexpectedToken"),
+        ("/files/0/url", "UnexpectedToken"),
+        ("/files/0/hashes/sha1", "InvalidModrinthHash"),
+        ("/game_versions/0", "InvalidGameVersion"),
+        ("/loaders/0", "InvalidModrinthLoaders"),
     ] {
         let mut value = version();
         *value.pointer_mut(pointer).unwrap() = json!([255]);
         assert_eq!(
             parse("version", &serde_json::to_vec(&value).unwrap()),
-            json!({"error":"UnexpectedToken"}),
+            json!({"error":error}),
             "{pointer}"
         );
     }

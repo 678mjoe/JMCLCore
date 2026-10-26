@@ -1,5 +1,8 @@
 //! Typed Modrinth content metadata and deterministic selection, without credentials.
 use serde::{Deserialize, Serialize};
+#[path = "modrinth_wire.rs"]
+mod wire;
+use wire::{WireProject, WireVersion};
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Error(pub String);
 impl From<&str> for Error {
@@ -125,12 +128,12 @@ pub(super) fn parse<T: serde::de::DeserializeOwned>(
         )
     })
 }
-fn ascii(s: &str, max: usize, extra: &[u8], err: &str) -> Result<()> {
+fn ascii(s: &[u8], max: usize, extra: &[u8], err: &str) -> Result<()> {
     if s.is_empty()
         || s.len() > max
         || !s
-            .bytes()
-            .all(|b| b.is_ascii_alphanumeric() || extra.contains(&b))
+            .iter()
+            .all(|b| b.is_ascii_alphanumeric() || extra.contains(b))
     {
         Err(err.into())
     } else {
@@ -138,20 +141,20 @@ fn ascii(s: &str, max: usize, extra: &[u8], err: &str) -> Result<()> {
     }
 }
 pub fn project_ref(s: &str) -> Result<()> {
-    ascii(s, 64, b"-_.", "InvalidModrinthProject")
+    ascii(s.as_bytes(), 64, b"-_.", "InvalidModrinthProject")
 }
 pub fn version_id(s: &str) -> Result<()> {
-    ascii(s, 16, b"", "InvalidModrinthVersionId")
+    ascii(s.as_bytes(), 16, b"", "InvalidModrinthVersionId")
 }
 pub fn game_version(s: &str) -> Result<()> {
-    ascii(s, 64, b".-_+", "InvalidGameVersion")
+    ascii(s.as_bytes(), 64, b".-_+", "InvalidGameVersion")
 }
-fn loaders(v: &[String], required: bool) -> Result<()> {
+fn loaders(v: &[MetadataBytes], required: bool) -> Result<()> {
     if v.len() > 32 || (required && v.is_empty()) {
         return Err("InvalidModrinthLoaders".into());
     }
     for s in v {
-        ascii(s, 32, b"-", "InvalidModrinthLoaders")?
+        ascii(s.as_bytes(), 32, b"-", "InvalidModrinthLoaders")?
     }
     Ok(())
 }
@@ -165,18 +168,18 @@ fn validate_completed_strings(bytes: &[u8]) -> Result<()> {
         .map_err(|_| Error("SyntaxError".into()))
 }
 pub fn parse_project(b: &[u8]) -> Result<Project> {
-    let p: Project = parse(b, 1024 * 1024, false)?;
+    let p: WireProject = parse(b, 1024 * 1024, false)?;
     validate_completed_strings(b)?;
-    project_ref(&p.id)?;
-    project_ref(&p.slug)?;
+    ascii(p.id.as_bytes(), 64, b"-_.", "InvalidModrinthProject")?;
+    ascii(p.slug.as_bytes(), 64, b"-_.", "InvalidModrinthProject")?;
     if !matches!(
-        p.project_type.as_str(),
-        "mod" | "resourcepack" | "shader" | "datapack"
+        p.project_type.as_bytes(),
+        b"mod" | b"resourcepack" | b"shader" | b"datapack"
     ) {
         return Err("UnsupportedProjectType".into());
     }
     loaders(&p.loaders, false)?;
-    Ok(p)
+    p.into_public()
 }
 fn rank(s: &str) -> Option<u8> {
     match s {
@@ -186,17 +189,17 @@ fn rank(s: &str) -> Option<u8> {
         _ => None,
     }
 }
-fn validate(v: &Version) -> Result<()> {
-    version_id(&v.id)?;
-    version_id(&v.project_id)?;
-    if rank(&v.version_type).is_none() {
+fn validate(v: &WireVersion) -> Result<()> {
+    ascii(v.id.as_bytes(), 16, b"", "InvalidModrinthVersionId")?;
+    ascii(v.project_id.as_bytes(), 16, b"", "InvalidModrinthVersionId")?;
+    if !matches!(v.version_type.as_bytes(), b"release" | b"beta" | b"alpha") {
         return Err("InvalidModrinthVersionType".into());
     }
     if v.game_versions.is_empty() || v.game_versions.len() > 128 {
         return Err("InvalidModrinthGameVersions".into());
     }
     for s in &v.game_versions {
-        game_version(s)?
+        ascii(s.as_bytes(), 64, b".-_+", "InvalidGameVersion")?
     }
     loaders(&v.loaders, true)?;
     if v.files.is_empty() || v.files.len() > 64 {
@@ -230,7 +233,14 @@ fn validate(v: &Version) -> Result<()> {
         {
             return Err("InvalidModrinthUrl".into());
         }
-        if f.hashes.sha1.len() != 40 || !f.hashes.sha1.bytes().all(|b| b.is_ascii_hexdigit()) {
+        if f.hashes.sha1.as_bytes().len() != 40
+            || !f
+                .hashes
+                .sha1
+                .as_bytes()
+                .iter()
+                .all(|b| b.is_ascii_hexdigit())
+        {
             return Err("InvalidModrinthHash".into());
         }
         if f.size == 0 || f.size > 512 * 1024 * 1024 {
@@ -242,22 +252,22 @@ fn validate(v: &Version) -> Result<()> {
     }
     for d in &v.dependencies {
         if let Some(s) = &d.version_id {
-            version_id(s)?
+            ascii(s.as_bytes(), 16, b"", "InvalidModrinthVersionId")?
         }
         if let Some(s) = &d.project_id {
-            version_id(s)?
+            ascii(s.as_bytes(), 16, b"", "InvalidModrinthVersionId")?
         }
     }
     Ok(())
 }
 pub fn parse_version(b: &[u8]) -> Result<Version> {
-    let v = parse(b, 4 * 1024 * 1024, false)?;
+    let v: WireVersion = parse(b, 4 * 1024 * 1024, false)?;
     validate_completed_strings(b)?;
     validate(&v)?;
-    Ok(v)
+    v.into_public()
 }
 pub fn parse_versions(b: &[u8]) -> Result<Vec<Version>> {
-    let v: Vec<Version> = parse(b, 16 * 1024 * 1024, true)?;
+    let v: Vec<WireVersion> = parse(b, 16 * 1024 * 1024, true)?;
     validate_completed_strings(b)?;
     if v.len() > 512 {
         return Err("TooManyModrinthVersions".into());
@@ -265,7 +275,7 @@ pub fn parse_versions(b: &[u8]) -> Result<Vec<Version>> {
     for x in &v {
         validate(x)?
     }
-    Ok(v)
+    v.into_iter().map(WireVersion::into_public).collect()
 }
 pub fn supports(v: &Version, game: &str, loader: Option<&str>) -> bool {
     v.game_versions.iter().any(|s| s == game)
@@ -301,7 +311,7 @@ pub fn project_url(s: &str) -> Result<String> {
     Ok(format!("https://api.modrinth.com/v2/project/{s}"))
 }
 pub fn version_url(s: &str) -> Result<String> {
-    version_id(s)?;
+    ascii(s.as_bytes(), 16, b"", "InvalidModrinthVersionId")?;
     Ok(format!("https://api.modrinth.com/v2/version/{s}"))
 }
 pub fn versions_url(s: &str, g: &str, l: Option<&str>) -> Result<String> {
