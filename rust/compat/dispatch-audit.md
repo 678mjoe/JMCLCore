@@ -217,3 +217,21 @@ root, operational manifest, stopped guard, properties and selector ordering; the
 shared local mutation field executor retains CLI behavior. Lifecycle/store
 implementations are unchanged. The reviewed server-content fingerprint is
 updated; no running-server or non-Linux RPC acceptance is implied.
+
+## Read-only world parameter boundary review
+
+The `c881e042` change keeps the protocol call and module re-export unchanged.
+`worlds.list` and `worlds.get` now return through a private read handler before
+the original literal dispatcher; all other world methods retain that dispatcher.
+The two-method guard, private handler source and original module are separately
+fingerprinted. The read fixture reference is not an archive/mutation or native
+acceptance claim. No method association or platform label changes.
+
+The follow-up `e2ab125d` requires an object after existing lexical validation,
+before Serde can accept positional sequences. Method guards/links are unchanged;
+only the reviewed private read-handler digest is refreshed.
+
+The `b1a171bf` private read collector preserves the same two-method route and
+object guard; it enumerates native byte names, checks the source count before
+inspection and sorts accepted records afterward. Read-handler fingerprint and
+fixture reference are updated after review; no mutation/archive route changes.

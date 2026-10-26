@@ -343,6 +343,34 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           python rust/compat/server_adopt_display_bytes.py --zig .ci-oracle/zig-out/bin/jmcl-core --rust rust/target/release/jmcl-core-rust --oracle-source .ci-oracle
+      - name: No-state server adoption CLI display-name validation
+        if: runner.os == 'Linux'
+        run: |
+          python rust/compat/server_adopt_cli_display_bytes.py --zig .ci-oracle/zig-out/bin/jmcl-core --rust rust/target/release/jmcl-core-rust --oracle-source .ci-oracle
+      - name: Owned CAS root CLI error fidelity
+        if: runner.os == 'Linux'
+        run: |
+          python rust/compat/store_root_cli_errors.py --zig .ci-oracle/zig-out/bin/jmcl-core --rust rust/target/release/jmcl-core-rust --oracle-source .ci-oracle
+      - name: Read-only world RPC byte parameter compatibility
+        run: |
+          python - <<'PYTHON'
+          import os, subprocess, sys
+          suffix = ".exe" if os.name == "nt" else ""
+          subprocess.run([sys.executable, "rust/compat/world_read_parameters.py",
+                          "--zig", f".ci-oracle/zig-out/bin/jmcl-core{suffix}",
+                          "--rust", f"rust/target/release/jmcl-core-rust{suffix}",
+                          "--oracle-source", ".ci-oracle"], check=True)
+          PYTHON
+      - name: Read-only opaque world listing and limits
+        run: |
+          python - <<'PYTHON'
+          import os, subprocess, sys
+          suffix = ".exe" if os.name == "nt" else ""
+          subprocess.run([sys.executable, "rust/compat/world_list_names.py",
+                          "--zig", f".ci-oracle/zig-out/bin/jmcl-core{suffix}",
+                          "--rust", f"rust/target/release/jmcl-core-rust{suffix}",
+                          "--oracle-source", ".ci-oracle"], check=True)
+          PYTHON
       - name: Native instance content CLI path contracts
         run: |
           python - <<'PYTHON'

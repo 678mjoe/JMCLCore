@@ -16,8 +16,8 @@
     "rust/src/java/select.rs": "e8e9c0f07ad7eaad106d998489af240ff089079118ead7a3055a8fd2c43fec6e",
     "rust/src/accounts.rs": "f1efb49ca4cc61a7f5a3fb6859a9d0e91aff6d4d66178dc4fa5795e8f0867117",
     "rust/src/instances.rs": "34033a235b52b7438a92051e0fbf5b81393ae70e4d726e4d32debb5e84f8514d",
-    "rust/src/worlds/rpc.rs": "bede3fb6f1f9aa597cadc8e7c08f06437ac0cb940dc864fc9aceb7cc0d539184",
-    "rust/src/worlds/mod.rs": "2d6b1d8791c441fca642054b4432455e55ccdbd2e832784b844599e3fb3a7f43",
+    "rust/src/worlds/rpc.rs": "c2d852a361b99ce13246a8c74b4c11c7943d6a684b4730f13b2bc061d0d86f83",
+    "rust/src/worlds/mod.rs": "f9b44469b1cf540b102c15127efc786b693d659eff9050d2094a8b1aa47ac0ee",
     "rust/src/content/mod.rs": "b2f4a5ad98e611e016f9cecc4a004543253950142cd3535fe68791476e25ad04",
     "rust/src/content/adopt.rs": "2d1292208ed8db1a49c1a5131770898d36f1a28e8fd425a4511f21d83285c094",
     "rust/src/java/mod.rs": "c682b1b918f24c599c3bd726115d0bbf37ebe4da4460f9a2825996906f7351d1",
@@ -28,7 +28,8 @@
     "rust/src/servers/rpc.rs": "e3799d267b4e237f923ba58b91c67ec9ff8ae2ca603a97107826951b378519a7",
     "rust/src/servers/remote.rs": "b50b0b2e7ced8f5972a5695b4778cae1b9317311d1417f9fd46c936cd023b819",
     "rust/src/worlds/server.rs": "46af54419883e82e02e45953066144f20a1e2a02140e92d40cc8ac0d7a98869a",
-    "rust/src/protocol.rs": "a65e5405caf015d1eb9f3052df2df44fea6e0ff29003b69c5ddb28d4d8a10007"
+    "rust/src/protocol.rs": "a65e5405caf015d1eb9f3052df2df44fea6e0ff29003b69c5ddb28d4d8a10007",
+    "rust/src/worlds/read.rs": "6273ce7913eedeeed5e4a3cd4712257cb15c4ff28ca7ee410be3f5668e59dd54"
   },
   "routes": [
     {
@@ -423,6 +424,14 @@
         {
           "path": "rust/src/worlds/mod.rs",
           "anchor": "pub use rpc::handle;"
+        },
+        {
+          "path": "rust/src/worlds/rpc.rs",
+          "anchor": "return Some(super::read::handle(method, params));"
+        },
+        {
+          "path": "rust/src/worlds/read.rs",
+          "anchor": "pub(super) fn handle("
         }
       ],
       "selector": {
@@ -435,7 +444,9 @@
         "status": "referenced_not_run",
         "scope": "related_group_fixtures_not_per_method_or_platform_completion",
         "paths": [
-          "rust/src/worlds/tests.rs"
+          "rust/src/worlds/tests.rs",
+          "rust/compat/world_read_parameters.py",
+          "rust/compat/world_list_names.py"
         ]
       }
     },

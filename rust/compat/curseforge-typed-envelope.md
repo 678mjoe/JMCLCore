@@ -41,3 +41,7 @@ limitations; this is not a complete lexer parity claim.
 The later [File-only ordered parser](curseforge-file-ordered.md) replaces the
 File serde envelope to preserve failed-typed lexical ordering. Project retains
 the typed envelope described here; Page and download-URL parsers are unchanged.
+
+The subsequent [ordered Project parser](curseforge-project-ordered.md) also
+replaces the Project serde envelope, preserving earlier lexical errors and
+slug semantic rejection order. The historical matrix remains a regression gate.

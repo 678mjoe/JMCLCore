@@ -5,6 +5,9 @@ pub fn handle(
     method: &str,
     params: Option<&RawValue>,
 ) -> Option<std::result::Result<Value, RpcError>> {
+    if matches!(method, "worlds.list" | "worlds.get") {
+        return Some(super::read::handle(method, params));
+    }
     let (what, fallback, message) = match method {
         "worlds.list" => ("worlds list", "WORLD_LIST_FAILED", "Failed to list worlds"),
         "worlds.get" => (

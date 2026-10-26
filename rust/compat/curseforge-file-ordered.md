@@ -67,3 +67,7 @@ before the 50-record limit and semantic validation remains unchanged. Resolver
 pagination and the 512-file aggregate limit are outside this change, as are
 acquisition, credentials, redirects and HTTP behavior. Modrinth Project and
 Version schema behavior is unchanged by cursor visibility adjustments.
+
+A subsequent [Page-only increment](curseforge-page-ordered.md) reuses the File
+schema in an ordered Page envelope; the File evidence and limits above remain
+applicable. Project and download-URL parsing remain separate.

@@ -8,6 +8,7 @@ pub(crate) mod fs;
 #[path = "windows.rs"]
 pub(crate) mod fs;
 mod nbt;
+mod read;
 mod rpc;
 pub use cli::cli;
 use flate2::{Compression, read::GzDecoder, write::GzEncoder};

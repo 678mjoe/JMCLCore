@@ -292,7 +292,7 @@ fn cli_execute<M: remote::Metadata + curseforge::Metadata + Sync, T: install::Tr
         None
     };
     let prepared = (|| -> Result<_, String> {
-        let (dir, game, loader) = if matches!(op, "list" | "enable" | "disable" | "remove") {
+        let (dir, game, loader) = if matches!(op, "list" | "enable" | "disable" | "remove" | "adopt") {
             cli_read_target(&p)?
         } else {
             target(&p, family == "mods" && op == "install")?

@@ -49,6 +49,14 @@ impl Dir {
             Mode::empty(),
         ))?)))
     }
+    pub(super) fn child_alias_native(&self, name: &OsStr) -> Result<Self> {
+        Ok(Self(File::from(cv(fs::openat(
+            &self.0,
+            name,
+            OFlags::RDONLY | OFlags::DIRECTORY | OFlags::CLOEXEC,
+            Mode::empty(),
+        ))?)))
+    }
     pub fn new_child(&self, name: &str) -> Result<Self> {
         cv(fs::mkdirat(&self.0, name, Mode::from_raw_mode(0o755)))?;
         self.child(name, false)

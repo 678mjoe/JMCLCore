@@ -1,9 +1,9 @@
-//! Ordered File envelope only; other CurseForge entry points keep their parser.
+//! Ordered File and Page envelopes; Project and download-URL parsing are separate.
 use super::{Dependency, Detail, Hash, Pagination, mr};
 use mr::project_ordered::{Cursor, Token, decode};
 use mr::{Error, FilenameValue, Result};
 
-fn object(
+pub(super) fn object(
     c: &mut Cursor<'_>,
     names: &[&[u8]],
     mut field: impl FnMut(usize, &mut Cursor<'_>) -> Result<()>,
@@ -64,7 +64,7 @@ fn list<T>(
     }
 }
 
-fn number(c: &mut Cursor<'_>, width: usize) -> Result<u64> {
+pub(super) fn number(c: &mut Cursor<'_>, width: usize) -> Result<u64> {
     c.peek_value()?;
     match c.next()? {
         Token::String(raw) | Token::Number(raw) => {
@@ -74,7 +74,7 @@ fn number(c: &mut Cursor<'_>, width: usize) -> Result<u64> {
         _ => Err("UnexpectedToken".into()),
     }
 }
-fn boolean(c: &mut Cursor<'_>) -> Result<bool> {
+pub(super) fn boolean(c: &mut Cursor<'_>) -> Result<bool> {
     c.peek_value()?;
     match c.next()? {
         Token::Bool(v) => Ok(v),
@@ -213,25 +213,38 @@ fn detail<F: FilenameValue>(c: &mut Cursor<'_>) -> Result<Detail<F>> {
         dependencies: dependencies.unwrap_or_default(),
     })
 }
-pub(super) fn parse<F: FilenameValue>(bytes: &[u8]) -> Result<Detail<F>> {
-    if bytes.len() > 2 * 1024 * 1024 {
+// Complete envelope typing precedes cardinality and semantic validation.
+pub(super) fn envelope<T>(
+    bytes: &[u8],
+    limit: usize,
+    mut read_data: impl FnMut(&mut Cursor<'_>) -> Result<T>,
+) -> Result<(T, Option<Pagination>)> {
+    if bytes.len() > limit {
         return Err("CurseforgeResponseTooLarge".into());
     }
     let mut c = Cursor::new(bytes);
-    let mut data = None;
+    let (mut data, mut page) = (None, None);
     object(&mut c, &[b"data", b"pagination"], |i, c| {
         match i {
-            0 => data = Some(detail(c)?),
-            1 => {
-                pagination(c)?;
-            }
+            0 => data = Some(read_data(c)?),
+            1 => page = pagination(c)?,
             _ => unreachable!(),
         };
         Ok(())
     })?;
     let data = data.ok_or("MissingField")?;
     c.finish()?;
-    Ok(data)
+    Ok((data, page))
+}
+pub(super) fn parse<F: FilenameValue>(bytes: &[u8]) -> Result<Detail<F>> {
+    envelope(bytes, 2 * 1024 * 1024, detail).map(|(data, _)| data)
+}
+pub(super) fn page<F: FilenameValue>(bytes: &[u8]) -> Result<(Vec<Detail<F>>, Option<Pagination>)> {
+    envelope(bytes, 8 * 1024 * 1024, |c| list(c, false, detail))
+}
+
+pub(super) fn url(bytes: &[u8]) -> Result<Option<String>> {
+    envelope(bytes, 2 * 1024 * 1024, optional_string).map(|(data, _)| data)
 }
 
 #[cfg(test)]

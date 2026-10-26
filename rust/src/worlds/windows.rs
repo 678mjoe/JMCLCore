@@ -39,6 +39,9 @@ impl Dir {
     pub fn child_alias(&self, name: &str) -> Result<Self> {
         Ok(Self(nt::read_dir_follow_at(&self.0, name.as_ref())?))
     }
+    pub(super) fn child_alias_native(&self, name: &OsStr) -> Result<Self> {
+        Ok(Self(nt::read_dir_follow_at(&self.0, name)?))
+    }
     pub fn new_child(&self, name: &str) -> Result<Self> {
         Ok(Self(nt::create_dir(&self.0, name.as_ref())?))
     }

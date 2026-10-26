@@ -122,45 +122,6 @@ pub(super) fn number_width<'de, D: serde::Deserializer<'de>>(
 pub(super) fn number<'de, D: serde::Deserializer<'de>>(d: D) -> std::result::Result<u64, D::Error> {
     number_width(d, 64)
 }
-pub(super) fn parse<T: serde::de::DeserializeOwned>(
-    bytes: &[u8],
-    max: usize,
-    array: bool,
-) -> Result<T> {
-    if bytes.len() > max {
-        return Err("ModrinthResponseTooLarge".into());
-    }
-    if !bytes
-        .iter()
-        .find(|b| !b.is_ascii_whitespace())
-        .is_some_and(|b| *b == if array { b'[' } else { b'{' })
-    {
-        return Err("UnexpectedToken".into());
-    }
-    serde_json::from_slice(bytes).map_err(|e| {
-        let s = e.to_string();
-        Error(
-            (if s.starts_with("missing field") {
-                "MissingField"
-            } else if s.starts_with("duplicate field") {
-                "DuplicateField"
-            } else if s.starts_with("unknown variant") {
-                "InvalidEnumTag"
-            } else if s.starts_with("Overflow") {
-                "Overflow"
-            } else if s.starts_with("InvalidNumber") {
-                "InvalidNumber"
-            } else if s.starts_with("InvalidCharacter") {
-                "InvalidCharacter"
-            } else if e.is_eof() {
-                "UnexpectedEndOfInput"
-            } else {
-                "UnexpectedToken"
-            })
-            .into(),
-        )
-    })
-}
 fn ascii(s: &[u8], max: usize, extra: &[u8], err: &str) -> Result<()> {
     if s.is_empty()
         || s.len() > max

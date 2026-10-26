@@ -252,7 +252,13 @@ pub(crate) fn walk(path: &Path, create: bool) -> io::Result<File> {
         return Err(invalid("EmptyStoreDirectory"));
     }
     if create {
-        std::fs::create_dir_all(path)?;
+        match std::fs::create_dir_all(path) {
+            Ok(()) => {}
+            // Let the unchanged no-follow directory open classify an existing
+            // non-directory. Do not guess its type or follow a final alias.
+            Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {}
+            Err(e) => return Err(e),
+        }
     }
     let absolute = std::path::absolute(path)?;
     let text = absolute.as_os_str().encode_wide().collect::<Vec<_>>();

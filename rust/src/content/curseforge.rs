@@ -1,6 +1,8 @@
 //! Caller-keyed CurseForge resolution; keys never enter returned metadata/plans.
 #[path = "curseforge_file.rs"]
 mod file_ordered;
+#[path = "curseforge_project.rs"]
+mod project_ordered;
 use super::{
     modrinth as mr,
     registry::{Kind, Provider, Registry},
@@ -8,7 +10,6 @@ use super::{
 };
 use crate::modpack::provider;
 use serde::Deserialize;
-use serde_json::value::RawValue;
 use std::collections::HashSet;
 pub trait Metadata {
     fn get(&self, url: &str, key: &str, limit: usize) -> mr::Result<Vec<u8>>;
@@ -32,19 +33,6 @@ fn number32<'de, D: serde::Deserializer<'de>>(d: D) -> Result<u32, D::Error> {
 }
 fn number8<'de, D: serde::Deserializer<'de>>(d: D) -> Result<u8, D::Error> {
     mr::number_width(d, 8).map(|n| n as u8)
-}
-#[derive(Deserialize)]
-struct Envelope {
-    #[allow(dead_code)] // Retained raw schema check for download_url.
-    data: Box<RawValue>,
-    #[allow(dead_code)] // Still typed for single-record schema/error compatibility.
-    pagination: Option<Pagination>,
-}
-#[derive(Deserialize)]
-struct TypedEnvelope<T> {
-    data: T,
-    #[allow(dead_code)] // Typed in input order even when only data is consumed.
-    pagination: Option<Pagination>,
 }
 #[derive(Deserialize)]
 #[allow(dead_code)] // Fields are parsed for original schema validation.
@@ -71,50 +59,42 @@ struct Project {
     #[serde(default = "yes", rename = "isAvailable")]
     available: bool,
 }
-// Only call after BOTH envelope and inner typed schema succeed, never after
-// Envelope<RawValue> alone. Earlier schema errors must retain their precedence.
-fn validate_completed_document(bytes: &[u8]) -> mr::Result<()> {
-    let text = std::str::from_utf8(bytes).map_err(|_| mr::Error::from("SyntaxError"))?;
-    crate::auth::json::Json::parse(text)
-        .map(|_| ())
-        .map_err(|_| mr::Error::from("SyntaxError"))
-}
 fn parse_project(bytes: &[u8]) -> mr::Result<Project> {
     if bytes.len() > 2 * 1024 * 1024 {
         return Err("CurseforgeResponseTooLarge".into());
     }
-    let env: TypedEnvelope<Project> = mr::parse(bytes, 2 * 1024 * 1024, false)?;
-    let p = env.data;
-    validate_completed_document(bytes)?;
+    let p = project_ordered::parse(bytes)?;
     if p.id == 0 {
         return Err("InvalidCurseforgeId".into());
     }
-    if p.slug.is_empty()
-        || p.slug.len() > 128
+    if p.slug.as_bytes().is_empty()
+        || p.slug.as_bytes().len() > 128
         || !p
             .slug
-            .bytes()
-            .all(|b| b.is_ascii_alphanumeric() || b"-_.".contains(&b))
+            .as_bytes()
+            .iter()
+            .all(|b| b.is_ascii_alphanumeric() || b"-_.".contains(b))
     {
         return Err("InvalidCurseforgeSlug".into());
     }
-    Ok(p)
+    Ok(Project {
+        id: p.id,
+        slug: String::from_utf8(p.slug.into_bytes())
+            .map_err(|_| mr::Error::from("InvalidCurseforgeSlug"))?,
+        name: p.name,
+        class_id: p.class_id,
+        available: p.available,
+    })
 }
 pub(super) fn download_url(bytes: &[u8]) -> mr::Result<Option<String>> {
     if bytes.len() > 2 * 1024 * 1024 {
         return Err("CurseforgeResponseTooLarge".into());
     }
-    let _: Envelope = mr::parse(bytes, 2 * 1024 * 1024, false)?;
-    #[derive(Deserialize)]
-    struct Url {
-        #[serde(deserialize_with = "mr::optional_string")]
-        data: Option<String>,
-    }
-    let u: Url = mr::parse(bytes, 2 * 1024 * 1024, false)?;
-    if let Some(u) = &u.data {
+    let u = file_ordered::url(bytes)?;
+    if let Some(u) = &u {
         validate_url(u)?
     }
-    Ok(u.data)
+    Ok(u)
 }
 fn validate_url(u: &str) -> mr::Result<()> {
     if !u.starts_with("https://") {
@@ -349,12 +329,6 @@ pub fn page_url(project: &str, game: &str, loader: Option<&str>, index: u32) -> 
     Ok(u)
 }
 // The source types the entire page before length and per-file semantic checks.
-#[derive(Deserialize)]
-#[serde(bound(deserialize = "F: mr::FilenameValue"))]
-struct PageEnvelope<F> {
-    data: Vec<Detail<F>>,
-    pagination: Option<Pagination>,
-}
 fn parse_page_as<F: mr::FilenameValue>(
     bytes: &[u8],
 ) -> mr::Result<(Vec<FileRecord<F>>, Option<Pagination>)> {
@@ -362,17 +336,15 @@ fn parse_page_as<F: mr::FilenameValue>(
     if bytes.len() > LIMIT {
         return Err("CurseforgeResponseTooLarge".into());
     }
-    let page: PageEnvelope<F> = mr::parse(bytes, LIMIT, false)?;
-    validate_completed_document(bytes)?;
-    if page.data.len() > 50 {
+    let (data, pagination) = file_ordered::page(bytes)?;
+    if data.len() > 50 {
         return Err("TooManyCurseforgeFiles".into());
     }
-    let files = page
-        .data
+    let files = data
         .into_iter()
         .map(validate_detail_as)
         .collect::<mr::Result<_>>()?;
-    Ok((files, page.pagination))
+    Ok((files, pagination))
 }
 struct Resolver<'a, T, F, R: super::registry::RegistryFile> {
     transport: &'a T,
@@ -625,3 +597,15 @@ mod page_parser_tests;
 #[cfg(test)]
 #[path = "../../tests/support/curseforge_typed_envelope.rs"]
 mod typed_envelope_tests;
+
+#[cfg(test)]
+#[path = "../../tests/support/curseforge_page_ordered.rs"]
+mod page_ordered_tests;
+
+#[cfg(test)]
+#[path = "../../tests/support/curseforge_project_ordered.rs"]
+mod project_ordered_tests;
+
+#[cfg(test)]
+#[path = "../../tests/support/curseforge_url_ordered.rs"]
+mod url_ordered_tests;
