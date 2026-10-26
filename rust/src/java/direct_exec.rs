@@ -1,5 +1,6 @@
-//! macOS libc spawnp may interpret an ENOEXEC file through /bin/sh. The Zig
-//! oracle calls execve directly, so use a preallocated execve callback instead.
+//! Preserve Zig parent-PATH lookup instead of Command's child-PATH lookup.
+//! macOS libc spawnp may also interpret ENOEXEC through /bin/sh; Zig does not.
+//! Use a preallocated execve callback, with no shell interpretation fallback.
 //! All allocation happens before fork; the child only calls execve/reads errno.
 use super::detect::Environment;
 use std::ffi::{c_char, c_int};

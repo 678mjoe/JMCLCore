@@ -20,7 +20,7 @@
     "rust/src/worlds/mod.rs": "2d6b1d8791c441fca642054b4432455e55ccdbd2e832784b844599e3fb3a7f43",
     "rust/src/content/mod.rs": "aacd339dd95bc65f493c75f43c0b1258171393591fda1e67126fc9b0de898781",
     "rust/src/content/adopt.rs": "fe6af9c68516f1b2d5be671cc8ebfbc3aae7fc365567179b38d90dcf0b0986e6",
-    "rust/src/java/mod.rs": "e0f712a7916c29417f4102cbd8281b96d0891908a13f1bfa2d21310c0e3261ad",
+    "rust/src/java/mod.rs": "f59a00ae3666b64d97a9bd89e1861105a5fa34b6c67c4998c4a913eb114dc6d6",
     "rust/src/store/commands.rs": "078920c8e80734d070a910de377d270da56942d623eb0d203be90a2e4d4f9efc",
     "rust/src/store/mod.rs": "1c8215f96e9371a8263c515aed34fe1d50209950ca59e0672f4d3bc7cf34b47d",
     "rust/src/servers/creation.rs": "38419fe848c53c5fe9cf3a74331a54eb19231702d1d8838ba08bb5be7b409d0e",

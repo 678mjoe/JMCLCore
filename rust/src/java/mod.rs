@@ -268,5 +268,5 @@ pub mod select;
 
 pub mod runtime_plan;
 
-#[cfg(all(unix, any(target_os = "macos", test)))]
+#[cfg(unix)]
 mod direct_exec;
