@@ -122,8 +122,10 @@ pub fn select_compatible(detection: &Detection, major: u16, arch: &str) -> Resul
 }
 fn io_name(e: &io::Error) -> Error {
     #[cfg(unix)]
-    if e.raw_os_error() == Some(8) {
-        return "InvalidExe";
+    match e.raw_os_error() {
+        Some(8) => return "InvalidExe",
+        Some(20) => return "NotDir",
+        _ => {}
     }
     #[cfg(windows)]
     if e.raw_os_error() == Some(193) {
@@ -249,7 +251,7 @@ pub fn run_bounded(
         use std::os::windows::process::CommandExt;
         cmd.creation_flags(0x08000000);
     }
-    #[cfg(target_os = "macos")]
+    #[cfg(unix)]
     super::direct_exec::configure(&mut cmd, executable, args, env).map_err(|e| io_name(&e))?;
     let mut child = cmd.spawn().map_err(|e| io_name(&e))?;
     let mut out = child.stdout.take().ok_or("Unexpected")?;
@@ -425,6 +427,23 @@ pub fn detect(env: &Environment, explicit: &[String]) -> Result<Detection, Error
 }
 #[cfg(test)]
 mod tests {
+    #[cfg(unix)]
+    #[test]
+    fn explicit_probe_errno_names_are_narrow() {
+        for (errno, expected) in [
+            (8, "InvalidExe"),
+            (20, "NotDir"),
+            (2, "FileNotFound"),
+            (13, "AccessDenied"),
+            (22, "InvalidArgument"),
+            (5, "Unexpected"),
+        ] {
+            assert_eq!(
+                super::io_name(&std::io::Error::from_raw_os_error(errno)),
+                expected
+            );
+        }
+    }
     use super::*;
     #[test]
     fn versions_and_arch() {
