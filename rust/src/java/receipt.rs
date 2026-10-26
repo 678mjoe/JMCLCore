@@ -40,18 +40,64 @@ macro_rules! number {
         }
     };
 }
-number!(de_u16, u16);
-number!(de_u32, u32);
+// This existing helper is also consumed by runtime_plan. Keep its semantics
+// isolated from persisted receipt parsing; acquisition/planning is not changed.
 number!(de_u64, u64);
-number!(de_i64, i64);
+fn persisted_unsigned<'de, D: serde::Deserializer<'de>>(
+    d: D,
+    width: usize,
+) -> Result<u64, D::Error> {
+    let raw = <&serde_json::value::RawValue>::deserialize(d)?;
+    crate::json_number::typed_raw(raw.get(), width).map_err(|e| serde::de::Error::custom(e.name()))
+}
+fn persisted_u16<'de, D: serde::Deserializer<'de>>(d: D) -> Result<u16, D::Error> {
+    persisted_unsigned(d, 16).map(|n| n as u16)
+}
+fn persisted_u32<'de, D: serde::Deserializer<'de>>(d: D) -> Result<u32, D::Error> {
+    persisted_unsigned(d, 32).map(|n| n as u32)
+}
+fn persisted_u64<'de, D: serde::Deserializer<'de>>(d: D) -> Result<u64, D::Error> {
+    persisted_unsigned(d, 64)
+}
+fn persisted_i64<'de, D: serde::Deserializer<'de>>(d: D) -> Result<i64, D::Error> {
+    let raw = <&serde_json::value::RawValue>::deserialize(d)?;
+    let token = raw.get();
+    let decoded;
+    let text = if token.starts_with('"') {
+        decoded = crate::auth::json::Json(token)
+            .string()
+            .map_err(|_| serde::de::Error::custom("InvalidCharacter"))?;
+        decoded.as_str()
+    } else if token
+        .as_bytes()
+        .first()
+        .is_some_and(|b| b.is_ascii_digit() || *b == b'-')
+    {
+        token
+    } else {
+        return Err(serde::de::Error::custom("UnexpectedToken"));
+    };
+    let negative = text.starts_with('-');
+    let magnitude = text.strip_prefix(['+', '-']).unwrap_or(text);
+    if magnitude.starts_with(['+', '-']) {
+        return Err(serde::de::Error::custom("InvalidCharacter"));
+    }
+    let n = crate::json_number::unsigned_text(magnitude, 64)
+        .map_err(|e| serde::de::Error::custom(e.name()))?;
+    if negative && n == 1u64 << 63 {
+        return Ok(i64::MIN);
+    }
+    let n = i64::try_from(n).map_err(|_| serde::de::Error::custom("Overflow"))?;
+    Ok(if negative { -n } else { n })
+}
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Receipt {
-    #[serde(default = "schema", deserialize_with = "de_u32")]
+    #[serde(default = "schema", deserialize_with = "persisted_u32")]
     pub schema_version: u32,
     pub provider: Provider,
     pub id: String,
     pub platform: String,
-    #[serde(deserialize_with = "de_u16")]
+    #[serde(deserialize_with = "persisted_u16")]
     pub major_version: u16,
     pub java_home: String,
     pub executable: String,
@@ -61,11 +107,11 @@ pub struct Receipt {
     pub package_uuid: Option<String>,
     pub package_name: Option<String>,
     pub source_url: String,
-    #[serde(default, deserialize_with = "de_u32")]
+    #[serde(default, deserialize_with = "persisted_u32")]
     pub files_total: u32,
-    #[serde(default, deserialize_with = "de_u64")]
+    #[serde(default, deserialize_with = "persisted_u64")]
     pub bytes_total: u64,
-    #[serde(deserialize_with = "de_i64")]
+    #[serde(deserialize_with = "persisted_i64")]
     pub installed_at_ms: i64,
 }
 pub fn platform_target(platform: &str) -> Option<(&'static str, &'static str)> {
