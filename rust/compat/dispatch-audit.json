@@ -6,7 +6,7 @@
   "source_sha256": {
     "rust/src/auth/mod.rs": "8f866931b0ffcdfa256049ac95c8b9b8d0eec7e810e001767fbf9977390b4eb5",
     "rust/src/content/rpc.rs": "31c43a2d4cb2f2d08f45743ded190358026655561b84d4a32f81abce45bd3e94",
-    "rust/src/content/registry.rs": "e83a9cb0476d9e453f9eaa59c690802ee486bc8a23970851b170b8f54b6cbc88",
+    "rust/src/content/registry.rs": "d991b819091934fbea794dfbb5f5a170012d141648b2dfcbba0975b554adac7c",
     "rust/src/server_content.rs": "b41d30ed30b95704f99ca2a64f7ca9e6d6e3afad19f2a58915dce2a9a01b321e",
     "rust/src/servers/installation.rs": "2f97795eaec4020b0f9ac278600ebda2f8c7745afa5c84aec2711efd745b00e6",
     "rust/src/install/rpc.rs": "84f3d4050fa7cb271e65f8e6adccb77e12f166d862f1f66e3aaaea5c8d825f50",

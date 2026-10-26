@@ -127,6 +127,104 @@ fn number<'de, D: serde::Deserializer<'de>>(d: D) -> Result<u64, D::Error> {
 fn schema<'de, D: serde::Deserializer<'de>>(d: D) -> Result<u32, D::Error> {
     typed_number(d, 32).map(|n| n as u32)
 }
+// Disk parsing retains every typed byte slice through full deserialization and
+// ordered validation. Public storage/mutation structs still contain Strings.
+#[derive(Deserialize)]
+struct WireSource {
+    provider: Provider,
+    #[serde(default)]
+    project_id: Option<super::modrinth::MetadataBytes>,
+    #[serde(default)]
+    version_id: Option<super::modrinth::MetadataBytes>,
+    #[serde(default)]
+    slug: Option<super::modrinth::MetadataBytes>,
+}
+#[derive(Deserialize)]
+#[serde(bound(deserialize = "F: RegistryFile"))]
+struct WireEntry<F: RegistryFile> {
+    kind: Kind,
+    #[serde(deserialize_with = "file")]
+    file: F,
+    sha1: super::modrinth::MetadataBytes,
+    #[serde(deserialize_with = "number")]
+    size: u64,
+    source: WireSource,
+    #[serde(default = "yes")]
+    enabled: bool,
+    #[serde(default)]
+    as_dependency: bool,
+}
+#[derive(Deserialize)]
+#[serde(bound(deserialize = "F: RegistryFile"))]
+struct WireRegistry<F: RegistryFile> {
+    #[serde(default = "one", deserialize_with = "schema")]
+    schema_version: u32,
+    #[serde(default)]
+    entries: Vec<WireEntry<F>>,
+}
+struct SourceView<'a> {
+    provider: Provider,
+    project_id: Option<&'a [u8]>,
+    version_id: Option<&'a [u8]>,
+    slug: Option<&'a [u8]>,
+}
+struct EntryView<'a> {
+    kind: Kind,
+    file: &'a [u8],
+    sha1: &'a [u8],
+    size: u64,
+    source: SourceView<'a>,
+}
+impl<F: RegistryFile> WireRegistry<F> {
+    fn into_validated(self) -> Result<RegistryRecord<F>, &'static str> {
+        validate_header(self.schema_version, self.entries.len())?;
+        let views: Vec<_> = self
+            .entries
+            .iter()
+            .map(|e| EntryView {
+                kind: e.kind,
+                file: e.file.file_bytes(),
+                sha1: e.sha1.as_bytes(),
+                size: e.size,
+                source: SourceView {
+                    provider: e.source.provider,
+                    project_id: e.source.project_id.as_ref().map(|s| s.as_bytes()),
+                    version_id: e.source.version_id.as_ref().map(|s| s.as_bytes()),
+                    slug: e.source.slug.as_ref().map(|s| s.as_bytes()),
+                },
+            })
+            .collect();
+        validate_entries(&views)?;
+        // All present source strings and SHA-1 have now been proven ASCII.
+        fn text(v: super::modrinth::MetadataBytes) -> Result<String, &'static str> {
+            String::from_utf8(v.into_bytes()).map_err(|_| "UnexpectedToken")
+        }
+        let entries = self
+            .entries
+            .into_iter()
+            .map(|e| {
+                Ok(EntryRecord {
+                    kind: e.kind,
+                    file: e.file,
+                    sha1: text(e.sha1)?,
+                    size: e.size,
+                    source: Source {
+                        provider: e.source.provider,
+                        project_id: e.source.project_id.map(text).transpose()?,
+                        version_id: e.source.version_id.map(text).transpose()?,
+                        slug: e.source.slug.map(text).transpose()?,
+                    },
+                    enabled: e.enabled,
+                    as_dependency: e.as_dependency,
+                })
+            })
+            .collect::<Result<Vec<_>, &'static str>>()?;
+        Ok(RegistryRecord {
+            schema_version: self.schema_version,
+            entries,
+        })
+    }
+}
 pub fn parse(bytes: &[u8]) -> Result<Registry, &'static str> {
     parse_as(bytes)
 }
@@ -148,7 +246,7 @@ fn parse_as<F: RegistryFile>(bytes: &[u8]) -> Result<RegistryRecord<F>, &'static
             "UnexpectedToken"
         });
     };
-    let r: RegistryRecord<F> = serde_json::from_slice(bytes).map_err(|e| {
+    let r: WireRegistry<F> = serde_json::from_slice(bytes).map_err(|e| {
         let m = e.to_string();
         if m.starts_with("Zig:InvalidNumber") || m.starts_with("InvalidNumber") {
             "InvalidNumber"
@@ -168,99 +266,132 @@ fn parse_as<F: RegistryFile>(bytes: &[u8]) -> Result<RegistryRecord<F>, &'static
             "UnexpectedToken"
         }
     })?;
-    r.validate()?;
-    Ok(r)
+    // The complete typed document has parsed. Unknown fields are ignored, but
+    // their JSON strings must still be well formed before semantic validation.
+    let text = std::str::from_utf8(bytes).map_err(|_| "SyntaxError")?;
+    crate::auth::json::Json::parse(text).map_err(|_| "SyntaxError")?;
+    r.into_validated()
 }
 impl<F: RegistryFile> RegistryRecord<F> {
     pub fn validate(&self) -> Result<(), &'static str> {
-        if self.schema_version != 1 {
-            return Err("UnsupportedContentSchema");
-        }
-        if self.entries.len() > 1024 {
-            return Err("TooManyContentEntries");
-        }
-        for (i, e) in self.entries.iter().enumerate() {
-            if !relative_path_bytes(e.file.file_bytes()) {
-                return Err("UnsafePath");
-            }
-            if e.file.file_bytes().len() > 512 {
-                return Err("InvalidContentFile");
-            }
-            let prefix = format!("{}/", e.kind.directory());
-            if !e.file.file_bytes().starts_with(prefix.as_bytes())
-                || e.file.file_bytes().len() <= prefix.len()
-                || (e.kind == Kind::Datapack && !e.file.file_bytes().ends_with(b".zip"))
-            {
-                return Err("ContentKindPathMismatch");
-            };
-            if e.sha1.len() != 40 || !e.sha1.bytes().all(|b| b.is_ascii_hexdigit()) {
-                return Err("InvalidContentSha1");
-            };
-            if e.size == 0 || e.size > 4 * 1024 * 1024 * 1024 {
-                return Err("InvalidContentSize");
-            };
-            match e.source.provider {
-                Provider::Manual => {
-                    if e.source.project_id.is_some()
-                        || e.source.version_id.is_some()
-                        || e.source.slug.is_some()
-                    {
-                        return Err("InvalidContentSource");
-                    }
-                }
-                p => {
-                    let validate = if p == Provider::Modrinth {
-                        version_id
-                    } else {
-                        numeric_id
-                    };
-                    // Match Zig's ordered validation: a missing ID is a
-                    // content-source error, but a present malformed ID keeps
-                    // the provider's error, even if the next ID is missing.
-                    for value in [&e.source.project_id, &e.source.version_id] {
-                        let value = value.as_deref().ok_or("InvalidContentSource")?;
-                        if !validate(value) {
-                            return Err(if p == Provider::Modrinth {
-                                "InvalidModrinthVersionId"
-                            } else {
-                                "InvalidCurseforgeId"
-                            });
-                        }
-                    }
-                    if e.source.slug.as_deref().is_some_and(|s| !project_ref(s)) {
-                        return Err("InvalidModrinthProject");
-                    }
-                }
-            };
-            for other in &self.entries[i + 1..] {
-                if e.file == other.file {
-                    return Err("DuplicateContentFile");
-                }
-                if e.source.provider == other.source.provider
-                    && e.source.project_id.is_some()
-                    && e.source.project_id == other.source.project_id
-                {
-                    return Err("DuplicateContentProject");
-                }
-            }
-        }
-        Ok(())
+        validate_header(self.schema_version, self.entries.len())?;
+        let views: Vec<_> = self
+            .entries
+            .iter()
+            .map(|e| EntryView {
+                kind: e.kind,
+                file: e.file.file_bytes(),
+                sha1: e.sha1.as_bytes(),
+                size: e.size,
+                source: SourceView {
+                    provider: e.source.provider,
+                    project_id: e.source.project_id.as_deref().map(str::as_bytes),
+                    version_id: e.source.version_id.as_deref().map(str::as_bytes),
+                    slug: e.source.slug.as_deref().map(str::as_bytes),
+                },
+            })
+            .collect();
+        validate_entries(&views)
     }
 }
+fn validate_header(schema_version: u32, count: usize) -> Result<(), &'static str> {
+    if schema_version != 1 {
+        return Err("UnsupportedContentSchema");
+    }
+    if count > 1024 {
+        return Err("TooManyContentEntries");
+    }
+    Ok(())
+}
+fn validate_entries(entries: &[EntryView<'_>]) -> Result<(), &'static str> {
+    for (i, e) in entries.iter().enumerate() {
+        if !relative_path_bytes(e.file) {
+            return Err("UnsafePath");
+        }
+        if e.file.len() > 512 {
+            return Err("InvalidContentFile");
+        }
+        let prefix = format!("{}/", e.kind.directory());
+        if !e.file.starts_with(prefix.as_bytes())
+            || e.file.len() <= prefix.len()
+            || (e.kind == Kind::Datapack && !e.file.ends_with(b".zip"))
+        {
+            return Err("ContentKindPathMismatch");
+        };
+        if e.sha1.len() != 40 || !e.sha1.iter().all(|b| b.is_ascii_hexdigit()) {
+            return Err("InvalidContentSha1");
+        };
+        if e.size == 0 || e.size > 4 * 1024 * 1024 * 1024 {
+            return Err("InvalidContentSize");
+        };
+        match e.source.provider {
+            Provider::Manual => {
+                if e.source.project_id.is_some()
+                    || e.source.version_id.is_some()
+                    || e.source.slug.is_some()
+                {
+                    return Err("InvalidContentSource");
+                }
+            }
+            p => {
+                let validate = if p == Provider::Modrinth {
+                    version_id_bytes
+                } else {
+                    numeric_id_bytes
+                };
+                // Match Zig's ordered validation: a missing ID is a
+                // content-source error, but a present malformed ID keeps
+                // the provider's error, even if the next ID is missing.
+                for value in [&e.source.project_id, &e.source.version_id] {
+                    let value = value.ok_or("InvalidContentSource")?;
+                    if !validate(value) {
+                        return Err(if p == Provider::Modrinth {
+                            "InvalidModrinthVersionId"
+                        } else {
+                            "InvalidCurseforgeId"
+                        });
+                    }
+                }
+                if e.source.slug.is_some_and(|s| !project_ref_bytes(s)) {
+                    return Err("InvalidModrinthProject");
+                }
+            }
+        };
+        for other in &entries[i + 1..] {
+            if e.file == other.file {
+                return Err("DuplicateContentFile");
+            }
+            if e.source.provider == other.source.provider
+                && e.source.project_id.is_some()
+                && e.source.project_id == other.source.project_id
+            {
+                return Err("DuplicateContentProject");
+            }
+        }
+    }
+    Ok(())
+}
 pub fn project_ref(s: &str) -> bool {
+    project_ref_bytes(s.as_bytes())
+}
+fn project_ref_bytes(s: &[u8]) -> bool {
     !s.is_empty()
         && s.len() <= 64
-        && s.bytes()
+        && s.iter()
             .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.'))
 }
-fn version_id(s: &str) -> bool {
-    !s.is_empty() && s.len() <= 16 && s.bytes().all(|b| b.is_ascii_alphanumeric())
+fn version_id_bytes(s: &[u8]) -> bool {
+    !s.is_empty() && s.len() <= 16 && s.iter().all(|b| b.is_ascii_alphanumeric())
 }
-fn numeric_id(s: &str) -> bool {
+fn numeric_id_bytes(s: &[u8]) -> bool {
     !s.is_empty()
         && s.len() <= 10
-        && s.bytes().all(|b| b.is_ascii_digit())
-        && s.parse::<u32>().is_ok_and(|n| n > 0)
+        && s.iter().all(u8::is_ascii_digit)
+        && s.iter()
+            .try_fold(0u32, |n, b| {
+                n.checked_mul(10)?.checked_add(u32::from(*b - b'0'))
+            })
+            .is_some_and(|n| n > 0)
 }
 pub fn relative_path(p: &str) -> bool {
     relative_path_bytes(p.as_bytes())
@@ -305,4 +436,32 @@ pub(super) fn relative_path_bytes(p: &[u8]) -> bool {
                     | b"LPT9"
             )
         })
+}
+
+#[cfg(test)]
+mod wire_tests {
+    use super::*;
+    #[test]
+    fn listing_and_public_string_validation_share_source_rules() {
+        for (provider, error) in [
+            ("modrinth", "InvalidModrinthVersionId"),
+            ("curseforge", "InvalidCurseforgeId"),
+            ("manual", "InvalidContentSource"),
+        ] {
+            let bytes = serde_json::to_vec(&serde_json::json!({"entries":[{
+                "kind":"mod", "file":[109,111,100,115,47,255,46,106,97,114],
+                "sha1":"a".repeat(40), "size":1,
+                "source":{"provider":provider,"project_id":[255],"version_id":"1"}
+            }]}))
+            .unwrap();
+            assert_eq!(parse_listing(&bytes).unwrap_err(), error);
+        }
+        let bytes = br#"{"entries":[{"kind":"mod","file":"mods/a.jar","sha1":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","size":1,"source":{"provider":"modrinth","project_id":"Proj1","version_id":"Ver1"}}]}"#;
+        let mut registry = parse(bytes).unwrap();
+        registry.validate().unwrap();
+        registry.entries[0].source.project_id = Some("bad/".into());
+        assert_eq!(registry.validate(), Err("InvalidModrinthVersionId"));
+        registry.entries[0].sha1 = "bad".into();
+        assert_eq!(registry.validate(), Err("InvalidContentSha1"));
+    }
 }
