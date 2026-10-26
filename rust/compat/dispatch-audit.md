@@ -98,3 +98,12 @@ Controlled `core.autocrlf=true` checkout reproduces the original Windows-style
 15 failures / one error, while its normalized source equals the reviewed Git
 blob. New positive CRLF and negative changed-token/bare-CR/policy tests preserve
 the fail-closed boundary. Native CI confirms the actual runner checkout result.
+
+## Unix probe integration review
+
+The follow-on Unix probe change widens only the private `direct_exec` module
+compile condition from macOS/tests to Unix. Manual review of `java/mod.rs`
+confirmed its method guards, handler calls, parameter dispatch and runtime-install
+fallback are unchanged; its single source fingerprint was updated accordingly.
+The explicit-probe executable lookup regression is separate runtime evidence,
+not a change to the 106-name routing inventory.
