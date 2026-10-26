@@ -95,6 +95,12 @@ impl Root {
         parse(&bytes).map_err(Error::Registry)
     }
     pub fn save(&self, r: &Registry) -> Result<()> {
+        self.save_record(r)
+    }
+    fn save_record<F: registry::RegistryFile>(
+        &self,
+        r: &registry::RegistryRecord<F>,
+    ) -> Result<()> {
         r.validate().map_err(Error::Registry)?;
         let mut data = serde_json::to_vec(r).map_err(|_| Error::Registry("Unexpected"))?;
         data.push(b'\n');
