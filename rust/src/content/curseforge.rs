@@ -61,12 +61,21 @@ struct Project {
     #[serde(default = "yes", rename = "isAvailable")]
     available: bool,
 }
+// Only call after BOTH envelope and inner typed schema succeed, never after
+// Envelope<RawValue> alone. Earlier schema errors must retain their precedence.
+fn validate_completed_document(bytes: &[u8]) -> mr::Result<()> {
+    let text = std::str::from_utf8(bytes).map_err(|_| mr::Error::from("SyntaxError"))?;
+    crate::auth::json::Json::parse(text)
+        .map(|_| ())
+        .map_err(|_| mr::Error::from("SyntaxError"))
+}
 fn parse_project(bytes: &[u8]) -> mr::Result<Project> {
     if bytes.len() > 2 * 1024 * 1024 {
         return Err("CurseforgeResponseTooLarge".into());
     }
     let env: Envelope = mr::parse(bytes, 2 * 1024 * 1024, false)?;
     let p: Project = mr::parse(env.data.get().as_bytes(), 2 * 1024 * 1024, false)?;
+    validate_completed_document(bytes)?;
     if p.id == 0 {
         return Err("InvalidCurseforgeId".into());
     }
@@ -173,10 +182,15 @@ pub fn parse_file(bytes: &[u8]) -> mr::Result<File> {
         return Err("CurseforgeResponseTooLarge".into());
     }
     let env: Envelope = mr::parse(bytes, 2 * 1024 * 1024, false)?;
-    parse_file_data(env.data.get().as_bytes(), 2 * 1024 * 1024)
+    let detail: Detail = mr::parse(env.data.get().as_bytes(), 2 * 1024 * 1024, false)?;
+    validate_completed_document(bytes)?;
+    validate_detail(detail)
 }
+// Page callers deliberately retain their prior per-item parse/validate order.
 fn parse_file_data(bytes: &[u8], max: usize) -> mr::Result<File> {
-    let d: Detail = mr::parse(bytes, max, false)?;
+    validate_detail(mr::parse(bytes, max, false)?)
+}
+fn validate_detail(d: Detail) -> mr::Result<File> {
     if d.id == 0 || d.project == 0 {
         return Err("InvalidCurseforgeId".into());
     }
@@ -506,3 +520,7 @@ pub fn resolve<T: Metadata>(
 #[cfg(test)]
 #[path = "../../tests/support/curseforge_metadata_bytes.rs"]
 mod byte_metadata_tests;
+
+#[cfg(test)]
+#[path = "../../tests/support/curseforge_lexical_acceptance.rs"]
+mod lexical_acceptance_tests;
