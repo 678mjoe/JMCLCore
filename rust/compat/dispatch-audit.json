@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "reviewed_commit": "c0bda37fb66366123f3159fd0d9f99a00bd000b9",
+  "reviewed_commit": "9c8d3314c6e524d76188f9f6484ed2fdaed70023",
   "oracle_commit": "5a4310debbcee26b3d2391bab2339f79cd6ec52e",
   "source_digest_encoding": "utf8_crlf_to_lf",
   "source_sha256": {
@@ -12,10 +12,10 @@
     "rust/src/install/rpc.rs": "84f3d4050fa7cb271e65f8e6adccb77e12f166d862f1f66e3aaaea5c8d825f50",
     "rust/src/modpack/rpc.rs": "e521da6aa00f9468e3637b43e059e3d79ef7ea76e13d86092fae4a1768383dda",
     "rust/src/launch/rpc.rs": "ceb84ea7bb890aecec89ac3b01388dcc76a84ff804148fad6a363ae6118e5dda",
-    "rust/src/version.rs": "dae21cc4c838a10e9c2de0cdd0430c189a64e87d92892fea883a2a2bad0ba6e6",
+    "rust/src/version.rs": "33f74b42ad6ddf7313e9e985d5a0eb0c628a684ef1f6d26c408fbae29ae2a61c",
     "rust/src/java/select.rs": "e8e9c0f07ad7eaad106d998489af240ff089079118ead7a3055a8fd2c43fec6e",
     "rust/src/accounts.rs": "f1efb49ca4cc61a7f5a3fb6859a9d0e91aff6d4d66178dc4fa5795e8f0867117",
-    "rust/src/instances.rs": "0670929268e8375e9b0df754fb32237c5b411179d86d26cd51071d0b39e398c9",
+    "rust/src/instances.rs": "b814f3117c6a83408a374d686f574a95582e2b492c9ac9da80c9e42c26615f4a",
     "rust/src/worlds/rpc.rs": "c2d852a361b99ce13246a8c74b4c11c7943d6a684b4730f13b2bc061d0d86f83",
     "rust/src/worlds/mod.rs": "4ba808be41ea28d5965ed01f5d2e88b60045212ccba0a7fab4ccc372692d7b95",
     "rust/src/content/mod.rs": "b2f4a5ad98e611e016f9cecc4a004543253950142cd3535fe68791476e25ad04",
@@ -31,7 +31,7 @@
     "rust/src/protocol.rs": "a65e5405caf015d1eb9f3052df2df44fea6e0ff29003b69c5ddb28d4d8a10007",
     "rust/src/worlds/read.rs": "2b67a5dc92811daf7c43af6107d1a782205191ab58cd87aa79dc6fa3fa86998e",
     "rust/src/worlds/server_read.rs": "4efb5e0a4aad0c70f31b78751b9c2e13ea305b0b3a06b495d14ed0ee749aa2c2",
-    "rust/src/instances/manifest_ordered.rs": "4e3157409b2784e718256aaac506986994d88a7169cc2ab8aa960f10b8bd7fef"
+    "rust/src/instances/manifest_ordered.rs": "9eaf59f52b685c50912e9d8e6805ef75320bf4464ef21bfad5c5ddd4be1173b4"
   },
   "routes": [
     {
@@ -313,7 +313,9 @@
         "status": "referenced_not_run",
         "scope": "related_group_fixtures_not_per_method_or_platform_completion",
         "paths": [
-          "rust/compat/version_check.py"
+          "rust/compat/version_check.py",
+          "rust/src/version_listing_tests.rs",
+          "rust/src/metadata/listing.rs"
         ]
       }
     },
@@ -403,7 +405,10 @@
         "paths": [
           "rust/tests/instance_differential.rs",
           "rust/compat/instance_validation_check.py",
-          "rust/compat/manifest_ordered.py"
+          "rust/compat/manifest_ordered.py",
+          "rust/src/instances/create_unvalidated.rs",
+          "rust/src/instances/byte_read.rs",
+          "rust/src/instances/delete_byte_tests.rs"
         ]
       }
     },
