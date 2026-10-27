@@ -182,6 +182,7 @@ pub(crate) fn create_native_directory(
     root: &ArtifactRoot,
     mut nonce: impl FnMut(&mut [u8; 8]) -> Result<(), Error>,
 ) -> Result<(String, ArtifactRoot), Error> {
+    root.ensure_directory(".jmcl/runtime/natives")?;
     let mut chosen = None;
     for _ in 0..16 {
         let mut bytes = [0; 8];
