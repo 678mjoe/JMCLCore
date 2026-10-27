@@ -145,3 +145,37 @@ mod completion;
 pub(crate) use completion::{
     CompletionInfo, Failure as CompletionFailure, Presentation as CompletionPresentation,
 };
+
+impl ReadPlan {
+    /// Isolated projection view; opaque version/client identity is never converted.
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "projection-only seam awaits preparation routing")
+    )]
+    pub(crate) fn project_assets(
+        &self,
+        root: &crate::store::ArtifactRoot,
+    ) -> Result<crate::install::Preparation, crate::install::Error> {
+        let mut result = crate::install::Preparation {
+            native_directory: None,
+            native_files: 0,
+            projections_created: 0,
+            projections_cached: 0,
+        };
+        crate::install::prepare::project_only(
+            root,
+            &self.asset_projections,
+            |path| {
+                self.files
+                    .iter()
+                    .find(|f| f.path.0 == path.as_bytes())
+                    .map(|f| (f.sha1.as_str(), f.size))
+            },
+            &mut result,
+        )?;
+        Ok(result)
+    }
+}
+#[cfg(all(test, target_os = "linux"))]
+#[path = "plan_projection_tests.rs"]
+mod projection_tests;

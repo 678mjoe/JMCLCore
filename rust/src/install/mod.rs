@@ -1272,7 +1272,7 @@ mod tests {
 }
 
 mod native_zip;
-mod prepare;
+pub(crate) mod prepare;
 pub use prepare::{Preparation, cleanup_native, prepare};
 
 pub mod cli;

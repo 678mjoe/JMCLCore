@@ -20,8 +20,11 @@ pub struct Preparation {
     pub projections_cached: usize,
 }
 fn verified(root: &ArtifactRoot, expected: &PlannedFile) -> Result<File, Error> {
-    let mut file = root.open_file(&expected.path)?;
-    if file.metadata()?.len() != expected.size {
+    verified_parts(root, &expected.path, &expected.sha1, expected.size)
+}
+fn verified_parts(root: &ArtifactRoot, path: &str, sha1: &str, size: u64) -> Result<File, Error> {
+    let mut file = root.open_file(path)?;
+    if file.metadata()?.len() != size {
         return Err(Error::named("CacheFileInvalid"));
     }
     let mut digest = Sha1::new();
@@ -33,7 +36,7 @@ fn verified(root: &ArtifactRoot, expected: &PlannedFile) -> Result<File, Error> 
         }
         digest.update(&buf[..n]);
     }
-    if !format!("{:x}", digest.finalize()).eq_ignore_ascii_case(&expected.sha1) {
+    if !format!("{:x}", digest.finalize()).eq_ignore_ascii_case(sha1) {
         return Err(Error::named("CacheFileInvalid"));
     }
     file.seek(SeekFrom::Start(0))?;
@@ -61,28 +64,17 @@ pub fn prepare(root: &ArtifactRoot, plan: &Plan) -> Result<Preparation, Error> {
         projections_created: 0,
         projections_cached: 0,
     };
-    for projection in &plan.asset_projections {
-        for path in [&projection.source_path, &projection.destination_path] {
-            validate_relative_path(path).map_err(|e| Error::named(e.name()))?;
-        }
-        let expected = plan
-            .files
-            .iter()
-            .find(|f| f.path == projection.source_path)
-            .ok_or_else(|| Error::named("ProjectionSourceNotPlanned"))?;
-        verified(root, expected)?;
-        if root.verify(&projection.destination_path, &expected.sha1, expected.size)? {
-            result.projections_cached += 1;
-            continue;
-        }
-        root.project(
-            &projection.source_path,
-            &projection.destination_path,
-            &expected.sha1,
-            expected.size,
-        )?;
-        result.projections_created += 1;
-    }
+    project_only(
+        root,
+        &plan.asset_projections,
+        |path| {
+            plan.files
+                .iter()
+                .find(|f| f.path == path)
+                .map(|f| (f.sha1.as_str(), f.size))
+        },
+        &mut result,
+    )?;
     let mut archives = Vec::new();
     let mut names = HashSet::new();
     let mut total = 0u64;
@@ -165,4 +157,33 @@ pub fn prepare(root: &ArtifactRoot, plan: &Plan) -> Result<Preparation, Error> {
     }
     result.native_directory = Some(relative);
     Ok(result)
+}
+
+/// Shared projection phase only: no native preparation or runtime callbacks.
+pub(crate) fn project_only<'a>(
+    root: &ArtifactRoot,
+    projections: &[crate::plan::AssetProjection],
+    lookup: impl Fn(&str) -> Option<(&'a str, u64)>,
+    result: &mut Preparation,
+) -> Result<(), Error> {
+    for projection in projections {
+        for path in [&projection.source_path, &projection.destination_path] {
+            validate_relative_path(path).map_err(|e| Error::named(e.name()))?;
+        }
+        let (sha1, size) = lookup(&projection.source_path)
+            .ok_or_else(|| Error::named("ProjectionSourceNotPlanned"))?;
+        verified_parts(root, &projection.source_path, sha1, size)?;
+        if root.verify(&projection.destination_path, sha1, size)? {
+            result.projections_cached += 1;
+            continue;
+        }
+        root.project(
+            &projection.source_path,
+            &projection.destination_path,
+            sha1,
+            size,
+        )?;
+        result.projections_created += 1;
+    }
+    Ok(())
 }
