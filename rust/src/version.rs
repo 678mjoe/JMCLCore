@@ -355,6 +355,14 @@ impl<T: Transport> Service<T> {
                 .0,
         )
     }
+    /// Listing-only byte view; acquisition keeps the original String manifest.
+    pub fn listing_manifest(&self, source: Source) -> Result<metadata::listing::Listing, Error> {
+        metadata::listing::Listing::parse(
+            &self
+                .cached(source.manifest_url(), 2 * 1024 * 1024, Policy::Ttl(600))?
+                .0,
+        )
+    }
     pub fn get(&self, id: &str, source: Source) -> Result<Value, Error> {
         let manifest = self.manifest(source)?;
         let selected = manifest["versions"]
@@ -930,8 +938,8 @@ pub fn handle_with<T: Transport>(
                 .map(|x| metadata::unsigned(x, u64::MAX).unwrap())
                 .unwrap_or(20) as usize;
             service
-                .manifest(source)
-                .map(|m| metadata::select(&m, kind, limit))
+                .listing_manifest(source)
+                .map(|m| m.selection(kind, limit))
         }
         "version.get" => service.get(id, source),
         "version.resolve" => {
@@ -1274,15 +1282,22 @@ fn cli_execute<T: Transport>(
         .and_then(Value::as_str)
         .and_then(Source::parse)
         .unwrap_or_default();
+    if method == "version.list" {
+        let listing = match svc.listing_manifest(source) {
+            Ok(listing) => listing,
+            Err(e) => return cli_failure(method, p, e, err),
+        };
+        listing.write(
+            out,
+            source,
+            p.get("type").and_then(Value::as_str),
+            p.get("limit").and_then(Value::as_u64).unwrap_or(20) as usize,
+            json,
+        )?;
+        return Ok(0);
+    }
     let id = p.get("id").and_then(Value::as_str).unwrap_or("");
     let result = match method {
-        "version.list" => svc.manifest(source).map(|m| {
-            metadata::select(
-                &m,
-                p.get("type").and_then(Value::as_str),
-                p.get("limit").and_then(Value::as_u64).unwrap_or(20) as usize,
-            )
-        }),
         "version.get" => svc.get(id, source),
         _ => {
             let count = loader_count(p.as_object().unwrap()).unwrap();
@@ -1344,17 +1359,6 @@ fn cli_execute<T: Transport>(
         writeln!(out, "# source\tBMCLAPI")?;
     }
     match method {
-        "version.list" => {
-            for v in result["versions"].as_array().unwrap() {
-                writeln!(
-                    out,
-                    "{}\t{}\t{}",
-                    v["id"].as_str().unwrap(),
-                    v["type"].as_str().unwrap(),
-                    v["releaseTime"].as_str().unwrap()
-                )?;
-            }
-        }
         "version.get" => {
             for k in ["id", "type", "mainClass"] {
                 writeln!(out, "{k}\t{}", result[k].as_str().unwrap())?

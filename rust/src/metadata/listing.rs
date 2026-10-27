@@ -1,4 +1,4 @@
-//! Pure listing seam. Deliberately disconnected from Service fetch/acquisition.
+//! Pure listing view and formatter; acquisition retains its String schema.
 use super::*;
 
 pub struct Listing(Value);
