@@ -95,10 +95,14 @@ pub struct Plan {
     pub java_major_version: u16,
     pub loader: String,
 }
+#[path = "plan_read.rs"]
+mod read;
+use read::{PlanBytes, ReadFile, ReadPlan};
+
 struct Builder {
-    plan: Plan,
-    paths: HashMap<String, usize>,
-    classpath: HashSet<String>,
+    plan: ReadPlan,
+    paths: HashMap<PlanBytes, usize>,
+    classpath: HashSet<PlanBytes>,
     projections: HashMap<String, usize>,
 }
 fn s(v: &Value) -> &str {
@@ -112,9 +116,12 @@ fn err(name: &'static str) -> Error {
 }
 impl Builder {
     fn new(version: &Value, source: Source, target: Target) -> Self {
+        Self::with_id(version, s(&version["id"]).as_bytes(), source, target)
+    }
+    fn with_id(version: &Value, id: &[u8], source: Source, target: Target) -> Self {
         Self {
-            plan: Plan {
-                version_id: s(&version["id"]).into(),
+            plan: ReadPlan {
+                version_id: PlanBytes(id.to_vec()),
                 source,
                 target,
                 files: vec![],
@@ -131,7 +138,7 @@ impl Builder {
             projections: HashMap::new(),
         }
     }
-    fn add(&mut self, path: String, item: &Value, usage: Usage) -> Result<String, Error> {
+    fn add(&mut self, path: PlanBytes, item: &Value, usage: Usage) -> Result<PlanBytes, Error> {
         self.add_file(
             path,
             s(&item["url"]),
@@ -142,13 +149,13 @@ impl Builder {
     }
     fn add_file(
         &mut self,
-        path: String,
+        path: PlanBytes,
         url: &str,
         sha1: &str,
         size: u64,
         usage: Usage,
-    ) -> Result<String, Error> {
-        validate_relative_path(&path)?;
+    ) -> Result<PlanBytes, Error> {
+        validate_relative_path_bytes(&path.0)?;
         if !url.starts_with("https://") {
             return Err(err("InsecureDownloadUrl"));
         }
@@ -168,7 +175,7 @@ impl Builder {
         }
         let mirror = self.plan.source.rewrite(url);
         self.paths.insert(path.clone(), self.plan.files.len());
-        self.plan.files.push(File {
+        self.plan.files.push(ReadFile {
             path: path.clone(),
             url: mirror.clone().unwrap_or_else(|| url.into()),
             fallback_url: mirror.map(|_| url.into()),
@@ -183,7 +190,7 @@ impl Builder {
             .ok_or(err("DownloadSizeOverflow"))?;
         Ok(path)
     }
-    fn classpath(&mut self, path: String) {
+    fn classpath(&mut self, path: PlanBytes) {
         if self.classpath.insert(path.clone()) {
             self.plan.classpath.push(path)
         }
@@ -235,11 +242,14 @@ fn validate_component_bytes(v: &[u8]) -> Result<(), Error> {
     Ok(())
 }
 pub fn validate_relative_path(v: &str) -> Result<(), Error> {
-    if v.is_empty() || v.starts_with(['/', '\\']) || v.contains('\\') {
+    validate_relative_path_bytes(v.as_bytes())
+}
+fn validate_relative_path_bytes(v: &[u8]) -> Result<(), Error> {
+    if v.is_empty() || matches!(v.first(), Some(b'/' | b'\\')) || v.contains(&b'\\') {
         return Err(err("UnsafePath"));
     }
-    for c in v.split('/') {
-        validate_component(c)?
+    for c in v.split(|&c| c == b'/') {
+        validate_component_bytes(c)?
     }
     Ok(())
 }
@@ -317,11 +327,50 @@ pub fn build_with_extras(
     target: Target,
     extras: &[File],
 ) -> Result<Plan, Error> {
-    validate_component(s(&version["id"]))?;
-    let mut b = Builder::new(version, source, target.clone());
-    let id = s(&version["id"]);
+    build_core(
+        version,
+        s(&version["id"]).as_bytes(),
+        assets,
+        source,
+        target,
+        extras,
+    )
+    .map(ReadPlan::into_string)
+}
+// Intentionally not routed to Service or acquisition. The shared core is used
+// by the public String builder; only this typed read entry awaits routing review.
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "pure read-plan entry awaits a separate API routing review"
+    )
+)]
+pub(crate) fn build_read(
+    version: &crate::metadata::ReadMetadata,
+    assets: Option<&Value>,
+    source: Source,
+    target: Target,
+) -> Result<ReadPlan, Error> {
+    build_core(version.value(), version.id(), assets, source, target, &[])
+}
+fn build_core(
+    version: &Value,
+    id: &[u8],
+    assets: Option<&Value>,
+    source: Source,
+    target: Target,
+    extras: &[File],
+) -> Result<ReadPlan, Error> {
+    validate_component_bytes(id)?;
+    let mut b = Builder::with_id(version, id, source, target.clone());
+    let mut client_path = b"versions/".to_vec();
+    client_path.extend_from_slice(id);
+    client_path.push(b'/');
+    client_path.extend_from_slice(id);
+    client_path.extend_from_slice(b".jar");
     let client = b.add(
-        format!("versions/{id}/{id}.jar"),
+        PlanBytes(client_path),
         &version["downloads"]["client"],
         Usage {
             client: true,
@@ -333,7 +382,7 @@ pub fn build_with_extras(
         let asset_id = s(&descriptor["id"]);
         validate_component(asset_id)?;
         b.add(
-            format!("assets/indexes/{asset_id}.json"),
+            format!("assets/indexes/{asset_id}.json").into(),
             descriptor,
             Usage {
                 asset_index: true,
@@ -353,7 +402,7 @@ pub fn build_with_extras(
                     &hash[..2]
                 );
                 let path = b.add_file(
-                    path,
+                    path.into(),
                     &url,
                     hash,
                     n(&object["size"]),
@@ -364,13 +413,13 @@ pub fn build_with_extras(
                 )?;
                 if index["virtual"] == true {
                     b.projection(
-                        &path,
+                        path.as_str(),
                         format!("assets/virtual/{asset_id}/{logical}"),
                         "virtual_assets",
                     )?
                 }
                 if index["map_to_resources"] == true {
-                    b.projection(&path, format!("resources/{logical}"), "resources")?
+                    b.projection(path.as_str(), format!("resources/{logical}"), "resources")?
                 }
             }
         }
@@ -381,7 +430,7 @@ pub fn build_with_extras(
         let file = &version["logging"]["client"]["file"];
         validate_component(s(&file["id"]))?;
         b.add(
-            format!("assets/log_configs/{}", s(&file["id"])),
+            format!("assets/log_configs/{}", s(&file["id"])).into(),
             file,
             Usage {
                 logging_config: true,
@@ -416,7 +465,7 @@ pub fn build_with_extras(
                 return Err(err("MissingNativeClassifier"));
             };
             let path = b.add(
-                format!("libraries/{}", s(&artifact["path"])),
+                format!("libraries/{}", s(&artifact["path"])).into(),
                 artifact,
                 Usage {
                     native: true,
@@ -431,7 +480,7 @@ pub fn build_with_extras(
                 }
             }
             b.plan.native_extractions.push(NativeExtraction {
-                archive_path: path,
+                archive_path: path.into_string(),
                 exclude: excludes,
             });
             continue;
@@ -444,7 +493,7 @@ pub fn build_with_extras(
             return Err(err("MissingLibraryArtifact"));
         }
         let path = b.add(
-            format!("libraries/{}", s(&artifact["path"])),
+            format!("libraries/{}", s(&artifact["path"])).into(),
             artifact,
             Usage {
                 library: true,
@@ -461,7 +510,13 @@ pub fn build_with_extras(
     };
     b.classpath(cp);
     for x in extras {
-        b.add_file(x.path.clone(), &x.url, &x.sha1, x.size, x.usage.clone())?;
+        b.add_file(
+            x.path.clone().into(),
+            &x.url,
+            &x.sha1,
+            x.size,
+            x.usage.clone(),
+        )?;
     }
     Ok(b.plan)
 }
@@ -496,9 +551,15 @@ pub fn build_server(
         },
     )?;
     for x in extras {
-        b.add_file(x.path.clone(), &x.url, &x.sha1, x.size, x.usage.clone())?;
+        b.add_file(
+            x.path.clone().into(),
+            &x.url,
+            &x.sha1,
+            x.size,
+            x.usage.clone(),
+        )?;
     }
-    Ok(b.plan)
+    Ok(b.plan.into_string())
 }
 
 #[cfg(test)]
