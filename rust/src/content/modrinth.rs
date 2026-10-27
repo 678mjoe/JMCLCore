@@ -14,8 +14,8 @@ pub struct Project {
     pub id: String,
     #[serde(deserialize_with = "string")]
     pub slug: String,
-    #[serde(default, deserialize_with = "optional_string")]
-    pub title: Option<String>,
+    #[serde(default)]
+    pub title: Option<MetadataBytes>,
     #[serde(deserialize_with = "string")]
     pub project_type: String,
     #[serde(default)]
@@ -26,8 +26,8 @@ pub struct Project {
 pub struct Hashes {
     #[serde(deserialize_with = "string")]
     pub sha1: String,
-    #[serde(default, deserialize_with = "optional_string")]
-    pub sha512: Option<String>,
+    #[serde(default)]
+    pub sha512: Option<MetadataBytes>,
 }
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct File {
@@ -55,8 +55,8 @@ pub struct Dependency {
     pub version_id: Option<String>,
     #[serde(default, deserialize_with = "optional_string")]
     pub project_id: Option<String>,
-    #[serde(default, deserialize_with = "optional_string")]
-    pub file_name: Option<String>,
+    #[serde(default)]
+    pub file_name: Option<MetadataBytes>,
     pub dependency_type: DependencyType,
 }
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -65,8 +65,7 @@ pub struct Version {
     pub id: String,
     #[serde(deserialize_with = "string")]
     pub project_id: String,
-    #[serde(deserialize_with = "string")]
-    pub version_number: String,
+    pub version_number: MetadataBytes,
     #[serde(deserialize_with = "string")]
     pub version_type: String,
     #[serde(deserialize_with = "strings")]
@@ -304,33 +303,73 @@ pub fn versions_url(s: &str, g: &str, l: Option<&str>) -> Result<String> {
     Ok(u)
 }
 
+/// Byte-preserving supplemental metadata, not an operational filesystem path.
+/// The original typed JSON schema emits UTF-8 as strings and other bytes as arrays.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MetadataBytes(Vec<u8>);
+impl Serialize for MetadataBytes {
+    fn serialize<S: serde::Serializer>(
+        &self,
+        serializer: S,
+    ) -> std::result::Result<S::Ok, S::Error> {
+        match std::str::from_utf8(&self.0) {
+            Ok(text) => serializer.serialize_str(text),
+            Err(_) => self.0.serialize(serializer),
+        }
+    }
+}
+impl<'de> Deserialize<'de> for MetadataBytes {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> std::result::Result<Self, D::Error> {
+        struct V;
+        impl<'de> serde::de::Visitor<'de> for V {
+            type Value = MetadataBytes;
+            fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+                f.write_str("string or byte array")
+            }
+            fn visit_str<E: serde::de::Error>(
+                self,
+                s: &str,
+            ) -> std::result::Result<MetadataBytes, E> {
+                Ok(MetadataBytes(s.as_bytes().to_vec()))
+            }
+            fn visit_string<E: serde::de::Error>(
+                self,
+                s: String,
+            ) -> std::result::Result<MetadataBytes, E> {
+                Ok(MetadataBytes(s.into_bytes()))
+            }
+            fn visit_seq<A: serde::de::SeqAccess<'de>>(
+                self,
+                mut a: A,
+            ) -> std::result::Result<MetadataBytes, A::Error> {
+                // Zig []const u8 JSON arrays use typed u8 parsing for every
+                // element, including quoted/integral-float numeric lexemes.
+                // Do not round through Value/f64 or narrow serde's grammar.
+                struct Byte(u8);
+                impl<'de> Deserialize<'de> for Byte {
+                    fn deserialize<D: serde::Deserializer<'de>>(
+                        d: D,
+                    ) -> std::result::Result<Self, D::Error> {
+                        number_width(d, 8).map(|value| Self(value as u8))
+                    }
+                }
+                let mut b = vec![];
+                while let Some(Byte(v)) = a.next_element::<Byte>()? {
+                    b.push(v)
+                }
+                Ok(MetadataBytes(b))
+            }
+        }
+        d.deserialize_any(V)
+    }
+}
 pub(super) fn string<'de, D: serde::Deserializer<'de>>(
     d: D,
 ) -> std::result::Result<String, D::Error> {
-    struct V;
-    impl<'de> serde::de::Visitor<'de> for V {
-        type Value = String;
-        fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-            f.write_str("string or byte array")
-        }
-        fn visit_str<E: serde::de::Error>(self, s: &str) -> std::result::Result<String, E> {
-            Ok(s.into())
-        }
-        fn visit_string<E: serde::de::Error>(self, s: String) -> std::result::Result<String, E> {
-            Ok(s)
-        }
-        fn visit_seq<A: serde::de::SeqAccess<'de>>(
-            self,
-            mut a: A,
-        ) -> std::result::Result<String, A::Error> {
-            let mut b = vec![];
-            while let Some(v) = a.next_element::<u8>()? {
-                b.push(v)
-            }
-            String::from_utf8(b).map_err(|_| serde::de::Error::custom("InvalidUtf8"))
-        }
-    }
-    d.deserialize_any(V)
+    let bytes = MetadataBytes::deserialize(d)?;
+    // Operational strings remain UTF-8-only until their separate path/validation
+    // contracts are implemented. Never reinterpret or replace invalid bytes.
+    String::from_utf8(bytes.0).map_err(|_| serde::de::Error::custom("InvalidUtf8"))
 }
 pub(super) fn optional_string<'de, D: serde::Deserializer<'de>>(
     d: D,

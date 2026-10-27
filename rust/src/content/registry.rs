@@ -46,17 +46,19 @@ pub enum Provider {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Source {
     pub provider: Provider,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "super::modrinth::optional_string")]
     pub project_id: Option<String>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "super::modrinth::optional_string")]
     pub version_id: Option<String>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "super::modrinth::optional_string")]
     pub slug: Option<String>,
 }
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Entry {
     pub kind: Kind,
+    #[serde(deserialize_with = "super::modrinth::string")]
     pub file: String,
+    #[serde(deserialize_with = "super::modrinth::string")]
     pub sha1: String,
     #[serde(deserialize_with = "number")]
     pub size: u64,
@@ -111,11 +113,11 @@ pub fn parse(bytes: &[u8]) -> Result<Registry, &'static str> {
     };
     let r: Registry = serde_json::from_slice(bytes).map_err(|e| {
         let m = e.to_string();
-        if m.starts_with("Zig:InvalidNumber") {
+        if m.starts_with("Zig:InvalidNumber") || m.starts_with("InvalidNumber") {
             "InvalidNumber"
-        } else if m.starts_with("Zig:InvalidCharacter") {
+        } else if m.starts_with("Zig:InvalidCharacter") || m.starts_with("InvalidCharacter") {
             "InvalidCharacter"
-        } else if m.starts_with("Zig:Overflow") {
+        } else if m.starts_with("Zig:Overflow") || m.starts_with("Overflow") {
             "Overflow"
         } else if e.is_eof() {
             "UnexpectedEndOfInput"
@@ -175,11 +177,21 @@ impl Registry {
                     } else {
                         numeric_id
                     };
-                    if !e.source.project_id.as_deref().is_some_and(validate)
-                        || !e.source.version_id.as_deref().is_some_and(validate)
-                        || e.source.slug.as_deref().is_some_and(|s| !project_ref(s))
-                    {
-                        return Err("InvalidContentSource");
+                    // Match Zig's ordered validation: a missing ID is a
+                    // content-source error, but a present malformed ID keeps
+                    // the provider's error, even if the next ID is missing.
+                    for value in [&e.source.project_id, &e.source.version_id] {
+                        let value = value.as_deref().ok_or("InvalidContentSource")?;
+                        if !validate(value) {
+                            return Err(if p == Provider::Modrinth {
+                                "InvalidModrinthVersionId"
+                            } else {
+                                "InvalidCurseforgeId"
+                            });
+                        }
+                    }
+                    if e.source.slug.as_deref().is_some_and(|s| !project_ref(s)) {
+                        return Err("InvalidModrinthProject");
                     }
                 }
             };
