@@ -10,14 +10,14 @@ use crate::{
 use serde_json::value::RawValue;
 #[derive(Debug)]
 pub(crate) struct Request {
-    id: Vec<u8>,
-    directory: Vec<u8>,
-    store: Vec<u8>,
-    source: Source,
-    os: Option<String>,
-    arch: Option<String>,
-    workers: u8,
-    retries: u8,
+    pub(crate) id: Vec<u8>,
+    pub(crate) directory: Vec<u8>,
+    pub(crate) store: Vec<u8>,
+    pub(crate) source: Source,
+    pub(crate) os: Option<String>,
+    pub(crate) arch: Option<String>,
+    pub(crate) workers: u8,
+    pub(crate) retries: u8,
 }
 pub(crate) fn selected(raw: Option<&RawValue>) -> bool {
     let Some(raw) = raw else { return false };
@@ -188,10 +188,10 @@ pub(crate) fn run<M: version::Transport, T: Transport>(
         Err(CompletionFailure::Output(e)) => Err(e),
         Err(e) => {
             let (code, message) = match e {
-                CompletionFailure::Root => {
+                CompletionFailure::Root(_) => {
                     ("INSTALL_ROOT_ERROR", "Failed to open the install root")
                 }
-                CompletionFailure::Store => {
+                CompletionFailure::Store(_) => {
                     ("STORE_ROOT_ERROR", "Failed to open the artifact store")
                 }
                 CompletionFailure::Files(_) => (
@@ -226,3 +226,127 @@ pub(crate) fn handle_with<M: version::Transport, T: Transport>(
 }
 #[cfg(test)]
 mod tests;
+
+struct Cli<'a, W, E> {
+    out: &'a mut W,
+    err: &'a mut E,
+    last_completed: usize,
+}
+impl<W: Write, E: Write> crate::plan::CompletionPresentation for Cli<'_, W, E> {
+    fn started(&mut self, _: crate::plan::CompletionInfo<'_>) -> io::Result<()> {
+        Ok(())
+    }
+    fn event(&mut self, event: ByteEvent) -> io::Result<()> {
+        match event {
+            ByteEvent::Retry(r) => {
+                write!(self.err, "retry {}/{}: ", r.attempt, r.max_attempts)?;
+                self.err.write_all(&r.path.0)?;
+                writeln!(self.err, " ({})", r.error_name)?;
+            }
+            ByteEvent::Progress(v)
+                if v.files_completed > self.last_completed
+                    && (v.files_completed % 100 == 0 || v.files_completed == v.files_total) =>
+            {
+                self.last_completed = v.files_completed;
+                writeln!(
+                    self.err,
+                    "download progress: {}/{} files, {}/{} bytes verified",
+                    v.files_completed, v.files_total, v.bytes_verified, v.bytes_total
+                )?;
+            }
+            _ => {}
+        }
+        self.err.flush()
+    }
+    fn completed(&mut self, info: crate::plan::CompletionInfo<'_>, s: &Summary) -> io::Result<()> {
+        if info.source == Source::Bmclapi {
+            writeln!(self.out, "# source\t{}", info.source.display())?;
+        }
+        self.out.write_all(b"version\t")?;
+        self.out.write_all(info.version)?;
+        writeln!(
+            self.out,
+            "\ndownloaded\t{}\ncached\t{}\nhardLinked\t{}\ncopied\t{}\nverifiedBytes\t{}\ntransferredBytes\t{}",
+            s.files_downloaded,
+            s.files_cached,
+            s.files_hard_linked,
+            s.files_copied,
+            s.bytes_verified,
+            s.bytes_transferred
+        )
+    }
+}
+pub(crate) fn run_cli<M: version::Transport, T: Transport>(
+    p: Request,
+    svc: &version::Service<M>,
+    files: &T,
+    out: &mut impl Write,
+    err: &mut impl Write,
+) -> io::Result<u8> {
+    let mut target = match Target::host() {
+        Ok(t) => t,
+        Err(e) => {
+            writeln!(err, "unsupported host platform: {}", e.name())?;
+            return Ok(1);
+        }
+    };
+    if let Some(os) = p.os {
+        target.os = os
+    }
+    if let Some(arch) = p.arch {
+        target.arch = arch
+    }
+    let plan = match svc.vanilla_read_plan(&p.id, p.source, target) {
+        Ok(p) => p,
+        Err(e) => {
+            writeln!(
+                err,
+                "failed to create install plan from {}: {}",
+                p.source.display(),
+                e.name()
+            )?;
+            return Ok(1);
+        }
+    };
+    match plan
+        .vanilla_download_phase()
+        .expect("vanilla builder")
+        .complete_with(
+            &p.directory,
+            &p.store,
+            Options {
+                workers: p.workers,
+                retries: p.retries,
+                sync_files: true,
+            },
+            files,
+            &mut Cli {
+                out,
+                err,
+                last_completed: 0,
+            },
+        ) {
+        Ok(_) => Ok(0),
+        Err(CompletionFailure::Output(e)) => Err(e),
+        Err(e) => {
+            match e {
+                CompletionFailure::Root(e) => writeln!(
+                    err,
+                    "failed to open install root: {}",
+                    Error::from(e).name()
+                )?,
+                CompletionFailure::Store(e) => writeln!(
+                    err,
+                    "failed to open artifact store: {}",
+                    Error::from(e).name()
+                )?,
+                CompletionFailure::Files(e) => writeln!(err, "download failed: {}", e.name())?,
+                CompletionFailure::Receipt(e) => {
+                    writeln!(err, "failed to record completed installation: {}", e.name())?
+                }
+                CompletionFailure::Output(_) => unreachable!(),
+            }
+            Ok(1)
+        }
+    }
+}

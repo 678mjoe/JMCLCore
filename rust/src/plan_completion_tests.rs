@@ -492,12 +492,12 @@ fn unsupported_capabilities_and_root_order_do_not_enter_execution() {
     let mut out = vec![];
     assert!(matches!(
         p.complete_ordinary("test", Path::new(""), &o.cas, &t, &mut out),
-        Err(Failure::Root)
+        Err(Failure::Root(_))
     ));
     assert!(!o.cas.exists());
     assert!(matches!(
         p.complete_ordinary("test", &o.destination, Path::new(""), &t, &mut out),
-        Err(Failure::Store)
+        Err(Failure::Store(_))
     ));
     assert!(o.destination.exists());
     assert!(!o.receipt().exists());

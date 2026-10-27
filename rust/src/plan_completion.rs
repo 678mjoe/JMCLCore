@@ -1,4 +1,4 @@
-//! Shared vanilla download completion; preparation descriptions remain deferred.
+//! Shared vanilla completion ordering with separate RPC/CLI presentation.
 use super::*;
 use crate::{
     install,
@@ -8,18 +8,26 @@ use std::{
     io::{self, Write},
     path::Path,
 };
-
-#[allow(
-    dead_code,
-    reason = "private unrouted controller errors are consumed by bounded fixtures"
-)]
 #[derive(Debug)]
 pub(crate) enum Failure {
-    Root,
-    Store,
+    Root(io::Error),
+    Store(io::Error),
     Files(install::Error),
     Receipt(install::Error),
     Output(io::Error),
+}
+#[derive(Clone, Copy)]
+pub(crate) struct CompletionInfo<'a> {
+    pub version: &'a [u8],
+    pub source: Source,
+    pub files: usize,
+    pub bytes: u64,
+}
+pub(crate) trait Presentation {
+    fn started(&mut self, info: CompletionInfo<'_>) -> io::Result<()>;
+    fn event(&mut self, event: install::ByteEvent) -> io::Result<()>;
+    fn completed(&mut self, info: CompletionInfo<'_>, summary: &install::Summary)
+    -> io::Result<()>;
 }
 fn event(
     out: &mut impl Write,
@@ -55,6 +63,99 @@ fn event(
         out.flush()
     }
 }
+struct Rpc<'a, W> {
+    id: &'a str,
+    source: Source,
+    out: &'a mut W,
+}
+impl<W: Write> Presentation for Rpc<'_, W> {
+    fn started(&mut self, info: CompletionInfo<'_>) -> io::Result<()> {
+        #[derive(Serialize)]
+        struct Started {
+            stage: &'static str,
+            version_id: install::BytePath,
+            files_total: usize,
+            bytes_total: u64,
+        }
+        #[derive(Serialize)]
+        struct Payload<T> {
+            started: T,
+        }
+        event(
+            self.out,
+            self.id,
+            self.source,
+            "started",
+            Payload {
+                started: Started {
+                    stage: "download",
+                    version_id: install::BytePath(info.version.to_vec()),
+                    files_total: info.files,
+                    bytes_total: info.bytes,
+                },
+            },
+        )
+    }
+    fn event(&mut self, e: install::ByteEvent) -> io::Result<()> {
+        #[derive(Serialize)]
+        struct File<T> {
+            file: T,
+        }
+        #[derive(Serialize)]
+        struct Retry<T> {
+            retry: T,
+        }
+        #[derive(Serialize)]
+        struct Progress<T> {
+            progress: T,
+        }
+        match e {
+            install::ByteEvent::File(v) => {
+                event(self.out, self.id, self.source, "file", File { file: v })
+            }
+            install::ByteEvent::Retry(v) => {
+                event(self.out, self.id, self.source, "retry", Retry { retry: v })
+            }
+            install::ByteEvent::Progress(v) => event(
+                self.out,
+                self.id,
+                self.source,
+                "progress",
+                Progress { progress: v },
+            ),
+        }
+    }
+    fn completed(
+        &mut self,
+        info: CompletionInfo<'_>,
+        summary: &install::Summary,
+    ) -> io::Result<()> {
+        #[derive(Serialize)]
+        struct ResultPayload<'a> {
+            stage: &'static str,
+            version_id: install::BytePath,
+            #[serde(flatten)]
+            summary: &'a install::Summary,
+        }
+        #[derive(Serialize)]
+        struct Payload<T> {
+            result: T,
+        }
+        event(
+            self.out,
+            self.id,
+            self.source,
+            "result",
+            Payload {
+                result: ResultPayload {
+                    stage: "download",
+                    version_id: install::BytePath(info.version.to_vec()),
+                    summary,
+                },
+            },
+        )
+    }
+}
 enum FileInput<'a> {
     Ordinary(&'a OrdinaryFiles),
     Vanilla(&'a [install::ByteFile], u64),
@@ -62,7 +163,10 @@ enum FileInput<'a> {
 impl ReadPlan {
     #[cfg_attr(
         not(test),
-        expect(dead_code, reason = "private completion seam is not RPC routed")
+        expect(
+            dead_code,
+            reason = "isolated ordinary controller is exercised by bounded fixtures"
+        )
     )]
     pub(crate) fn complete_ordinary<T: install::Transport>(
         &self,
@@ -76,7 +180,6 @@ impl ReadPlan {
             return Ok(None);
         };
         self.complete_files(
-            id,
             FileInput::Ordinary(&files),
             || Ok(destination.to_path_buf()),
             || Ok(cas.to_path_buf()),
@@ -86,72 +189,49 @@ impl ReadPlan {
                 sync_files: true,
             },
             transport,
-            out,
+            &mut Rpc {
+                id,
+                source: self.source,
+                out,
+            },
         )
         .map(Some)
     }
     pub(crate) fn vanilla_download_phase(&self) -> Option<VanillaDownloadPhase<'_>> {
         (self.loader == "none").then_some(VanillaDownloadPhase { plan: self })
     }
-    #[allow(clippy::too_many_arguments)]
     fn complete_files<T: install::Transport>(
         &self,
-        id: &str,
         files: FileInput<'_>,
         destination: impl FnOnce() -> io::Result<std::path::PathBuf>,
         cas: impl FnOnce() -> io::Result<std::path::PathBuf>,
         options: install::Options,
         transport: &T,
-        out: &mut impl Write,
+        presentation: &mut impl Presentation,
     ) -> Result<install::Summary, Failure> {
-        let destination = destination().map_err(|_| Failure::Root)?;
+        let destination = destination().map_err(Failure::Root)?;
         if destination.as_os_str().is_empty() {
-            return Err(Failure::Root);
+            return Err(Failure::Root(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "InvalidRoot",
+            )));
         }
-        let root = ArtifactRoot::open(destination).map_err(|_| Failure::Root)?;
-        let cas = cas().map_err(|_| Failure::Store)?;
+        let root = ArtifactRoot::open(destination).map_err(Failure::Root)?;
+        let cas = cas().map_err(Failure::Store)?;
         if cas.as_os_str().is_empty() {
-            return Err(Failure::Store);
+            return Err(Failure::Store(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "InvalidRoot",
+            )));
         }
-        let store = Store::open(cas).map_err(|_| Failure::Store)?;
-        #[derive(Serialize)]
-        struct Started<'a> {
-            stage: &'static str,
-            version_id: &'a PlanBytes,
-            files_total: usize,
-            bytes_total: u64,
-        }
-        #[derive(Serialize)]
-        struct StartedPayload<T> {
-            started: T,
-        }
-        #[derive(Serialize)]
-        struct FilePayload<T> {
-            file: T,
-        }
-        #[derive(Serialize)]
-        struct RetryPayload<T> {
-            retry: T,
-        }
-        #[derive(Serialize)]
-        struct ProgressPayload<T> {
-            progress: T,
-        }
-        event(
-            out,
-            id,
-            self.source,
-            "started",
-            StartedPayload {
-                started: Started {
-                    stage: "download",
-                    version_id: &self.version_id,
-                    files_total: self.files.len(),
-                    bytes_total: self.total_download_size,
-                },
-            },
-        )
-        .map_err(Failure::Output)?;
+        let store = Store::open(cas).map_err(Failure::Store)?;
+        let info = CompletionInfo {
+            version: &self.version_id.0,
+            source: self.source,
+            files: self.files.len(),
+            bytes: self.total_download_size,
+        };
+        presentation.started(info).map_err(Failure::Output)?;
         let summary = install::stream::stream(
             |sink| match files {
                 FileInput::Ordinary(files) => {
@@ -167,21 +247,7 @@ impl ReadPlan {
                     Some(sink),
                 ),
             },
-            |e| match e {
-                install::ByteEvent::File(v) => {
-                    event(out, id, self.source, "file", FilePayload { file: v })
-                }
-                install::ByteEvent::Retry(v) => {
-                    event(out, id, self.source, "retry", RetryPayload { retry: v })
-                }
-                install::ByteEvent::Progress(v) => event(
-                    out,
-                    id,
-                    self.source,
-                    "progress",
-                    ProgressPayload { progress: v },
-                ),
-            },
+            |event| presentation.event(event),
         )
         .map_err(Failure::Output)?
         .map_err(Failure::Files)?;
@@ -197,36 +263,13 @@ impl ReadPlan {
             &self.target,
         )
         .map_err(Failure::Receipt)?;
-        #[derive(Serialize)]
-        struct ResultPayload<'a> {
-            stage: &'static str,
-            version_id: &'a PlanBytes,
-            #[serde(flatten)]
-            summary: &'a install::Summary,
-        }
-        #[derive(Serialize)]
-        struct Payload<T> {
-            result: T,
-        }
-        event(
-            out,
-            id,
-            self.source,
-            "result",
-            Payload {
-                result: ResultPayload {
-                    stage: "download",
-                    version_id: &self.version_id,
-                    summary: &summary,
-                },
-            },
-        )
-        .map_err(Failure::Output)?;
+        presentation
+            .completed(info, &summary)
+            .map_err(Failure::Output)?;
         Ok(summary)
     }
 }
-/// Download-phase capability: keeps the entire validated plan alive. Native and
-/// projection descriptions belong to later preparation, never to this phase.
+/// Full plan remains borrowed; native/projection descriptions remain deferred.
 pub(crate) struct VanillaDownloadPhase<'a> {
     plan: &'a ReadPlan,
 }
@@ -239,6 +282,26 @@ impl VanillaDownloadPhase<'_> {
         options: install::Options,
         transport: &T,
         out: &mut impl Write,
+    ) -> Result<install::Summary, Failure> {
+        self.complete_with(
+            destination,
+            cas,
+            options,
+            transport,
+            &mut Rpc {
+                id,
+                source: self.plan.source,
+                out,
+            },
+        )
+    }
+    pub(crate) fn complete_with<T: install::Transport>(
+        &self,
+        destination: &[u8],
+        cas: &[u8],
+        options: install::Options,
+        transport: &T,
+        presentation: &mut impl Presentation,
     ) -> Result<install::Summary, Failure> {
         let files: Vec<_> = self
             .plan
@@ -253,13 +316,12 @@ impl VanillaDownloadPhase<'_> {
             })
             .collect();
         self.plan.complete_files(
-            id,
             FileInput::Vanilla(&files, self.plan.total_download_size),
             || crate::store::path_from_bytes(destination).map(Into::into),
             || crate::store::path_from_bytes(cas).map(Into::into),
             options,
             transport,
-            out,
+            presentation,
         )
     }
 }
