@@ -26,30 +26,32 @@ impl Name for DisplayName {
         Ok(Self(c.value_bytes()?.into_bytes()))
     }
 }
-pub(crate) struct Wire<N> {
+pub(crate) struct Wire<N, T> {
     schema_version: u32,
-    id: String,
+    id: T,
     name: N,
-    version_id: String,
-    fabric_loader: Option<String>,
-    neoforge_version: Option<String>,
-    forge_version: Option<String>,
+    version_id: T,
+    fabric_loader: Option<T>,
+    neoforge_version: Option<T>,
+    forge_version: Option<T>,
     source: String,
     accept_eula: bool,
     java_path: Option<String>,
 }
 pub(crate) trait Document: sealed::Sealed {
     type Name: Name;
+    type Text: Name;
     const SERVER: bool;
-    fn from_wire(w: Wire<Self::Name>) -> Self;
+    fn from_wire(w: Wire<Self::Name, Self::Text>) -> Self;
 }
 macro_rules! document {
-    ($ty:ty, $name:ty, $server:expr $(, $extra:ident)*) => {
+    ($ty:ty, $name:ty, $text:ty, $server:expr $(, $extra:ident)*) => {
         impl sealed::Sealed for $ty {}
         impl Document for $ty {
             type Name = $name;
+            type Text = $text;
             const SERVER: bool = $server;
-            fn from_wire(w: Wire<$name>) -> Self {
+            fn from_wire(w: Wire<$name, $text>) -> Self {
                 Self { schema_version:w.schema_version, id:w.id, name:w.name,
                     version_id:w.version_id, fabric_loader:w.fabric_loader,
                     neoforge_version:w.neoforge_version, forge_version:w.forge_version,
@@ -58,10 +60,12 @@ macro_rules! document {
         }
     };
 }
-document!(super::Manifest, String, false);
-document!(super::ReadManifest, DisplayName, false);
+document!(super::Manifest, String, String, false);
+document!(super::ReadManifest, DisplayName, String, false);
+document!(super::byte_read::Manifest, DisplayName, DisplayName, false);
 document!(
     crate::servers::manifest::Manifest,
+    String,
     String,
     true,
     accept_eula,
@@ -71,16 +75,17 @@ document!(
 document!(
     crate::servers::manifest::ReadManifest,
     DisplayName,
+    String,
     true,
     accept_eula,
     java_path
 );
-fn optional(c: &mut Cursor<'_>) -> Result<Option<String>> {
+fn optional<T: Name>(c: &mut Cursor<'_>) -> Result<Option<T>> {
     if c.peek_value()? == b'n' {
         c.next()?;
         Ok(None)
     } else {
-        String::read(c).map(Some)
+        T::read(c).map(Some)
     }
 }
 pub(super) fn source(c: &mut Cursor<'_>) -> Result<String> {
@@ -106,7 +111,7 @@ pub(super) fn number(c: &mut Cursor<'_>) -> Result<u32> {
         .map(|n| n as u32)
         .map_err(|e| e.name().into())
 }
-fn wire<N: Name>(bytes: &[u8], server: bool) -> Result<Wire<N>> {
+fn wire<N: Name, T: Name>(bytes: &[u8], server: bool) -> Result<Wire<N, T>> {
     let mut c = Cursor::new(bytes);
     c.peek_value()?;
     if c.next()? != Token::OpenObject {
@@ -149,9 +154,9 @@ fn wire<N: Name>(bytes: &[u8], server: bool) -> Result<Wire<N>> {
             c.expect(Token::Colon)?;
             match index {
                 Some(0) => schema_version = number(&mut c)?,
-                Some(1) => id = Some(String::read(&mut c)?),
+                Some(1) => id = Some(T::read(&mut c)?),
                 Some(2) => name = Some(N::read(&mut c)?),
-                Some(3) => version_id = Some(String::read(&mut c)?),
+                Some(3) => version_id = Some(T::read(&mut c)?),
                 Some(4) => fabric_loader = optional(&mut c)?,
                 Some(5) => neoforge_version = optional(&mut c)?,
                 Some(6) => forge_version = optional(&mut c)?,
@@ -163,7 +168,7 @@ fn wire<N: Name>(bytes: &[u8], server: bool) -> Result<Wire<N>> {
                     };
                     accept_eula = v;
                 }
-                Some(9) => java_path = optional(&mut c)?,
+                Some(9) => java_path = optional::<String>(&mut c)?,
                 _ => c.skip()?,
             }
             match c.separator(Token::CloseObject, false)? {
@@ -189,7 +194,7 @@ fn wire<N: Name>(bytes: &[u8], server: bool) -> Result<Wire<N>> {
     Ok(w)
 }
 pub(super) fn parse<T: Document>(bytes: &[u8]) -> std::result::Result<T, &'static str> {
-    wire::<T::Name>(bytes, T::SERVER)
+    wire::<T::Name, T::Text>(bytes, T::SERVER)
         .map(T::from_wire)
         .map_err(|e| match e.0.as_str() {
             "UnexpectedEndOfInput" => "UnexpectedEndOfInput",
@@ -212,6 +217,7 @@ mod tests {
         let mut results = vec![
             parse::<crate::instances::Manifest>(bytes).map(|_| ()),
             parse::<crate::instances::ReadManifest>(bytes).map(|_| ()),
+            parse::<crate::instances::byte_read::Manifest>(bytes).map(|_| ()),
             parse::<crate::servers::manifest::Manifest>(bytes).map(|_| ()),
         ];
         #[cfg(target_os = "linux")]
@@ -297,6 +303,7 @@ mod size_tests {
         bytes.resize(65536, b' ');
         assert!(crate::instances::Manifest::parse(&bytes, "demo").is_ok());
         assert!(crate::instances::ReadManifest::parse(&bytes, "demo").is_ok());
+        assert!(crate::instances::byte_read::Manifest::parse(&bytes, "demo").is_ok());
         assert!(crate::servers::manifest::Manifest::parse(&bytes, "demo").is_ok());
         #[cfg(target_os = "linux")]
         assert!(crate::servers::manifest::ReadManifest::parse(&bytes, "demo").is_ok());
@@ -307,6 +314,10 @@ mod size_tests {
         );
         assert_eq!(
             crate::instances::ReadManifest::parse(&bytes, "demo").unwrap_err(),
+            "InstanceManifestTooLarge"
+        );
+        assert_eq!(
+            crate::instances::byte_read::Manifest::parse(&bytes, "demo").unwrap_err(),
             "InstanceManifestTooLarge"
         );
         assert_eq!(

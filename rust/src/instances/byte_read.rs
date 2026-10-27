@@ -8,19 +8,17 @@ use serde_json::{Value, json};
 
 #[derive(Debug, Serialize)]
 pub(super) struct Manifest {
-    schema_version: u32,
-    id: DisplayName,
+    pub(super) schema_version: u32,
+    pub(super) id: DisplayName,
     pub(super) name: DisplayName,
     pub(super) version_id: DisplayName,
-    fabric_loader: Option<DisplayName>,
-    neoforge_version: Option<DisplayName>,
-    forge_version: Option<DisplayName>,
+    pub(super) fabric_loader: Option<DisplayName>,
+    pub(super) neoforge_version: Option<DisplayName>,
+    pub(super) forge_version: Option<DisplayName>,
     pub(super) source: String,
 }
-struct Wire {
+struct Receipt {
     schema: u32,
-    id: Option<DisplayName>,
-    name: Option<DisplayName>,
     version: Option<DisplayName>,
     fabric: Option<DisplayName>,
     neo: Option<DisplayName>,
@@ -37,18 +35,16 @@ fn optional(c: &mut Cursor<'_>) -> Result<Option<DisplayName>> {
         DisplayName::read(c).map(Some)
     }
 }
-// Source-ordered typed parsing: duplicate/error order is not a serde Value map.
-// Unknown fields are skipped; only the chosen persisted schema is recognized.
-fn wire(bytes: &[u8], receipt: bool) -> Result<Wire> {
+// Receipt-only typed parsing uses the same audited cursor/enum/number helpers.
+// Manifest parsing goes through manifest_ordered; unknown receipt fields are skipped.
+fn receipt_wire(bytes: &[u8]) -> Result<Receipt> {
     let mut c = Cursor::new(bytes);
     c.peek_value()?;
     if c.next()? != Token::OpenObject {
         return Err("UnexpectedToken".into());
     }
-    let mut w = Wire {
+    let mut w = Receipt {
         schema: 1,
-        id: None,
-        name: None,
         version: None,
         fabric: None,
         neo: None,
@@ -80,7 +76,7 @@ fn wire(bytes: &[u8], receipt: bool) -> Result<Wire> {
             let index = names
                 .iter()
                 .position(|name| *name == field.as_slice())
-                .filter(|i| if receipt { *i != 1 && *i != 2 } else { *i < 8 });
+                .filter(|i| *i != 1 && *i != 2);
             if let Some(i) = index {
                 let bit = 1u16 << i;
                 if seen & bit != 0 {
@@ -91,8 +87,6 @@ fn wire(bytes: &[u8], receipt: bool) -> Result<Wire> {
             c.expect(Token::Colon)?;
             match index {
                 Some(0) => w.schema = number(&mut c)?,
-                Some(1) => w.id = Some(DisplayName::read(&mut c)?),
-                Some(2) => w.name = Some(DisplayName::read(&mut c)?),
                 Some(3) => w.version = Some(DisplayName::read(&mut c)?),
                 Some(4) => w.fabric = optional(&mut c)?,
                 Some(5) => w.neo = optional(&mut c)?,
@@ -109,30 +103,11 @@ fn wire(bytes: &[u8], receipt: bool) -> Result<Wire> {
             }
         }
     }
-    if w.version.is_none()
-        || if receipt {
-            w.os.is_none() || w.arch.is_none()
-        } else {
-            w.id.is_none() || w.name.is_none()
-        }
-    {
+    if w.version.is_none() || w.os.is_none() || w.arch.is_none() {
         return Err(Error("MissingField".into()));
     }
     c.finish()?;
     Ok(w)
-}
-fn category(error: Error) -> &'static str {
-    match error.0.as_str() {
-        "UnexpectedEndOfInput" => "UnexpectedEndOfInput",
-        "UnexpectedToken" => "UnexpectedToken",
-        "InvalidEnumTag" => "InvalidEnumTag",
-        "Overflow" => "Overflow",
-        "InvalidNumber" => "InvalidNumber",
-        "InvalidCharacter" => "InvalidCharacter",
-        "MissingField" => "MissingField",
-        "DuplicateField" => "DuplicateField",
-        _ => "SyntaxError",
-    }
 }
 fn length(bytes: &DisplayName, max: usize) -> bool {
     !bytes.0.is_empty() && bytes.0.len() <= max
@@ -150,17 +125,7 @@ impl Manifest {
         if bytes.len() > MAX_MANIFEST_BYTES {
             return Err("InstanceManifestTooLarge");
         }
-        let w = wire(bytes, false).map_err(category)?;
-        let m = Self {
-            schema_version: w.schema,
-            id: w.id.unwrap(),
-            name: w.name.unwrap(),
-            version_id: w.version.unwrap(),
-            fabric_loader: w.fabric,
-            neoforge_version: w.neo,
-            forge_version: w.forge,
-            source: w.source,
-        };
+        let m: Self = super::manifest_ordered::parse(bytes)?;
         let text = std::str::from_utf8(&m.id.0).map_err(|_| "InvalidInstanceId")?;
         validate_id(text)?;
         if m.schema_version != 1 {
@@ -204,7 +169,7 @@ impl Manifest {
         if bytes.len() > 16 * 1024 {
             return false;
         }
-        let Ok(w) = wire(bytes, true) else {
+        let Ok(w) = receipt_wire(bytes) else {
             return false;
         };
         if w.schema != 1
@@ -392,6 +357,35 @@ mod tests {
         assert!(!m.matches_receipt(&vec![b' '; 16 * 1024 + 1]));
         let utf = Manifest::parse(document(r#""v""#, "null").as_bytes(), "demo").unwrap();
         assert!(utf.matches_receipt(receipt("[118]", "null").as_bytes()));
+    }
+
+    #[test]
+    fn receipt_ordered_grammar_rejects_malformed_ignored_values() {
+        for (raw, expected) in [
+            (br#"[]"#.as_slice(), "UnexpectedToken"),
+            (br#"{}!"#, "MissingField"),
+            (br#"{"source":"bad","future":"\ud800"}"#, "InvalidEnumTag"),
+            (br#"{"future":"\ud800","source":"bad"}"#, "SyntaxError"),
+            (
+                br#"{"future":{"a":"\ud800"},"source":"bad"}"#,
+                "SyntaxError",
+            ),
+            (br#"{"schema_version":4294967296,"#, "Overflow"),
+            (br#"{"version_id":true,"#, "UnexpectedToken"),
+            (br#"{"version_id":"v","version_id":null}"#, "DuplicateField"),
+            (br#"{"schema_version":1.0000000000000001}"#, "InvalidNumber"),
+        ] {
+            let actual = receipt_wire(raw).err().expect("invalid receipt");
+            assert_eq!(actual.0, expected, "{raw:?}");
+        }
+        let m = Manifest::parse(document(r#""v""#, "null").as_bytes(), "demo").unwrap();
+        let valid=br#"{"schema_version":"1_0e-1","version_id":[118],"source":"0_1","os":"linux","arch":"x86_64","future":{"x":1e400},"future":false}"#;
+        assert!(m.matches_receipt(valid));
+        for source in ["-0", "0.0", "1e0", "false", "null", "2"] {
+            let raw =
+                format!(r#"{{"version_id":"v","source":{source},"os":"linux","arch":"x86_64"}}"#);
+            assert!(!m.matches_receipt(raw.as_bytes()), "source {source}");
+        }
     }
 
     #[cfg(unix)]
