@@ -83,7 +83,7 @@ fn optional(c: &mut Cursor<'_>) -> Result<Option<String>> {
         String::read(c).map(Some)
     }
 }
-fn source(c: &mut Cursor<'_>) -> Result<String> {
+pub(super) fn source(c: &mut Cursor<'_>) -> Result<String> {
     c.peek_value()?;
     let value = match c.next()? {
         Token::String(raw) => {
@@ -96,7 +96,7 @@ fn source(c: &mut Cursor<'_>) -> Result<String> {
         .map(str::to_owned)
         .ok_or_else(|| "InvalidEnumTag".into())
 }
-fn number(c: &mut Cursor<'_>) -> Result<u32> {
+pub(super) fn number(c: &mut Cursor<'_>) -> Result<u32> {
     c.peek_value()?;
     let raw = match c.next()? {
         Token::String(raw) | Token::Number(raw) => raw,

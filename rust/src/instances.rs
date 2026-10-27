@@ -2,6 +2,7 @@
 use crate::protocol::RpcError;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json, value::RawValue};
+mod byte_read;
 mod cli;
 #[cfg(any(unix, windows))]
 mod create_unvalidated;
