@@ -14,7 +14,7 @@ pub(crate) struct MetadataEntry<'a> {
     pub url: std::borrow::Cow<'a, [u8]>,
     pub sha1: Option<std::borrow::Cow<'a, [u8]>>,
 }
-fn bytes(value: &Value) -> std::borrow::Cow<'_, [u8]> {
+pub(super) fn bytes(value: &Value) -> std::borrow::Cow<'_, [u8]> {
     match value.as_str() {
         Some(s) => std::borrow::Cow::Borrowed(s.as_bytes()),
         None => std::borrow::Cow::Owned(
@@ -46,7 +46,7 @@ impl Listing {
 }
 // Reuse the metadata lexeme tree, duplicate tracking and typed integer parser.
 // Every []const u8 in the pinned listing schema has a string-or-array view.
-fn byte_text(v: &Node) -> Result<Value, Error> {
+pub(super) fn byte_text(v: &Node) -> Result<Value, Error> {
     if v.is_string() {
         return text(v);
     }

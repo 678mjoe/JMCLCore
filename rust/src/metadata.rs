@@ -465,7 +465,58 @@ fields!(java,"component"=>text,"majorVersion"=>u16v);
 fields!(logging_file,"id"=>text,"sha1"=>text,"size"=>u64v,"url"=>text);
 fields!(logging_client,"argument"=>text,"file"=>logging_file,"type"=>text);
 fields!(logging,"client"=>logging_client);
-fields!(metadata_value,"id"=>id_text,"type"=>text,"mainClass"=>text,"libraries"=>libraries,"downloads"=>downloads,"arguments"=>arguments=Value::Null,"minecraftArguments"=>text=Value::Null,"assetIndex"=>asset_descriptor=Value::Null,"assets"=>text=Value::Null,"javaVersion"=>java=Value::Null,"logging"=>logging=Value::Null,"minimumLauncherVersion"=>u32v=Value::Null,"complianceLevel"=>u8v=Value::Null,"releaseTime"=>text=Value::Null,"time"=>text=Value::Null,"inheritsFrom"=>text=Value::Null,"patched_client"=>text=Value::Null);
+fn metadata_value_with_id(v: &Node, id: Norm) -> Result<Value, Error> {
+    object(
+        v,
+        &[
+            Field("id", id, None),
+            Field("type", text, None),
+            Field("mainClass", text, None),
+            Field("libraries", libraries, None),
+            Field("downloads", downloads, None),
+            Field("arguments", arguments, Some(Value::Null)),
+            Field("minecraftArguments", text, Some(Value::Null)),
+            Field("assetIndex", asset_descriptor, Some(Value::Null)),
+            Field("assets", text, Some(Value::Null)),
+            Field("javaVersion", java, Some(Value::Null)),
+            Field("logging", logging, Some(Value::Null)),
+            Field("minimumLauncherVersion", u32v, Some(Value::Null)),
+            Field("complianceLevel", u8v, Some(Value::Null)),
+            Field("releaseTime", text, Some(Value::Null)),
+            Field("time", text, Some(Value::Null)),
+            Field("inheritsFrom", text, Some(Value::Null)),
+            Field("patched_client", text, Some(Value::Null)),
+        ],
+    )
+}
+fn metadata_value(v: &Node) -> Result<Value, Error> {
+    metadata_value_with_id(v, id_text)
+}
+fn read_metadata_value(v: &Node) -> Result<Value, Error> {
+    metadata_value_with_id(v, listing::byte_text)
+}
+/// Validated read endpoint view. Only the top-level ID varies from the String schema.
+pub(crate) struct ReadMetadata {
+    value: Value,
+    id: Vec<u8>,
+}
+impl ReadMetadata {
+    pub(crate) fn parse(bytes: &[u8]) -> Result<Self, Error> {
+        let value = normalize(bytes, read_metadata_value)?;
+        let id = listing::bytes(&value["id"]).into_owned();
+        Ok(Self { value, id })
+    }
+    pub(crate) fn id(&self) -> &[u8] {
+        &self.id
+    }
+    pub(crate) fn value(&self) -> &Value {
+        &self.value
+    }
+    pub(crate) fn into_value(self) -> Value {
+        self.value
+    }
+}
+
 pub fn metadata(bytes: &[u8]) -> Result<Value, Error> {
     normalize(bytes, metadata_value)
 }

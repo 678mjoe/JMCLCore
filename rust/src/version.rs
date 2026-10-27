@@ -666,6 +666,27 @@ fn parse_params(params: Option<&RawValue>) -> Result<Option<Value>, Error> {
         .map(|v| metadata::parse_json(v.get().as_bytes()))
         .transpose()
 }
+fn enum_tag(value: &Value, tags: &[&str]) -> Option<usize> {
+    let ordinal = match value {
+        Value::String(text) => {
+            if let Some(index) = tags.iter().position(|tag| *tag == text) {
+                return Some(index);
+            }
+            // Zig's dynamic enum parser accepts integer-shaped strings,
+            // but not float spellings (including the special string -0).
+            if text == "-0" || text.bytes().any(|b| matches!(b, b'.' | b'e' | b'E')) {
+                return None;
+            }
+            crate::json_number::unsigned_text(text, 64).ok()?
+        }
+        // Do not coerce floating Values, even an integral 0.0 or -0.
+        Value::Number(number) => number.as_u64()?,
+        _ => return None,
+    };
+    let index = usize::try_from(ordinal).ok()?;
+    (index < tags.len()).then_some(index)
+}
+
 // Canonicalize declared enums and UTF-8 byte arrays for these request schemas.
 // Borrow ordinary strings; clone only for accepted alternative representations.
 // The caller's Value and unrelated fields remain unchanged.
@@ -679,26 +700,6 @@ fn canonical_params_view<'a>(
         "version.list" | "version.get" | "version.resolve" | "install.plan"
     ) {
         return Ok(value.map(Cow::Borrowed));
-    }
-    fn tag(value: &Value, tags: &[&str]) -> Option<usize> {
-        let ordinal = match value {
-            Value::String(text) => {
-                if let Some(index) = tags.iter().position(|tag| *tag == text) {
-                    return Some(index);
-                }
-                // Zig's dynamic enum parser accepts integer-shaped strings,
-                // but not float spellings (including the special string -0).
-                if text == "-0" || text.bytes().any(|b| matches!(b, b'.' | b'e' | b'E')) {
-                    return None;
-                }
-                crate::json_number::unsigned_text(text, 64).ok()?
-            }
-            // Do not coerce floating Values, even an integral 0.0 or -0.
-            Value::Number(number) => number.as_u64()?,
-            _ => return None,
-        };
-        let index = usize::try_from(ordinal).ok()?;
-        (index < tags.len()).then_some(index)
     }
     let Some(value) = value else { return Ok(None) };
     let fields = value.as_object().ok_or_else(|| param_error(method))?;
@@ -733,7 +734,7 @@ fn canonical_params_view<'a>(
         if nullable && field.is_null() {
             continue;
         }
-        let name = tags[tag(field, tags).ok_or_else(|| param_error(method))?];
+        let name = tags[enum_tag(field, tags).ok_or_else(|| param_error(method))?];
         if field.as_str() != Some(name) {
             view.to_mut()
                 .as_object_mut()
@@ -1579,3 +1580,6 @@ mod listing_tests;
 #[cfg(all(test, unix))]
 #[path = "version_lookup_tests.rs"]
 mod lookup_tests;
+
+#[path = "version_read.rs"]
+mod read;
