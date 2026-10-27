@@ -7,6 +7,43 @@ impl Listing {
         normalize(bytes, listing_manifest).map(Self)
     }
 }
+/// A selected entry retains bytes; conversion to transport text belongs to its caller.
+#[derive(Debug, PartialEq)]
+pub(crate) struct MetadataEntry<'a> {
+    pub id: std::borrow::Cow<'a, [u8]>,
+    pub url: std::borrow::Cow<'a, [u8]>,
+    pub sha1: Option<std::borrow::Cow<'a, [u8]>>,
+}
+fn bytes(value: &Value) -> std::borrow::Cow<'_, [u8]> {
+    match value.as_str() {
+        Some(s) => std::borrow::Cow::Borrowed(s.as_bytes()),
+        None => std::borrow::Cow::Owned(
+            value
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|b| b.as_u64().unwrap() as u8)
+                .collect(),
+        ),
+    }
+}
+impl Listing {
+    /// Parsing and validation of the entire manifest have already succeeded.
+    /// Duplicate ID values are allowed: the first match wins, as in Zig.
+    pub(crate) fn lookup_metadata_entry(&self, id: &[u8]) -> Result<MetadataEntry<'_>, Error> {
+        let selected = self.0["versions"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|entry| bytes(&entry["id"]).as_ref() == id)
+            .ok_or(Error::VersionNotFound)?;
+        Ok(MetadataEntry {
+            id: bytes(&selected["id"]),
+            url: bytes(&selected["url"]),
+            sha1: (!selected["sha1"].is_null()).then(|| bytes(&selected["sha1"])),
+        })
+    }
+}
 // Reuse the metadata lexeme tree, duplicate tracking and typed integer parser.
 // Every []const u8 in the pinned listing schema has a string-or-array view.
 fn byte_text(v: &Node) -> Result<Value, Error> {
@@ -200,13 +237,42 @@ mod lookup_tests {
             ),
             entry(json!([252]), json!([251]), Value::Null),
         ]);
-        let parsed = super::super::manifest(&bytes).unwrap();
-        let selected = parsed["versions"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .find(|v| v["id"] == "demo")
-            .unwrap();
-        assert_eq!(selected["url"], "https://example.invalid/meta");
+        assert!(super::super::manifest(&bytes).is_err()); // Legacy API remains unchanged.
+        let parsed = Listing::parse(&bytes).unwrap();
+        let selected = parsed.lookup_metadata_entry(b"demo").unwrap();
+        assert_eq!(selected.id.as_ref(), b"demo");
+        assert_eq!(selected.url.as_ref(), b"https://example.invalid/meta");
+        assert_eq!(selected.sha1, None);
+    }
+}
+
+#[cfg(test)]
+mod lookup_order_tests {
+    use super::*;
+    use serde_json::json;
+    #[test]
+    fn lookup_preserves_raw_fields_first_duplicate_and_absence() {
+        let input = json!({"latest":{"release":[255],"snapshot":"s"},"versions":[
+            {"id":[255],"type":"release","url":[254],"sha1":[253],"time":"t","releaseTime":"r"},
+            {"id":[255],"type":"release","url":"second","sha1":null,"time":"t","releaseTime":"r"}
+        ]});
+        let listing = Listing::parse(input.to_string().as_bytes()).unwrap();
+        let entry = listing.lookup_metadata_entry(&[255]).unwrap();
+        assert_eq!(entry.id.as_ref(), &[255]);
+        assert_eq!(entry.url.as_ref(), &[254]);
+        assert_eq!(entry.sha1.as_deref(), Some([253].as_slice()));
+        assert_eq!(
+            listing.lookup_metadata_entry(b"absent"),
+            Err(Error::VersionNotFound)
+        );
+    }
+    #[test]
+    fn full_manifest_errors_precede_found_or_missing_lookup() {
+        for id in ["demo", "absent"] {
+            let input=br#"{"latest":{"release":"demo","snapshot":"s"},"versions":[{"id":"demo","type":"release","url":"u","time":"t","releaseTime":"r"},{"id":[255],"type":"invalid","url":"u","time":"t","releaseTime":"r"}]}"#;
+            let result = Listing::parse(input)
+                .and_then(|m| m.lookup_metadata_entry(id.as_bytes()).map(|_| ()));
+            assert_eq!(result, Err(Error::Json("InvalidEnumTag")));
+        }
     }
 }
