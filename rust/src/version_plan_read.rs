@@ -93,7 +93,7 @@ fn attempt<T: Transport>(
     request: &Request,
     metadata_source: Source,
     target: Target,
-) -> Result<Value, Error> {
+) -> Result<plan::ReadPlan, Error> {
     let metadata = svc.get_read(&request.id, metadata_source)?;
     let descriptor = &metadata.value()["assetIndex"];
     let assets = if descriptor.is_null() {
@@ -101,21 +101,42 @@ fn attempt<T: Transport>(
     } else {
         Some(svc.assets(descriptor, metadata_source)?)
     };
-    let plan = plan::build_read(&metadata, assets.as_ref(), request.source, target)?;
-    Ok(serde_json::to_value(plan).expect("validated read plan serializes"))
+    plan::build_read(&metadata, assets.as_ref(), request.source, target)
+}
+impl<T: Transport> Service<T> {
+    // Private typed boundary: same whole-attempt fallback as read planning.
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "private completion seam is not RPC routed")
+    )]
+    pub(crate) fn vanilla_read_plan(
+        &self,
+        id: &[u8],
+        source: Source,
+        target: Target,
+    ) -> Result<plan::ReadPlan, Error> {
+        let request = Request {
+            id: id.to_vec(),
+            source,
+            os: None,
+            arch: None,
+        };
+        attempt(self, &request, source, target.clone()).or_else(|e| {
+            if source == Source::Bmclapi {
+                attempt(self, &request, Source::Official, target)
+            } else {
+                Err(e)
+            }
+        })
+    }
 }
 fn planned<T: Transport>(
     svc: &Service<T>,
     request: &Request,
     target: Target,
 ) -> Result<Value, Error> {
-    attempt(svc, request, request.source, target.clone()).or_else(|e| {
-        if request.source == Source::Bmclapi {
-            attempt(svc, request, Source::Official, target)
-        } else {
-            Err(e)
-        }
-    })
+    svc.vanilla_read_plan(&request.id, request.source, target)
+        .map(|plan| serde_json::to_value(plan).expect("validated read plan serializes"))
 }
 pub(super) fn rpc<T: Transport>(svc: &Service<T>, request: Request) -> Result<Response, RpcError> {
     let target = target(&request)

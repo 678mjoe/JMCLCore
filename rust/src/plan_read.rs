@@ -147,3 +147,6 @@ impl OrdinaryFiles {
 #[cfg(all(test, target_os = "linux"))]
 #[path = "plan_ordinary_tests.rs"]
 mod ordinary_tests;
+
+#[path = "plan_completion.rs"]
+mod completion;
