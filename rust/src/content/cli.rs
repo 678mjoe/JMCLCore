@@ -338,7 +338,7 @@ fn adopt(
                 return Ok(1);
             }
         };
-        if let Err(e) = instances.load(id) {
+        if let Err(e) = instances.load_presentation_version(id) {
             writeln!(
                 err,
                 "failed to load instance: {}",
