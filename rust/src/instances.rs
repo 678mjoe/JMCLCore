@@ -1089,6 +1089,37 @@ mod create_params_tests {
     }
 
     #[test]
+    fn explicit_false_keeps_opaque_create_decode_gap_visible() {
+        let base = serde_json::json!({"directory":"unused", "id":"demo", "version_id":"v", "validate":false});
+        let raw = RawValue::from_string(base.to_string()).unwrap();
+        assert!(!parse_create(Some(&raw)).unwrap().validate);
+        // Observation of the recovered decoder, not source-parity acceptance.
+        // Do not invoke the create handler, resolver or writer here.
+        for field in [
+            "directory",
+            "id",
+            "version_id",
+            "name",
+            "fabric_loader",
+            "neoforge_version",
+            "forge_version",
+            "source",
+        ] {
+            let mut value = base.clone();
+            value[field] = serde_json::json!([255]);
+            let raw = RawValue::from_string(value.to_string()).unwrap();
+            let error = parse_create(Some(&raw))
+                .err()
+                .expect("opaque bytes currently rejected during decoding");
+            assert_eq!(
+                error,
+                invalid("instance creation parameters are invalid"),
+                "{field}"
+            );
+        }
+    }
+
+    #[test]
     #[ignore = "pure source-pinned UTF-8 parameter slice; nine residual rows remain explicit"]
     fn pinned_create_utf8_parameter_schema_only() {
         run_schema();

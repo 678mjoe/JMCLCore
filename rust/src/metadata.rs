@@ -263,6 +263,23 @@ fn normalize(bytes: &[u8], schema: Norm) -> Result<Value, Error> {
 }
 
 type Norm = fn(&Node) -> Result<Value, Error>;
+// These ID fields are typed []const u8 in the pinned metadata schemas.
+// Keep the existing String consumers: opaque bytes remain an explicit gap.
+// Unlike RPC Value arrays, typed metadata retains each numeric lexeme.
+fn id_text(v: &Node) -> Result<Value, Error> {
+    if v.is_string() {
+        return text(v);
+    }
+    let bytes = v
+        .as_array()
+        .ok_or(Error::Json("UnexpectedToken"))?
+        .iter()
+        .map(|item| typed_unsigned(item, 8).map(|n| n as u8))
+        .collect::<Result<Vec<_>, _>>()?;
+    String::from_utf8(bytes)
+        .map(Value::String)
+        .map_err(|_| Error::Json("UnexpectedToken"))
+}
 fn text(v: &Node) -> Result<Value, Error> {
     v.as_str()
         .map(|s| Value::String(s.into()))
@@ -382,8 +399,8 @@ fn action(v: &Node) -> Result<Value, Error> {
         None => Err(Error::Json("UnexpectedToken")),
     }
 }
-fields!(latest,"release"=>text,"snapshot"=>text);
-fields!(version,"id"=>text,"type"=>version_type,"url"=>text,"time"=>text,"releaseTime"=>text,"sha1"=>text=Value::Null,"complianceLevel"=>u8v=Value::Null);
+fields!(latest,"release"=>id_text,"snapshot"=>id_text);
+fields!(version,"id"=>id_text,"type"=>version_type,"url"=>text,"time"=>text,"releaseTime"=>text,"sha1"=>text=Value::Null,"complianceLevel"=>u8v=Value::Null);
 fn versions(v: &Node) -> Result<Value, Error> {
     array(v, version)
 }
@@ -447,7 +464,7 @@ fields!(java,"component"=>text,"majorVersion"=>u16v);
 fields!(logging_file,"id"=>text,"sha1"=>text,"size"=>u64v,"url"=>text);
 fields!(logging_client,"argument"=>text,"file"=>logging_file,"type"=>text);
 fields!(logging,"client"=>logging_client);
-fields!(metadata_value,"id"=>text,"type"=>text,"mainClass"=>text,"libraries"=>libraries,"downloads"=>downloads,"arguments"=>arguments=Value::Null,"minecraftArguments"=>text=Value::Null,"assetIndex"=>asset_descriptor=Value::Null,"assets"=>text=Value::Null,"javaVersion"=>java=Value::Null,"logging"=>logging=Value::Null,"minimumLauncherVersion"=>u32v=Value::Null,"complianceLevel"=>u8v=Value::Null,"releaseTime"=>text=Value::Null,"time"=>text=Value::Null,"inheritsFrom"=>text=Value::Null,"patched_client"=>text=Value::Null);
+fields!(metadata_value,"id"=>id_text,"type"=>text,"mainClass"=>text,"libraries"=>libraries,"downloads"=>downloads,"arguments"=>arguments=Value::Null,"minecraftArguments"=>text=Value::Null,"assetIndex"=>asset_descriptor=Value::Null,"assets"=>text=Value::Null,"javaVersion"=>java=Value::Null,"logging"=>logging=Value::Null,"minimumLauncherVersion"=>u32v=Value::Null,"complianceLevel"=>u8v=Value::Null,"releaseTime"=>text=Value::Null,"time"=>text=Value::Null,"inheritsFrom"=>text=Value::Null,"patched_client"=>text=Value::Null);
 pub fn metadata(bytes: &[u8]) -> Result<Value, Error> {
     normalize(bytes, metadata_value)
 }
@@ -609,5 +626,112 @@ mod lexical_number_tests {
             "\"mainClass\":\"Main\",\"unknown\":1e400",
         );
         assert!(metadata(source.as_bytes()).is_ok());
+    }
+}
+
+#[cfg(test)]
+mod id_array_tests {
+    use super::*;
+
+    // Pinned Zig install/version_manifest.zig Latest and Version, and
+    // install/version_metadata.zig Metadata declare these fields as []const u8.
+    // This tests Rust normalization only; it does not execute the Zig oracle.
+    fn manifest_input(id: &str) -> String {
+        format!(
+            r#"{{"latest":{{"release":{id},"snapshot":{id}}},"versions":[{{"id":{id},"type":"release","url":"https://example.invalid/meta","time":"t","releaseTime":"t"}}]}}"#
+        )
+    }
+    fn metadata_input(id: &str) -> String {
+        format!(
+            r#"{{"id":{id},"type":"release","mainClass":"Main","libraries":[],"downloads":{{"client":{{"sha1":"a","size":1,"url":"https://example.invalid/client"}}}}}}"#
+        )
+    }
+
+    #[test]
+    fn utf8_id_arrays_normalize_like_string_ids() {
+        for (token, expected) in [
+            ("[100,101,109,111]", "demo"),
+            ("[231,137,136,230,156,172]", "版本"),
+            ("[]", ""),
+            ("[0,10,65]", "\0\nA"),
+            (r#"["65","6.6e1","0_67"]"#, "ABC"),
+            ("[65.0,66e0]", "AB"),
+        ] {
+            let text = serde_json::to_string(expected).unwrap();
+            assert_eq!(
+                manifest(manifest_input(token).as_bytes()),
+                manifest(manifest_input(&text).as_bytes()),
+                "manifest {token}"
+            );
+            assert_eq!(
+                metadata(metadata_input(token).as_bytes()),
+                metadata(metadata_input(&text).as_bytes()),
+                "metadata {token}"
+            );
+        }
+    }
+
+    #[test]
+    fn id_arrays_preserve_typed_errors_and_opaque_residual() {
+        for (token, error) in [
+            ("[256]", "Overflow"),
+            ("[-1]", "Overflow"),
+            ("[65.5]", "InvalidNumber"),
+            ("[65.00000000000000001]", "InvalidNumber"),
+            (r#"["65.00000000000000001"]"#, "InvalidNumber"),
+            ("[true]", "UnexpectedToken"),
+            ("[null]", "UnexpectedToken"),
+            ("[[65]]", "UnexpectedToken"),
+            ("[{}]", "UnexpectedToken"),
+            ("null", "UnexpectedToken"),
+            ("65", "UnexpectedToken"),
+            // Explicit residual: opaque []const u8 still has no String consumer.
+            ("[255]", "UnexpectedToken"),
+            ("[192,128]", "UnexpectedToken"),
+        ] {
+            assert_eq!(
+                manifest(manifest_input(token).as_bytes()),
+                Err(Error::Json(error)),
+                "manifest {token}"
+            );
+            assert_eq!(
+                metadata(metadata_input(token).as_bytes()),
+                Err(Error::Json(error)),
+                "metadata {token}"
+            );
+        }
+        assert_eq!(
+            unsigned(&parse_json(b"65.00000000000000001").unwrap(), 255),
+            Ok(65)
+        );
+    }
+
+    #[test]
+    fn id_array_scope_keeps_other_fields_and_duplicate_guards() {
+        let source = metadata_input("[100]");
+        assert_eq!(
+            metadata(
+                source
+                    .replace(r#""mainClass":"Main""#, r#""mainClass":[77]"#)
+                    .as_bytes()
+            ),
+            Err(Error::Json("UnexpectedToken"))
+        );
+        assert_eq!(
+            metadata(
+                source
+                    .replace(r#""id":[100]"#, r#""id":[100],"id":[101]"#)
+                    .as_bytes()
+            ),
+            Err(Error::Json("DuplicateField"))
+        );
+        assert_eq!(
+            metadata(
+                source
+                    .replace(r#""id":[100]"#, r#""id":[100],"future":1,"future":2"#)
+                    .as_bytes()
+            ),
+            metadata(source.as_bytes())
+        );
     }
 }
