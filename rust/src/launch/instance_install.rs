@@ -110,7 +110,12 @@ fn parse(args: &[String]) -> Result<Options<'_>, ()> {
     }
     Ok(p)
 }
-fn request(args: &[String], err: &mut impl Write) -> io::Result<Result<Request, u8>> {
+fn request_with<'a, T, R>(
+    args: &'a [String],
+    err: &mut impl Write,
+    load: fn(&instances::Root, &str) -> io::Result<T>,
+    convert: impl FnOnce(Options<'a>, T) -> R,
+) -> io::Result<Result<R, u8>> {
     let p = match parse(args) {
         Ok(p) => p,
         Err(()) => {
@@ -129,7 +134,7 @@ fn request(args: &[String], err: &mut impl Write) -> io::Result<Result<Request, 
             return Ok(Err(1));
         }
     };
-    let m = match root.load(p.id) {
+    let m = match load(&root, p.id) {
         Ok(m) => m,
         Err(e) => {
             writeln!(
@@ -140,7 +145,10 @@ fn request(args: &[String], err: &mut impl Write) -> io::Result<Result<Request, 
             return Ok(Err(1));
         }
     };
-    Ok(Ok(Request::Execute(ExecuteParams {
+    Ok(Ok(convert(p, m)))
+}
+fn legacy(p: Options<'_>, m: instances::Manifest) -> Request {
+    Request::Execute(ExecuteParams {
         prepare: PrepareParams {
             selection: Selection {
                 id: m.version_id,
@@ -160,7 +168,39 @@ fn request(args: &[String], err: &mut impl Write) -> io::Result<Result<Request, 
         retries: p.retries,
         java_paths: p.java,
         java_policy: p.policy,
-    })))
+    })
+}
+fn request(args: &[String], err: &mut impl Write) -> io::Result<Result<Request, u8>> {
+    request_with(args, err, instances::Root::load, legacy)
+}
+enum ManagedRequest {
+    Vanilla(install::vanilla::Request),
+    Legacy(Request),
+}
+fn managed_request(
+    args: &[String],
+    err: &mut impl Write,
+) -> io::Result<Result<ManagedRequest, u8>> {
+    request_with(
+        args,
+        err,
+        instances::Root::load_install_selection,
+        |p, m| match m {
+            instances::InstallSelection::Legacy(m) => ManagedRequest::Legacy(legacy(p, m)),
+            instances::InstallSelection::Vanilla { version, source } => {
+                ManagedRequest::Vanilla(install::vanilla::Request {
+                    id: version,
+                    source: p.source.unwrap_or(source),
+                    directory: instances::minecraft_path(p.root, p.id).into_bytes(),
+                    store: p.store.as_bytes().to_vec(),
+                    os: p.os,
+                    arch: p.arch,
+                    workers: p.workers,
+                    retries: p.retries,
+                })
+            }
+        },
+    )
 }
 pub fn run(args: &[String], out: &mut impl Write, err: &mut impl Write) -> Option<io::Result<u8>> {
     if args.first().map(String::as_str) != Some("instance")
@@ -169,7 +209,7 @@ pub fn run(args: &[String], out: &mut impl Write, err: &mut impl Write) -> Optio
         return None;
     }
     Some((|| {
-        let req = match request(&args[2..], err)? {
+        let req = match managed_request(&args[2..], err)? {
             Ok(r) => r,
             Err(c) => return Ok(c),
         };
@@ -191,13 +231,13 @@ pub fn run(args: &[String], out: &mut impl Write, err: &mut impl Write) -> Optio
                 return Ok(1);
             }
         };
-        install::cli::run(
-            req,
-            &version::Service::new(metadata, ".jmclcore/metadata-cache"),
-            &transport,
-            out,
-            err,
-        )
+        let service = version::Service::new(metadata, ".jmclcore/metadata-cache");
+        match req {
+            ManagedRequest::Vanilla(p) => {
+                install::vanilla::run_cli(p, &service, &transport, out, err)
+            }
+            ManagedRequest::Legacy(p) => install::cli::run(p, &service, &transport, out, err),
+        }
     })())
 }
 /// Fully injected fixtures verify hardlinks and receipts without fetching game artifacts.
@@ -213,3 +253,6 @@ pub fn run_with<P: Planner, T: install::Transport>(
         Err(c) => Ok(c),
     }
 }
+
+#[cfg(all(test, target_os = "linux"))]
+mod tests;

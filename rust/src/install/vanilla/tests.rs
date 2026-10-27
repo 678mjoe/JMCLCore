@@ -94,3 +94,27 @@ fn ordinary_string_request_matches_existing_decoder_and_retains_range_errors() {
         );
     }
 }
+
+#[test]
+fn managed_cli_presentation_notice_and_raw_identity_are_pure() {
+    use crate::plan::CompletionPresentation;
+    let mut out = vec![];
+    let mut err = vec![];
+    let mut cli = Cli {
+        out: &mut out,
+        err: &mut err,
+        last_completed: 0,
+    };
+    cli.completed(
+        crate::plan::CompletionInfo {
+            version: &[255],
+            source: Source::Bmclapi,
+            files: 0,
+            bytes: 0,
+        },
+        &Summary::default(),
+    )
+    .unwrap();
+    assert_eq!(out,b"# source\tBMCLAPI\nversion\t\xff\ndownloaded\t0\ncached\t0\nhardLinked\t0\ncopied\t0\nverifiedBytes\t0\ntransferredBytes\t0\n");
+    assert!(err.is_empty());
+}
