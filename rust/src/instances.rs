@@ -524,7 +524,7 @@ fn handle_unix(method: &str, p: Option<&RawValue>) -> Result<Value, RpcError> {
                 .id
                 .validated()
                 .ok_or_else(|| fail("INSTANCE_NOT_FOUND", "No instance matches the given id"))?;
-            let m = root.load_read(id).map_err(|e| {
+            let m = root.load_bytes(id).map_err(|e| {
                 if e.kind() == std::io::ErrorKind::NotFound || e.to_string() == "InvalidInstanceId"
                 {
                     fail("INSTANCE_NOT_FOUND", "No instance matches the given id")
@@ -532,7 +532,7 @@ fn handle_unix(method: &str, p: Option<&RawValue>) -> Result<Value, RpcError> {
                     fail("INSTANCE_LOAD_FAILED", "Failed to load the instance")
                 }
             })?;
-            let status = root.installed_identity(m.identity()).map_err(|_| {
+            let status = root.installed_byte_view(&m).map_err(|_| {
                 fail(
                     "INSTANCE_STATUS_FAILED",
                     "Failed to read instance installation status",
@@ -563,12 +563,12 @@ fn handle_unix(method: &str, p: Option<&RawValue>) -> Result<Value, RpcError> {
                 .and_then(|path| Root::open_native(&path))
                 .map_err(|_| fail("INSTANCES_ROOT_ERROR", "Failed to open the instances root"))?;
             let manifests = root
-                .list_read()
+                .list_bytes()
                 .map_err(|_| fail("INSTANCE_LIST_FAILED", "Failed to list instances"))?;
             let items: Result<Vec<Value>, RpcError> = manifests
                 .iter()
                 .map(|m| {
-                    root.installed_identity(m.identity())
+                    root.installed_byte_view(m)
                         .map(|v| m.fields(v))
                         .map_err(|_| {
                             fail(

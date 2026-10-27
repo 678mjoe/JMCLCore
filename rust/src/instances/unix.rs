@@ -188,6 +188,15 @@ impl Root {
     pub fn load(&self, id: &str) -> io::Result<Manifest> {
         self.load_with(id, Manifest::parse)
     }
+    pub(super) fn load_bytes(&self, id: &str) -> io::Result<super::byte_read::Manifest> {
+        self.load_with(id, super::byte_read::Manifest::parse)
+    }
+    pub(super) fn list_bytes(&self) -> io::Result<Vec<super::byte_read::Manifest>> {
+        self.list_with(Self::load_bytes, super::byte_read::Manifest::id)
+    }
+    pub(super) fn installed_byte_view(&self, m: &super::byte_read::Manifest) -> io::Result<bool> {
+        self.installed_with(m.id(), |bytes| m.matches_receipt(bytes))
+    }
     pub fn load_read(&self, id: &str) -> io::Result<ReadManifest> {
         self.load_with(id, ReadManifest::parse)
     }
@@ -250,7 +259,10 @@ impl Root {
         self.installed_identity(m.identity())
     }
     pub fn installed_identity(&self, m: InstallationIdentity<'_>) -> io::Result<bool> {
-        let child = open_dir(&self.dir, m.id.as_ref(), false)?;
+        self.installed_with(m.id, |bytes| installed_bytes(bytes, m))
+    }
+    fn installed_with(&self, id: &str, matches: impl FnOnce(&[u8]) -> bool) -> io::Result<bool> {
+        let child = open_dir(&self.dir, id.as_ref(), false)?;
         let game = match open_dir(&child, ".minecraft".as_ref(), false) {
             Ok(d) => d,
             Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(false),
@@ -262,7 +274,7 @@ impl Root {
             Err(e) => return Err(e),
         };
         match read(&meta, "install.json", 16 * 1024) {
-            Ok(b) => Ok(installed_bytes(&b, m)),
+            Ok(b) => Ok(matches(&b)),
             Err(e) if e.kind() == io::ErrorKind::NotFound || e.to_string() == "TooLarge" => {
                 Ok(false)
             }

@@ -225,7 +225,7 @@ fn run_inner(
                 )?;
             }
             "list" => {
-                let manifests = match root.list_read() {
+                let manifests = match root.list_bytes() {
                     Ok(m) => m,
                     Err(e) => {
                         writeln!(
@@ -241,7 +241,9 @@ fn run_inner(
                     out.write_all(b"\n")?;
                 } else {
                     for m in manifests {
-                        write!(out, "{}\t{}\t{}\t", m.id, m.version_id, m.source)?;
+                        write!(out, "{}\t", m.id())?;
+                        out.write_all(&m.version_id.0)?;
+                        write!(out, "\t{}\t", m.source)?;
                         out.write_all(&m.name.0)?;
                         out.write_all(b"\n")?;
                     }
@@ -249,7 +251,7 @@ fn run_inner(
             }
             "show" => {
                 let id = o.id.unwrap();
-                let m = match root.load_read(&id) {
+                let m = match root.load_bytes(&id) {
                     Ok(m) => m,
                     Err(e) => {
                         writeln!(
@@ -265,13 +267,11 @@ fn run_inner(
                     serde_json::to_writer(&mut *out, &json!({"instance":m,"directory":path}))?;
                     out.write_all(b"\n")?;
                 } else {
-                    write!(out, "instance\t{}\nname\t", m.id)?;
+                    write!(out, "instance\t{}\nname\t", m.id())?;
                     out.write_all(&m.name.0)?;
-                    writeln!(
-                        out,
-                        "\nversion\t{}\nsource\t{}\ndirectory\t{}",
-                        m.version_id, m.source, path
-                    )?;
+                    out.write_all(b"\nversion\t")?;
+                    out.write_all(&m.version_id.0)?;
+                    writeln!(out, "\nsource\t{}\ndirectory\t{}", m.source, path)?;
                 }
             }
             "delete" => {
