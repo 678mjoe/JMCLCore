@@ -67,50 +67,17 @@ impl<T: version::Transport> Planner for version::Service<T> {
     }
 }
 pub fn record_completed(root: &ArtifactRoot, p: &Selection, target: &Target) -> Result<(), Error> {
-    if p.id.is_empty() || p.id.len() > 256 {
-        return Err(Error::named("InvalidVersionId"));
-    }
-    let loaders = [&p.fabric_loader, &p.neoforge_version, &p.forge_version];
-    for v in loaders.iter().filter_map(|v| v.as_ref()) {
-        if v.is_empty() || v.len() > 256 {
-            return Err(Error::named("InvalidLoaderVersion"));
-        }
-    }
-    if loaders.iter().filter(|v| v.is_some()).count() > 1 {
-        return Err(Error::named("LoaderConflict"));
-    }
-    if target.os.is_empty()
-        || target.os.len() > 32
-        || target.arch.is_empty()
-        || target.arch.len() > 32
-    {
-        return Err(Error::named("InvalidInstallationTarget"));
-    }
-    #[derive(Serialize)]
-    struct Receipt<'a> {
-        schema_version: u32,
-        version_id: &'a str,
-        fabric_loader: Option<&'a str>,
-        neoforge_version: Option<&'a str>,
-        forge_version: Option<&'a str>,
-        source: Source,
-        os: &'a str,
-        arch: &'a str,
-    }
-    let receipt = Receipt {
-        schema_version: 1,
-        version_id: &p.id,
-        fabric_loader: p.fabric_loader.as_deref(),
-        neoforge_version: p.neoforge_version.as_deref(),
-        forge_version: p.forge_version.as_deref(),
-        source: p.source,
-        os: &target.os,
-        arch: &target.arch,
-    };
-    let mut bytes = serde_json::to_vec(&receipt).map_err(|_| Error::named("WriteFailed"))?;
-    bytes.push(b'\n');
-    root.atomic_replace(".jmcl/install.json", &bytes)?;
-    Ok(())
+    super::receipt::write(
+        root,
+        &super::receipt::Identity {
+            version: p.id.as_bytes(),
+            fabric: p.fabric_loader.as_deref().map(str::as_bytes),
+            neo: p.neoforge_version.as_deref().map(str::as_bytes),
+            forge: p.forge_version.as_deref().map(str::as_bytes),
+            source: p.source,
+        },
+        target,
+    )
 }
 
 /// Legacy Forge has no processor chain. Do not infer a chain merely from the

@@ -1283,3 +1283,5 @@ pub mod stream;
 #[cfg(test)]
 #[path = "content_byte_tests.rs"]
 mod content_byte_tests;
+
+pub(crate) mod receipt;
