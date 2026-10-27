@@ -223,6 +223,7 @@ impl Root {
     pub fn list(&self) -> io::Result<Vec<Manifest>> {
         self.list_with(Self::load, |m| &m.id)
     }
+    #[allow(dead_code)] // Preserved String-based API; presentation uses list_bytes.
     pub fn list_read(&self) -> io::Result<Vec<ReadManifest>> {
         self.list_with(Self::load_read, |m| &m.id)
     }
@@ -258,6 +259,7 @@ impl Root {
     pub fn installed(&self, m: &Manifest) -> io::Result<bool> {
         self.installed_identity(m.identity())
     }
+    #[allow(dead_code)] // Preserved String-based API and test controls.
     pub fn installed_identity(&self, m: InstallationIdentity<'_>) -> io::Result<bool> {
         self.installed_with(m.id, |bytes| installed_bytes(bytes, m))
     }

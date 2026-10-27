@@ -145,6 +145,7 @@ impl Serialize for DisplayName {
 // prevent either a placeholder name or lossy conversion entering operational APIs.
 #[derive(Clone, Copy)]
 pub(crate) struct InstallationIdentity<'a> {
+    #[allow(dead_code)] // Retained for the unchanged String-based instance API.
     pub id: &'a str,
     pub version_id: &'a str,
     pub fabric_loader: &'a Option<String>,
@@ -612,6 +613,7 @@ fn handle_unix(method: &str, p: Option<&RawValue>) -> Result<Value, RpcError> {
         }
     }
 }
+#[allow(dead_code)] // Retained String receipt model; byte presentation uses its own view.
 #[derive(Deserialize)]
 struct Installation {
     #[serde(default = "one", deserialize_with = "schema_number")]
@@ -628,6 +630,7 @@ struct Installation {
     os: String,
     arch: String,
 }
+#[allow(dead_code)] // Keep legacy String identity semantics and regression controls.
 fn installed_bytes(bytes: &[u8], m: InstallationIdentity<'_>) -> bool {
     if bytes.len() > 16 * 1024 {
         return false;
@@ -713,6 +716,7 @@ impl Validation<'_> {
 }
 
 impl ReadManifest {
+    #[allow(dead_code)] // Preserved legacy read-view API.
     pub(crate) fn identity(&self) -> crate::instances::InstallationIdentity<'_> {
         crate::instances::InstallationIdentity {
             id: &self.id,
@@ -748,6 +752,7 @@ impl ReadManifest {
         }
         Ok(m)
     }
+    #[allow(dead_code)] // Preserved legacy read-view API.
     pub fn fields(&self, installed: bool) -> Value {
         json!({"id":self.id,"name":self.name,"version_id":self.version_id,"fabric_loader":self.fabric_loader,"neoforge_version":self.neoforge_version,"forge_version":self.forge_version,"source":self.source,"installed":installed})
     }
