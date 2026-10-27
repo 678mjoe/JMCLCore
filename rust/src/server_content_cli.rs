@@ -354,11 +354,16 @@ pub(super) fn cli_run<M: remote::Metadata + curseforge::Metadata + Sync, T: inst
         }
         "list" => {
             for e in v["entries"].as_array().unwrap() {
+                write!(out, "{}\t", s(e, "kind"))?;
+                if let Some(file) = e["file"].as_str() {
+                    out.write_all(file.as_bytes())?;
+                } else {
+                    let bytes: Vec<u8> = e["file"].as_array().unwrap().iter().map(|b| b.as_u64().unwrap() as u8).collect();
+                    out.write_all(&bytes)?;
+                }
                 writeln!(
                     out,
-                    "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
-                    s(e, "kind"),
-                    s(e, "file"),
+                    "\t{}\t{}\t{}\t{}\t{}\t{}",
                     s(e, "sha1"),
                     e["size"],
                     s(&e["source"], "provider"),

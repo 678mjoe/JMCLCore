@@ -307,6 +307,11 @@ pub fn versions_url(s: &str, g: &str, l: Option<&str>) -> Result<String> {
 /// The original typed JSON schema emits UTF-8 as strings and other bytes as arrays.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct MetadataBytes(Vec<u8>);
+impl MetadataBytes {
+    pub(super) fn into_bytes(self) -> Vec<u8> {
+        self.0
+    }
+}
 impl Serialize for MetadataBytes {
     fn serialize<S: serde::Serializer>(
         &self,

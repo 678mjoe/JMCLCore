@@ -72,17 +72,27 @@ impl Root {
         Ok(Self(world))
     }
     pub fn load(&self) -> Result<Registry> {
+        self.load_with(registry::parse)
+    }
+    fn load_with<F: registry::RegistryFile>(
+        &self,
+        parse: fn(&[u8]) -> std::result::Result<registry::RegistryRecord<F>, &'static str>,
+    ) -> Result<registry::RegistryRecord<F>> {
         let metadata = match self.0.child(".jmcl", false) {
             Ok(d) => d,
-            Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(Registry::default()),
+            Err(e) if e.kind() == io::ErrorKind::NotFound => {
+                return Ok(registry::RegistryRecord::default());
+            }
             Err(e) => return Err(e.into()),
         };
         let bytes = match metadata.read("content.json", registry::MAX_BYTES) {
             Ok(b) => b,
-            Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(Registry::default()),
+            Err(e) if e.kind() == io::ErrorKind::NotFound => {
+                return Ok(registry::RegistryRecord::default());
+            }
             Err(_) => return Err(Error::Registry("ContentRegistryTooLarge")),
         };
-        registry::parse(&bytes).map_err(Error::Registry)
+        parse(&bytes).map_err(Error::Registry)
     }
     pub fn save(&self, r: &Registry) -> Result<()> {
         r.validate().map_err(Error::Registry)?;
@@ -94,7 +104,9 @@ impl Root {
         Ok(())
     }
     pub fn list(&self, kind: Kind) -> Result<(Vec<Entry>, Vec<String>)> {
-        let (entries, paths) = self.list_paths(kind)?;
+        // Preserve the existing String-only adoption/mutation view, including
+        // rejection of raw registered paths; listing must not widen this path.
+        let (entries, paths) = self.list_with_registry(kind, self.load()?)?;
         // Adoption still consumes the legacy UTF-8 path API. Listing must not
         // silently discard names merely because adoption cannot yet represent them.
         Ok((
@@ -105,8 +117,14 @@ impl Root {
                 .collect(),
         ))
     }
-    pub fn list_paths(&self, kind: Kind) -> Result<(Vec<Entry>, Vec<ListedPath>)> {
-        let registry = self.load()?;
+    pub fn list_paths(&self, kind: Kind) -> Result<(Vec<registry::ListingEntry>, Vec<ListedPath>)> {
+        self.list_with_registry(kind, self.load_with(registry::parse_listing)?)
+    }
+    fn list_with_registry<F: registry::RegistryFile>(
+        &self,
+        kind: Kind,
+        registry: registry::RegistryRecord<F>,
+    ) -> Result<(Vec<registry::EntryRecord<F>>, Vec<ListedPath>)> {
         let entries = registry
             .entries
             .iter()
@@ -126,7 +144,7 @@ impl Root {
             let mut file = kind.directory().as_bytes().to_vec();
             file.push(b'/');
             file.extend_from_slice(&name);
-            if !registry.entries.iter().any(|e| e.file.as_bytes() == file) {
+            if !registry.entries.iter().any(|e| e.file.file_bytes() == file) {
                 unmanaged.push(ListedPath(file))
             }
         }
@@ -371,6 +389,17 @@ pub fn handle(
             ),
         };
         let map = |e: Error| match e {
+            Error::Registry("UnsafePath" | "InvalidContentFile") if datapack && op == "list" => {
+                invalid("The selector is invalid")
+            }
+            Error::Registry(
+                "InvalidModrinthProject"
+                | "InvalidModrinthVersionId"
+                | "InvalidGameVersion"
+                | "InvalidCurseforgeId",
+            ) if datapack && op == "list" => {
+                invalid("Project, version, or Minecraft version identifiers are invalid")
+            }
             Error::Invalid | Error::Selector(_) => invalid("The selector is invalid"),
             Error::NotFound => RpcError::new(
                 "CONTENT_NOT_FOUND",

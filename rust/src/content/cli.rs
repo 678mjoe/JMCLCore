@@ -170,11 +170,11 @@ fn inner(
             for e in entries {
                 let kind = serde_json::to_value(e.kind).unwrap();
                 let provider = serde_json::to_value(e.source.provider).unwrap();
+                write!(out, "{}\t", kind.as_str().unwrap())?;
+                out.write_all(&e.file.0)?;
                 writeln!(
                     out,
-                    "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
-                    kind.as_str().unwrap(),
-                    e.file,
+                    "\t{}\t{}\t{}\t{}\t{}\t{}",
                     e.sha1,
                     e.size,
                     provider.as_str().unwrap(),
@@ -241,6 +241,9 @@ fn mutation_error(err: &mut impl Write, e: &Error, kind: Kind, op: &str) -> io::
 }
 fn world_error(err: &mut impl Write, e: &Error, op: &str) -> io::Result<()> {
     match e {
+        Error::Registry("InvalidCurseforgeId") if op == "list" => {
+            err.write_all(b"curseforge projects and files use numeric ids\n")
+        }
         Error::WorldNotFound => err.write_all(b"no world matches the given name\n"),
         Error::WorldLocked => err.write_all(b"the world is in use by a running game\n"),
         Error::NotFound => err.write_all(b"no registered datapack matches the given selector\n"),
