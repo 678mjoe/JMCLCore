@@ -55,6 +55,10 @@ fn event(
         out.flush()
     }
 }
+enum FileInput<'a> {
+    Ordinary(&'a OrdinaryFiles),
+    Vanilla(&'a [install::ByteFile], u64),
+}
 impl ReadPlan {
     #[cfg_attr(
         not(test),
@@ -73,7 +77,7 @@ impl ReadPlan {
         };
         self.complete_files(
             id,
-            files,
+            FileInput::Ordinary(&files),
             || Ok(destination.to_path_buf()),
             || Ok(cas.to_path_buf()),
             install::Options {
@@ -93,7 +97,7 @@ impl ReadPlan {
     fn complete_files<T: install::Transport>(
         &self,
         id: &str,
-        files: OrdinaryFiles,
+        files: FileInput<'_>,
         destination: impl FnOnce() -> io::Result<std::path::PathBuf>,
         cas: impl FnOnce() -> io::Result<std::path::PathBuf>,
         options: install::Options,
@@ -149,7 +153,20 @@ impl ReadPlan {
         )
         .map_err(Failure::Output)?;
         let summary = install::stream::stream(
-            |sink| files.execute(&root, &store, options, transport, Some(sink)),
+            |sink| match files {
+                FileInput::Ordinary(files) => {
+                    files.execute(&root, &store, options, transport, Some(sink))
+                }
+                FileInput::Vanilla(files, total) => install::execute_bytes(
+                    &root,
+                    &store,
+                    files,
+                    total,
+                    options,
+                    transport,
+                    Some(sink),
+                ),
+            },
             |e| match e {
                 install::ByteEvent::File(v) => {
                     event(out, id, self.source, "file", FilePayload { file: v })
@@ -223,24 +240,21 @@ impl VanillaDownloadPhase<'_> {
         transport: &T,
         out: &mut impl Write,
     ) -> Result<install::Summary, Failure> {
-        let files = OrdinaryFiles {
-            files: self
-                .plan
-                .files
-                .iter()
-                .map(|f| install::ByteFile {
-                    path: install::BytePath(f.path.0.clone()),
-                    url: f.url.clone(),
-                    fallback_url: f.fallback_url.clone(),
-                    sha1: f.sha1.clone(),
-                    size: f.size,
-                })
-                .collect(),
-            total: self.plan.total_download_size,
-        };
+        let files: Vec<_> = self
+            .plan
+            .files
+            .iter()
+            .map(|f| install::ByteFile {
+                path: install::BytePath(f.path.0.clone()),
+                url: f.url.clone(),
+                fallback_url: f.fallback_url.clone(),
+                sha1: f.sha1.clone(),
+                size: f.size,
+            })
+            .collect();
         self.plan.complete_files(
             id,
-            files,
+            FileInput::Vanilla(&files, self.plan.total_download_size),
             || crate::store::path_from_bytes(destination).map(Into::into),
             || crate::store::path_from_bytes(cas).map(Into::into),
             options,

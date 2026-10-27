@@ -41,7 +41,7 @@
     "rust/src/version_plan_native.rs": "f2184ed00a63ec90ebce887f8df69e90c94c390b66ed670110c286f866398bae",
     "rust/src/main.rs": "d1e8f94ce41c5698f333a54c29d72a67a6072419450b497960fa3f131d1ae710",
     "rust/src/install/vanilla.rs": "72fae1116f7e3ece54d3ec071b6cf75027737a96540d694b7bfc11b94843589b",
-    "rust/src/plan_completion.rs": "7a142285ea430787941abcf0e7df8106981f9c91be53e5b90d5960b3371ab340"
+    "rust/src/plan_completion.rs": "fcb18265426eddd4d1a4d2f92ceec12b989b80eb14e259287003cbecce2820cf"
   },
   "routes": [
     {
