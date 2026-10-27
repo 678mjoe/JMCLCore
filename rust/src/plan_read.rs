@@ -90,10 +90,6 @@ pub(crate) struct OrdinaryFiles {
     total: u64,
 }
 impl ReadPlan {
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "isolated file seam has no install RPC routing")
-    )]
     pub(crate) fn ordinary_files(&self) -> Option<OrdinaryFiles> {
         if self.loader != "none"
             || !self.native_extractions.is_empty()
@@ -118,10 +114,6 @@ impl ReadPlan {
     }
 }
 impl OrdinaryFiles {
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "isolated file seam has no install RPC routing")
-    )]
     pub(crate) fn execute<T: crate::install::Transport>(
         &self,
         destination: &crate::store::ArtifactRoot,

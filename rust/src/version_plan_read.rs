@@ -105,10 +105,6 @@ fn attempt<T: Transport>(
 }
 impl<T: Transport> Service<T> {
     // Private typed boundary: same whole-attempt fallback as read planning.
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "private completion seam is not RPC routed")
-    )]
     pub(crate) fn vanilla_read_plan(
         &self,
         id: &[u8],
