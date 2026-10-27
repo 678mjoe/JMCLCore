@@ -177,3 +177,36 @@ mod format_tests {
         }
     }
 }
+
+#[cfg(test)]
+mod lookup_tests {
+    use super::*;
+    use serde_json::json;
+    fn entry(id: Value, url: Value, sha1: Value) -> Value {
+        json!({"id":id,"type":"release","url":url,"sha1":sha1,"time":"t","releaseTime":"t"})
+    }
+    fn input(entries: Vec<Value>) -> Vec<u8> {
+        serde_json::to_vec(&json!({"latest":{"release":"demo","snapshot":"s"},"versions":entries}))
+            .unwrap()
+    }
+    #[test]
+    fn ordinary_lookup_is_not_rejected_by_unrelated_opaque_entries() {
+        let bytes = input(vec![
+            entry(json!([255]), json!([254]), json!([253])),
+            entry(
+                json!("demo"),
+                json!("https://example.invalid/meta"),
+                Value::Null,
+            ),
+            entry(json!([252]), json!([251]), Value::Null),
+        ]);
+        let parsed = super::super::manifest(&bytes).unwrap();
+        let selected = parsed["versions"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|v| v["id"] == "demo")
+            .unwrap();
+        assert_eq!(selected["url"], "https://example.invalid/meta");
+    }
+}
