@@ -189,6 +189,19 @@ fn cached_opaque_rpc_first_match_preserves_cache_and_string_api() {
             .result
     );
     assert_eq!(snapshot(owner.path()), before);
+    let bytes = body(json!([255]));
+    setup(&svc, Source::Official, json!("demo"), &bytes);
+    let before = snapshot(owner.path());
+    assert_eq!(
+        svc.get("demo", Source::Official),
+        Err(Error::Json("UnexpectedToken"))
+    );
+    assert_eq!(
+        handle_with(&svc, "version.get", Some(&json!({"id":"demo"}))).unwrap_err(),
+        map_error("version.get", Error::MetadataIdMismatch)
+    );
+    assert_eq!(snapshot(owner.path()), before);
+    assert_eq!(*svc.transport.calls.borrow(), 0);
 }
 #[test]
 fn opaque_read_errors_preserve_hash_parse_identity_and_no_fallback() {
@@ -293,6 +306,7 @@ fn byte_read_cached_hash_retry_changes_only_expected_entry() {
         Source::Official.manifest_url(),
         &manifest(json!([255]), json!(URL), json!([254])),
     );
+    let before = snapshot(owner.path());
     assert_eq!(
         handle_with(&svc, "version.get", Some(&json!({"id":[255]})))
             .unwrap_err()
@@ -300,7 +314,17 @@ fn byte_read_cached_hash_retry_changes_only_expected_entry() {
         "INTEGRITY_ERROR"
     );
     assert_eq!(*svc.transport.calls.borrow(), 1);
-    assert!(owner.path().join("sentinel").is_file());
+    assert!(svc.transport.replies.borrow().is_empty());
+    let path = svc.cache_path(URL);
+    let env: Envelope = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+    assert_eq!(env.payload.bytes(), b"{");
+    let mut after = snapshot(owner.path());
+    after.remove(path.strip_prefix(owner.path()).unwrap());
+    let old = &before[Path::new("cache")];
+    let new = after.get_mut(Path::new("cache")).unwrap();
+    new.5 = old.5;
+    new.6 = old.6;
+    assert_eq!(after, before);
 }
 #[test]
 fn native_show_parser_and_injected_formatter_preserve_raw_id_only() {
