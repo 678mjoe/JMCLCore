@@ -153,7 +153,12 @@ pub(super) fn local_inner(
                 return Ok(1);
             }
         };
-        if let Err(e) = instances.load_read(id) {
+        let loaded = if op == "list" {
+            instances.load_presentation_version(id).map(|_| ())
+        } else {
+            instances.load_read(id).map(|_| ())
+        };
+        if let Err(e) = loaded {
             writeln!(
                 err,
                 "failed to load instance: {}",
