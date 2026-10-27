@@ -430,13 +430,10 @@ pub(super) fn cli_run<M: remote::Metadata + curseforge::Metadata + Sync, T: inst
         "adopt" => {
             let a = v["adopted"].as_array().unwrap();
             for e in a {
-                writeln!(
-                    out,
-                    "adopted\t{}\t{}\t{}",
-                    s(e, "file"),
-                    s(e, "sha1"),
-                    e["size"]
-                )?;
+                out.write_all(b"adopted\t")?;
+                if let Some(file) = e["file"].as_str() { out.write_all(file.as_bytes())?; }
+                else { let bytes: Vec<u8> = e["file"].as_array().unwrap().iter().map(|b| b.as_u64().unwrap() as u8).collect(); out.write_all(&bytes)?; }
+                writeln!(out, "\t{}\t{}", s(e, "sha1"), e["size"])?;
             }
             writeln!(out, "adoptedCount\t{}", a.len())?;
         }

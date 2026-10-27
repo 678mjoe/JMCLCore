@@ -358,7 +358,9 @@ fn adopt(
         }
     };
     for a in &adopted {
-        writeln!(out, "adopted\t{}\t{}\t{}", a.file, a.sha1, a.size)?;
+        out.write_all(b"adopted\t")?;
+        out.write_all(&a.file.0)?;
+        writeln!(out, "\t{}\t{}", a.sha1, a.size)?;
     }
     writeln!(out, "adoptedCount\t{}", adopted.len())?;
     Ok(0)

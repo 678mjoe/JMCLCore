@@ -5,7 +5,7 @@ use sha1::{Digest, Sha1};
 use std::io::Read;
 #[derive(Serialize)]
 pub struct Adopted {
-    pub file: String,
+    pub file: ListedPath,
     pub sha1: String,
     pub size: u64,
     pub slug: Option<String>,
@@ -13,12 +13,12 @@ pub struct Adopted {
 }
 impl Root {
     pub fn adopt(&self, kind: Kind, store: &Store) -> Result<Vec<Adopted>> {
-        let mut registry = self.load()?;
-        let (_, unmanaged) = self.list(kind)?;
+        let mut registry = self.load_with(registry::parse_listing)?;
+        let (_, unmanaged) = self.list_paths(kind)?;
         let mut adopted = vec![];
         for path in unmanaged {
-            let (parent, name) = self.0.parent(&path)?;
-            let mut file = match parent.file(&name, false) {
+            let (parent, name) = self.0.parent_bytes(&path.0)?;
+            let mut file = match parent.file_bytes(&name, false) {
                 Ok(f) => f,
                 Err(e) if e.kind() == io::ErrorKind::NotFound => continue,
                 Err(e) => return Err(e.into()),
@@ -41,9 +41,9 @@ impl Root {
             // ambient path reconstructed after validation.
             let anchored = self.0.artifact_root()?;
             let tx = store.transaction(&sha1)?;
-            tx.import_from(&anchored, &path, size)?;
-            tx.materialize_at(&anchored, &path, size)?;
-            registry.entries.push(Entry {
+            tx.import_bytes(&anchored, &path.0, size)?;
+            tx.materialize_bytes(&anchored, &path.0, size)?;
+            registry.entries.push(registry::ListingEntry {
                 kind,
                 file: path.clone(),
                 sha1: sha1.clone(),
@@ -65,7 +65,7 @@ impl Root {
                 as_dependency: false,
             });
         }
-        self.save(&registry)?;
+        self.save_record(&registry)?;
         Ok(adopted)
     }
 }

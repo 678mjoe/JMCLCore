@@ -124,3 +124,12 @@ new datapack-list error guards affect source-compatible error classification,
 not routing membership. Read-only list records now preserve bytes, while the
 mutation/adoption and save types remain String-specialized. Only these two
 reviewed source fingerprints were updated; classifications are unchanged.
+
+## Opaque adoption integration review
+
+Manual review confirmed unchanged adoption method selection and store module
+exports. Adoption now preserves listed bytes through the existing locked CAS
+primitives; additive content byte-parent wrappers do not alter dispatcher routes
+or existing archive/native callers. The content root, adoption and store module
+fingerprints were refreshed after reviewing these changes. Inventory membership
+and the blocked acquisition fallback remain unchanged.
