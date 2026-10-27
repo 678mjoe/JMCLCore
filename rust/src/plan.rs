@@ -210,20 +210,25 @@ impl Builder {
     }
 }
 pub fn validate_component(v: &str) -> Result<(), Error> {
+    validate_component_bytes(v.as_bytes())
+}
+// General plan component policy only, not a loader ID or archive policy.
+// Accepting bytes here does not construct or authorize a native path.
+fn validate_component_bytes(v: &[u8]) -> Result<(), Error> {
     if v.is_empty()
-        || v == "."
-        || v == ".."
-        || v.ends_with(['.', ' '])
-        || v.bytes()
-            .any(|c| c < 0x20 || c == 0x7f || matches!(c, b'/' | b'\\' | b':'))
+        || v == b"."
+        || v == b".."
+        || matches!(v.last(), Some(b'.' | b' '))
+        || v.iter()
+            .any(|&c| c < 0x20 || c == 0x7f || matches!(c, b'/' | b'\\' | b':'))
     {
         return Err(err("UnsafePath"));
     }
-    let stem = v.split('.').next().unwrap().to_ascii_uppercase();
-    if matches!(stem.as_str(), "CON" | "PRN" | "AUX" | "NUL")
+    let stem = v.split(|&c| c == b'.').next().unwrap().to_ascii_uppercase();
+    if matches!(stem.as_slice(), b"CON" | b"PRN" | b"AUX" | b"NUL")
         || (stem.len() == 4
-            && (stem.starts_with("COM") || stem.starts_with("LPT"))
-            && matches!(stem.as_bytes()[3], b'1'..=b'9'))
+            && (stem.starts_with(b"COM") || stem.starts_with(b"LPT"))
+            && matches!(stem[3], b'1'..=b'9'))
     {
         return Err(err("UnsafePath"));
     }
