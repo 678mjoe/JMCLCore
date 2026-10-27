@@ -322,6 +322,29 @@ pub fn handle(
     if !matches!(method, "install.execute" | "install.prepare") {
         return None;
     }
+    if method == "install.execute" && super::vanilla::selected(params) {
+        let request = match super::vanilla::parse(params) {
+            Ok(p) => p,
+            Err(e) => return Some(failure(out, id, e)),
+        };
+        let metadata = match version::HttpTransport::new() {
+            Ok(t) => t,
+            Err(e) => return Some(failure(out, id, planning_error(e))),
+        };
+        let service = version::Service::new(metadata, ".jmclcore/metadata-cache");
+        let transport = match HttpTransport::new() {
+            Ok(t) => t,
+            Err(_) => {
+                return Some(protocol::error(
+                    out,
+                    Some(id),
+                    "DOWNLOAD_FAILED",
+                    "A planned file could not be downloaded and verified",
+                ));
+            }
+        };
+        return Some(super::vanilla::run(out, id, request, &service, &transport));
+    }
     let request = match parse(method, params) {
         Ok(p) => p,
         Err(e) => return Some(failure(out, id, e)),

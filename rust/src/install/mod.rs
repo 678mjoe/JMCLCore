@@ -1285,3 +1285,5 @@ pub mod stream;
 mod content_byte_tests;
 
 pub(crate) mod receipt;
+
+pub(crate) mod vanilla;

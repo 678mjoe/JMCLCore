@@ -670,7 +670,7 @@ fn parse_params(params: Option<&RawValue>) -> Result<Option<Value>, Error> {
         .map(|v| metadata::parse_json(v.get().as_bytes()))
         .transpose()
 }
-fn enum_tag(value: &Value, tags: &[&str]) -> Option<usize> {
+pub(crate) fn enum_tag(value: &Value, tags: &[&str]) -> Option<usize> {
     let ordinal = match value {
         Value::String(text) => {
             if let Some(index) = tags.iter().position(|tag| *tag == text) {
