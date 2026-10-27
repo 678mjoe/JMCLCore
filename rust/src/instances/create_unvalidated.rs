@@ -146,3 +146,35 @@ impl ByteManifest {
         Ok(bytes)
     }
 }
+
+impl Prepared {
+    pub(super) fn execute(self) -> Result<serde_json::Value, RpcError> {
+        use super::{Root, fail};
+        let root_error = |_| fail("INSTANCES_ROOT_ERROR", "Failed to open the instances root");
+        let path = crate::store::path_from_bytes(&self.directory.0).map_err(root_error)?;
+        let root = Root::open_native(&path).map_err(root_error)?;
+        // The pinned handler opens the root before create validates the manifest.
+        self.manifest
+            .validate()
+            .map_err(|_| fail("INSTANCE_CREATE_FAILED", "Failed to create the instance"))?;
+        root.create_with(&self.manifest.id, || {
+            self.manifest
+                .encode()
+                .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))
+        })
+        .map_err(|error| {
+            if error.kind() == std::io::ErrorKind::AlreadyExists {
+                fail("INSTANCE_EXISTS", "An instance with this id already exists")
+            } else {
+                fail("INSTANCE_CREATE_FAILED", "Failed to create the instance")
+            }
+        })?;
+        let m = &self.manifest;
+        Ok(
+            serde_json::json!({"stage":"instance.create", "id":m.id, "name":m.name,
+            "version_id":m.version_id, "fabric_loader":m.fabric_loader,
+            "neoforge_version":m.neoforge_version, "forge_version":m.forge_version,
+            "source":m.source, "installed":false}),
+        )
+    }
+}

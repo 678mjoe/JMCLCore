@@ -451,6 +451,9 @@ fn handle_unix(method: &str, p: Option<&RawValue>) -> Result<Value, RpcError> {
     };
     match method {
         "instance.create" => {
+            if create_unvalidated::selected(p) {
+                return create_unvalidated::prepare(p)?.execute();
+            }
             let c = parse_create(p)?;
             if c.directory.is_empty() || c.id.is_empty() || c.version_id.is_empty() {
                 return Err(invalid("instance creation parameters are out of range"));

@@ -161,22 +161,27 @@ impl Root {
     }
     pub fn create(&self, m: &Manifest) -> io::Result<()> {
         m.validate().map_err(invalid)?;
-        cv(fs::mkdirat(
-            &self.dir,
-            m.id.as_str(),
-            Mode::from_raw_mode(0o755),
-        ))?;
+        self.create_with(&m.id, || m.encode().map_err(invalid))
+    }
+    // Callers validate the manifest/ID before entering this anchored writer.
+    // Encoding remains after directory creation, preserving cleanup on failure.
+    pub(super) fn create_with(
+        &self,
+        id: &str,
+        encode: impl FnOnce() -> io::Result<Vec<u8>>,
+    ) -> io::Result<()> {
+        cv(fs::mkdirat(&self.dir, id, Mode::from_raw_mode(0o755)))?;
         let result = (|| {
-            let child = open_dir(&self.dir, m.id.as_ref(), false)?;
+            let child = open_dir(&self.dir, id.as_ref(), false)?;
             cv(fs::mkdirat(
                 &child,
                 ".minecraft",
                 Mode::from_raw_mode(0o755),
             ))?;
-            atomic_write(&child, "instance.json", &m.encode().map_err(invalid)?)
+            atomic_write(&child, "instance.json", &encode()?)
         })();
         if result.is_err() {
-            let _ = remove_tree(&self.dir, m.id.as_ref());
+            let _ = remove_tree(&self.dir, id.as_ref());
         }
         result
     }
