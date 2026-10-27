@@ -1,5 +1,6 @@
 //! Mojang metadata normalization and source policy, matching the pinned Zig types.
 //! Unknown JSON fields are discarded; optional/default fields are emitted explicitly.
+pub mod listing;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use sha1::{Digest, Sha1};
