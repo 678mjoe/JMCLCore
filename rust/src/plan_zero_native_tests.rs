@@ -160,6 +160,7 @@ fn owned_collision_retry_and_exhaustion_preserve_existing_directories() {
 #[test]
 fn owned_projection_blocked_parent_and_injected_rng_failures_keep_rust_order() {
     let mut p = plan(serde_json::json!([255]));
+    assert!(p.zero_native_preparation().is_some());
     let temp = tempfile::tempdir().unwrap();
     let path = temp.path().join("artifact");
     assert!(path.is_absolute());
@@ -201,5 +202,7 @@ fn owned_projection_blocked_parent_and_injected_rng_failures_keep_rust_order() {
         cap.prepare_with(&root, nonce).unwrap_err().name(),
         "FileIoError"
     );
+    assert_eq!(snapshot(temp.path()), before);
+    assert_eq!(cap.prepare(&root).unwrap_err().name(), "FileIoError");
     assert_eq!(snapshot(temp.path()), before);
 }
