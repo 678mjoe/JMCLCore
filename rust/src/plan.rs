@@ -337,15 +337,7 @@ pub fn build_with_extras(
     )
     .map(ReadPlan::into_string)
 }
-// Intentionally not routed to Service or acquisition. The shared core is used
-// by the public String builder; only this typed read entry awaits routing review.
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "pure read-plan entry awaits a separate API routing review"
-    )
-)]
+// Only the conditional vanilla planning read route consumes this view.
 pub(crate) fn build_read(
     version: &crate::metadata::ReadMetadata,
     assets: Option<&Value>,

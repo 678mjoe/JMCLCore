@@ -40,7 +40,11 @@ pub(super) fn prepare(value: Option<&Value>) -> Result<Request, RpcError> {
 }
 
 impl<T: Transport> Service<T> {
-    fn get_read(&self, id: &[u8], source: Source) -> Result<metadata::ReadMetadata, Error> {
+    pub(super) fn get_read(
+        &self,
+        id: &[u8],
+        source: Source,
+    ) -> Result<metadata::ReadMetadata, Error> {
         let (bytes, selected_id) = self.fetch_metadata_bytes(id, source)?;
         let metadata = metadata::ReadMetadata::parse(&bytes)?;
         if metadata.id() != selected_id {

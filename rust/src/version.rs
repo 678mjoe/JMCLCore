@@ -820,6 +820,20 @@ pub fn handle(method: &str, params: Option<&RawValue>) -> Option<Result<Response
     ) {
         return None;
     }
+    if method == "install.plan" && plan_read::selected(params) {
+        let request = match plan_read::prepare(params) {
+            Ok(r) => r,
+            Err(e) => return Some(Err(e)),
+        };
+        let transport = match HttpTransport::new() {
+            Ok(t) => t,
+            Err(e) => return Some(Err(map_error(method, e))),
+        };
+        return Some(plan_read::rpc(
+            &Service::new(transport, Path::new(".jmclcore/metadata-cache")),
+            request,
+        ));
+    }
     // Parse before client construction so invalid requests never trigger network setup.
     let parsed = match parse_params(params) {
         Ok(x) => x,
@@ -940,6 +954,9 @@ pub fn handle_with<T: Transport>(
 ) -> Result<Response, RpcError> {
     if method == "version.get" {
         return read::rpc(service, read::prepare(value)?);
+    }
+    if method == "install.plan" && plan_read::selected_value(value) {
+        return plan_read::rpc(service, plan_read::prepare_value(value.unwrap())?);
     }
     let canonical = canonical_params_view(method, value)?;
     let value = canonical.as_deref();
@@ -1305,6 +1322,13 @@ fn cli_execute<T: Transport>(
         };
         return read::execute(svc, &request, json, out, err);
     }
+    if method == "install.plan" && plan_read::selected_value(Some(p)) {
+        let request = match plan_read::prepare_value(p) {
+            Ok(r) => r,
+            Err(_) => return writeln!(err, "{}", cli_usage(method)).map(|_| 2),
+        };
+        return plan_read::execute(svc, &request, json, out, err);
+    }
     let source = p
         .get("source")
         .and_then(Value::as_str)
@@ -1613,3 +1637,6 @@ mod lookup_tests;
 mod read;
 
 pub use read::cli_os as read_cli_os;
+
+#[path = "version_plan_read.rs"]
+mod plan_read;
