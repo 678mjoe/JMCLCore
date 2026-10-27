@@ -1013,18 +1013,20 @@ pub fn handle_with<T: Transport>(
             })
         }
         "install.plan" => {
-            if loader_count(p).unwrap() > 1 {
-                return Err(map_error(method, Error::Plan("LoaderConflict")));
-            }
-            let mut target = Target::host().map_err(|_| {
-                RpcError::new("UNSUPPORTED_PLATFORM", "The host platform is not supported")
-            })?;
-            if let Some(v) = p.get("os").and_then(Value::as_str) {
-                target.os = v.into()
-            }
-            if let Some(v) = p.get("arch").and_then(Value::as_str) {
-                target.arch = v.into()
-            }
+            let target =
+                match plan_preflight::prepare(value.expect("validated params"), Target::host) {
+                    Ok(t) => t,
+                    Err(plan_preflight::Failure::Params(e)) => return Err(e),
+                    Err(plan_preflight::Failure::Host(_)) => {
+                        return Err(RpcError::new(
+                            "UNSUPPORTED_PLATFORM",
+                            "The host platform is not supported",
+                        ));
+                    }
+                    Err(plan_preflight::Failure::Conflict) => {
+                        return Err(map_error(method, Error::Plan("LoaderConflict")));
+                    }
+                };
             let plan = if let Some(loader) = forge {
                 service.plan_forge(id, loader, source, target)
             } else if let Some(loader) = neo {
@@ -1352,37 +1354,32 @@ fn cli_execute<T: Transport>(
     let result = match method {
         "version.get" => svc.get(id, source),
         _ => {
-            let count = loader_count(p.as_object().unwrap()).unwrap();
-            if count > 1 {
-                Err(Error::Plan("LoaderConflict"))
+            let target = match plan_preflight::prepare(p, Target::host) {
+                Ok(t) => t,
+                Err(plan_preflight::Failure::Params(_)) => {
+                    return writeln!(err, "{}", cli_usage(method)).map(|_| 2);
+                }
+                Err(plan_preflight::Failure::Host(e)) => {
+                    writeln!(err, "unsupported host platform: {}", e.name())?;
+                    return Ok(1);
+                }
+                Err(plan_preflight::Failure::Conflict) => {
+                    return cli_failure(method, p, Error::Plan("LoaderConflict"), err);
+                }
+            };
+            let plan = if let Some(loader) = p.get("forge_version").and_then(Value::as_str) {
+                svc.plan_forge(id, loader, source, target)
+            } else if let Some(loader) = p.get("neoforge_version").and_then(Value::as_str) {
+                svc.plan_neoforge(id, loader, source, target)
             } else {
-                let mut target = match Target::host() {
-                    Ok(t) => t,
-                    Err(e) => {
-                        writeln!(err, "unsupported host platform: {}", e.name())?;
-                        return Ok(1);
-                    }
-                };
-                if let Some(v) = p.get("os").and_then(Value::as_str) {
-                    target.os = v.into()
-                }
-                if let Some(v) = p.get("arch").and_then(Value::as_str) {
-                    target.arch = v.into()
-                }
-                let plan = if let Some(loader) = p.get("forge_version").and_then(Value::as_str) {
-                    svc.plan_forge(id, loader, source, target)
-                } else if let Some(loader) = p.get("neoforge_version").and_then(Value::as_str) {
-                    svc.plan_neoforge(id, loader, source, target)
-                } else {
-                    svc.plan_loader(
-                        id,
-                        p.get("fabric_loader").and_then(Value::as_str),
-                        source,
-                        target,
-                    )
-                };
-                plan.map(|p| serde_json::to_value(p).unwrap())
-            }
+                svc.plan_loader(
+                    id,
+                    p.get("fabric_loader").and_then(Value::as_str),
+                    source,
+                    target,
+                )
+            };
+            plan.map(|p| serde_json::to_value(p).unwrap())
         }
     };
     let result = match result {
@@ -1640,3 +1637,6 @@ pub use read::cli_os as read_cli_os;
 
 #[path = "version_plan_read.rs"]
 mod plan_read;
+
+#[path = "version_plan_preflight.rs"]
+mod plan_preflight;
