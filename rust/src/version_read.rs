@@ -226,3 +226,7 @@ pub fn cli_os(
         None
     }
 }
+
+#[cfg(all(test, unix))]
+#[path = "version_read_tests.rs"]
+mod tests;
