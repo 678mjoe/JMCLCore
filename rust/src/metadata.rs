@@ -1,6 +1,5 @@
 //! Mojang metadata normalization and source policy, matching the pinned Zig types.
 //! Unknown JSON fields are discarded; optional/default fields are emitted explicitly.
-pub mod listing;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use sha1::{Digest, Sha1};
@@ -386,6 +385,7 @@ fn object(v: &Node, fields: &[Field]) -> Result<Value, Error> {
     Ok(Value::Object(out))
 }
 macro_rules! fields {($name:ident, $( $field:literal => $norm:ident $(= $default:expr)? ),* $(,)?)=>{fn $name(v:&Node)->Result<Value,Error>{object(v,&[$(Field($field,$norm,fields!(@default $($default)?))),*])}};(@default)=>{None};(@default $v:expr)=>{Some($v)};}
+pub mod listing;
 fn version_type(v: &Node) -> Result<Value, Error> {
     match v.as_str() {
         Some("release" | "snapshot" | "old_beta" | "old_alpha") => text(v),
