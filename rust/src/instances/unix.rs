@@ -188,6 +188,9 @@ impl Root {
     pub fn load(&self, id: &str) -> io::Result<Manifest> {
         self.load_with(id, Manifest::parse)
     }
+    pub(crate) fn load_presentation_version(&self, id: &str) -> io::Result<Vec<u8>> {
+        self.load_with(id, super::byte_read::version_bytes)
+    }
     pub(super) fn load_bytes(&self, id: &str) -> io::Result<super::byte_read::Manifest> {
         self.load_with(id, super::byte_read::Manifest::parse)
     }

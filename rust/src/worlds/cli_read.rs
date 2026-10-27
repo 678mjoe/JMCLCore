@@ -140,8 +140,8 @@ fn instance_read(
             return Ok(1);
         }
     };
-    let manifest = match root.load_read(id) {
-        Ok(manifest) => manifest,
+    let version_id = match root.load_presentation_version(id) {
+        Ok(version) => version,
         Err(e) => {
             writeln!(
                 err,
@@ -152,7 +152,7 @@ fn instance_read(
         }
     };
     let path = Path::new(directory).join(id).join(".minecraft");
-    let version = Some(manifest.version_id.as_bytes());
+    let version = Some(version_id.as_slice());
     let result = if command == "list" {
         read::list_read(&path, version).map(|result| json!({"worlds": result["worlds"]}))
     } else {
@@ -277,52 +277,143 @@ mod tests {
 mod version_bridge_tests {
     use super::*;
     use std::os::unix::{ffi::OsStrExt, fs::MetadataExt};
-    type Snapshot=std::collections::BTreeMap<std::path::PathBuf,(Vec<u8>,u64,u64,u64,u32,i64,i64)>;
-    fn snapshot(root:&Path)->Snapshot {
-        fn walk(root:&Path,path:&Path,out:&mut Snapshot) {
-            let m=std::fs::symlink_metadata(path).unwrap();
-            let bytes=if m.is_file(){std::fs::read(path).unwrap()}else{vec![]};
-            out.insert(path.strip_prefix(root).unwrap().into(),(bytes,m.dev(),m.ino(),m.nlink(),m.mode(),m.mtime(),m.mtime_nsec()));
-            if m.is_dir(){for item in std::fs::read_dir(path).unwrap(){walk(root,&item.unwrap().path(),out);}}
+    type Snapshot =
+        std::collections::BTreeMap<std::path::PathBuf, (Vec<u8>, u64, u64, u64, u32, i64, i64)>;
+    fn snapshot(root: &Path) -> Snapshot {
+        fn walk(root: &Path, path: &Path, out: &mut Snapshot) {
+            let m = std::fs::symlink_metadata(path).unwrap();
+            let bytes = if m.is_file() {
+                std::fs::read(path).unwrap()
+            } else {
+                vec![]
+            };
+            out.insert(
+                path.strip_prefix(root).unwrap().into(),
+                (
+                    bytes,
+                    m.dev(),
+                    m.ino(),
+                    m.nlink(),
+                    m.mode(),
+                    m.mtime(),
+                    m.mtime_nsec(),
+                ),
+            );
+            if m.is_dir() {
+                for item in std::fs::read_dir(path).unwrap() {
+                    walk(root, &item.unwrap().path(), out);
+                }
+            }
         }
-        let mut out=Snapshot::new();walk(root,root,&mut out);out
+        let mut out = Snapshot::new();
+        walk(root, root, &mut out);
+        out
     }
-    fn fixture(raw_path:bool)->(tempfile::TempDir,std::path::PathBuf) {
-        let owner=tempfile::tempdir().unwrap();
-        let root=owner.path().join(if raw_path {OsStr::from_bytes(b"instances-\xff")} else {OsStr::new("instances")});
+    fn fixture(raw_path: bool) -> (tempfile::TempDir, std::path::PathBuf) {
+        let owner = tempfile::tempdir().unwrap();
+        let root = owner.path().join(if raw_path {
+            OsStr::from_bytes(b"instances-\xff")
+        } else {
+            OsStr::new("instances")
+        });
         std::fs::create_dir_all(root.join("demo/.minecraft/saves")).unwrap();
-        std::fs::write(root.join("demo/instance.json"),br#"{"id":"demo","name":[255],"version_id":[254],"fabric_loader":[253]}"#).unwrap();
-        std::fs::write(owner.path().join("sentinel"),b"unchanged").unwrap();
-        std::fs::hard_link(owner.path().join("sentinel"),owner.path().join("peer")).unwrap();
-        (owner,root)
+        std::fs::write(
+            root.join("demo/instance.json"),
+            br#"{"id":"demo","name":[255],"version_id":[254],"fabric_loader":[253]}"#,
+        )
+        .unwrap();
+        std::fs::write(owner.path().join("sentinel"), b"unchanged").unwrap();
+        std::fs::hard_link(owner.path().join("sentinel"), owner.path().join("peer")).unwrap();
+        (owner, root)
     }
-    fn check(raw_path:bool) {
-        let(owner,root)=fixture(raw_path);let before=snapshot(owner.path());
+    fn check(raw_path: bool) {
+        let (owner, root) = fixture(raw_path);
+        let before = snapshot(owner.path());
         // Saves is strictly empty: no level.dat, archives, cleanup markers or game files.
-        assert_eq!(std::fs::read_dir(root.join("demo/.minecraft/saves")).unwrap().count(),0);
-        for (command,world,expected_code,expected_out,expected_err) in [
-            ("list",None,0,b"{\"worlds\":[]}\n".as_slice(),b"".as_slice()),
-            ("show",Some("missing"),1,b"".as_slice(),b"failed to inspect world: world not found\n".as_slice()),
+        assert_eq!(
+            std::fs::read_dir(root.join("demo/.minecraft/saves"))
+                .unwrap()
+                .count(),
+            0
+        );
+        for (command, world, expected_code, expected_out, expected_err) in [
+            (
+                "list",
+                None,
+                0,
+                b"{\"worlds\":[]}\n".as_slice(),
+                b"".as_slice(),
+            ),
+            (
+                "show",
+                Some("missing"),
+                1,
+                b"".as_slice(),
+                b"failed to inspect world: world not found\n".as_slice(),
+            ),
         ] {
-            assert!(matches!(command,"list"|"show"));assert!(root.is_dir() && root.starts_with(owner.path()));
-            let mut args=vec![OsString::from(command),OsString::from("demo")];if let Some(world)=world {args.push(world.into());}
-            args.extend(["--instances-directory".into(),root.as_os_str().to_owned(),"--json".into()]);
-            let(mut out,mut err)=(vec![],vec![]);
-            let code=if raw_path {let mut full=vec!["instance".into(),"worlds".into()];full.extend(args);read_cli_os(&full,&mut out,&mut err).unwrap().unwrap()}
-            else {let strings=args.iter().map(|a|a.to_str().unwrap().to_owned()).collect::<Vec<_>>();cli::cli(&strings,&mut out,&mut err).unwrap().unwrap()};
-            assert_eq!((code,out,err),(expected_code,expected_out.to_vec(),expected_err.to_vec()),"{command}, raw={raw_path}");
-            assert_eq!(snapshot(owner.path()),before);
+            assert!(matches!(command, "list" | "show"));
+            assert!(root.is_dir() && root.starts_with(owner.path()));
+            let mut args = vec![OsString::from(command), OsString::from("demo")];
+            if let Some(world) = world {
+                args.push(world.into());
+            }
+            args.extend([
+                "--instances-directory".into(),
+                root.as_os_str().to_owned(),
+                "--json".into(),
+            ]);
+            let (mut out, mut err) = (vec![], vec![]);
+            let code = if raw_path {
+                let mut full = vec!["instance".into(), "worlds".into()];
+                full.extend(args);
+                read_cli_os(&full, &mut out, &mut err).unwrap().unwrap()
+            } else {
+                let strings = args
+                    .iter()
+                    .map(|a| a.to_str().unwrap().to_owned())
+                    .collect::<Vec<_>>();
+                cli::cli(&strings, &mut out, &mut err).unwrap().unwrap()
+            };
+            assert_eq!(
+                (code, out, err),
+                (expected_code, expected_out.to_vec(), expected_err.to_vec()),
+                "{command}, raw={raw_path}"
+            );
+            assert_eq!(snapshot(owner.path()), before);
         }
     }
     #[test]
-    fn utf8_empty_saves_and_missing_world_preserve_owned_tree() {check(false);}
+    fn utf8_empty_saves_and_missing_world_preserve_owned_tree() {
+        check(false);
+    }
     #[test]
-    fn native_empty_saves_and_missing_world_preserve_owned_tree() {check(true);}
+    fn native_empty_saves_and_missing_world_preserve_owned_tree() {
+        check(true);
+    }
     #[test]
     fn native_read_adapter_excludes_mutation_and_archive_routes() {
-        for command in ["rename","duplicate","delete","export","import","backup","backups","restore","backups-delete"] {
-            let args=vec!["instance".into(),"worlds".into(),command.into(),"demo".into(),OsStr::from_bytes(b"unused-\xff").to_owned()];
-            let(mut out,mut err)=(vec![],vec![]);assert!(read_cli_os(&args,&mut out,&mut err).is_none());assert!(out.is_empty() && err.is_empty());
+        for command in [
+            "rename",
+            "duplicate",
+            "delete",
+            "export",
+            "import",
+            "backup",
+            "backups",
+            "restore",
+            "backups-delete",
+        ] {
+            let args = vec![
+                "instance".into(),
+                "worlds".into(),
+                command.into(),
+                "demo".into(),
+                OsStr::from_bytes(b"unused-\xff").to_owned(),
+            ];
+            let (mut out, mut err) = (vec![], vec![]);
+            assert!(read_cli_os(&args, &mut out, &mut err).is_none());
+            assert!(out.is_empty() && err.is_empty());
         }
     }
 }

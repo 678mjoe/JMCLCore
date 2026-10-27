@@ -218,12 +218,16 @@ fn run(args: &[String], out: &mut impl Write, err: &mut impl Write) -> io::Resul
             return Ok(1);
         }
     };
+    // Only list/show use the byte presentation view. Mutation/archive branches
+    // retain the original operational String manifest and version argument.
     let loaded_version = if matches!(command, "list" | "show") {
-        root.load_read(o.id).map(|manifest| manifest.version_id)
+        root.load_presentation_version(o.id)
+            .map(|v| (None, Some(v)))
     } else {
-        root.load(o.id).map(|manifest| manifest.version_id)
+        root.load(o.id)
+            .map(|manifest| (Some(manifest.version_id), None))
     };
-    let version_id = match loaded_version {
+    let (version_id, read_version) = match loaded_version {
         Ok(m) => m,
         Err(e) => {
             writeln!(
@@ -235,7 +239,8 @@ fn run(args: &[String], out: &mut impl Write, err: &mut impl Write) -> io::Resul
         }
     };
     let path = crate::instances::minecraft_path(o.directory, o.id);
-    let version = Some(version_id.as_str());
+    let version = version_id.as_deref();
+    let read_version = read_version.as_deref();
     let name = o.world.unwrap_or("");
     let operation = match command {
         "show" => "inspect",
@@ -245,9 +250,9 @@ fn run(args: &[String], out: &mut impl Write, err: &mut impl Write) -> io::Resul
         c => c,
     };
     let result = match command {
-        "list" => read::list_read(Path::new(&path), version.map(str::as_bytes)),
+        "list" => read::list_read(Path::new(&path), read_version),
         "show" => saves(&path)
-            .and_then(|s| read::world_read(&s, name.as_bytes(), version.map(str::as_bytes)))
+            .and_then(|s| read::world_read(&s, name.as_bytes(), read_version))
             .map(|w| json!({"world":w})),
         "rename" => rename(&path, name, o.new.unwrap(), version),
         "duplicate" => duplicate(&path, name, o.new.unwrap(), version),

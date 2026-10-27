@@ -109,6 +109,11 @@ fn receipt_wire(bytes: &[u8]) -> Result<Receipt> {
     c.finish()?;
     Ok(w)
 }
+// Narrow presentation accessor: no operational manifest or resolver is exposed.
+pub(super) fn version_bytes(bytes: &[u8], id: &str) -> std::result::Result<Vec<u8>, &'static str> {
+    Manifest::parse(bytes, id).map(|m| m.version_id.0)
+}
+
 fn length(bytes: &DisplayName, max: usize) -> bool {
     !bytes.0.is_empty() && bytes.0.len() <= max
 }
