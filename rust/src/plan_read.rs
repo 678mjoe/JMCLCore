@@ -83,3 +83,67 @@ impl ReadPlan {
         }
     }
 }
+
+/// A capability for ordinary files only; selection is pure and precedes roots.
+pub(crate) struct OrdinaryFiles {
+    files: Vec<crate::install::ByteFile>,
+    total: u64,
+}
+impl ReadPlan {
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "isolated file seam has no install RPC routing")
+    )]
+    pub(crate) fn ordinary_files(&self) -> Option<OrdinaryFiles> {
+        if self.loader != "none"
+            || !self.native_extractions.is_empty()
+            || !self.asset_projections.is_empty()
+        {
+            return None;
+        }
+        Some(OrdinaryFiles {
+            files: self
+                .files
+                .iter()
+                .map(|f| crate::install::ByteFile {
+                    path: crate::install::BytePath(f.path.0.clone()),
+                    url: f.url.clone(),
+                    fallback_url: f.fallback_url.clone(),
+                    sha1: f.sha1.clone(),
+                    size: f.size,
+                })
+                .collect(),
+            total: self.total_download_size,
+        })
+    }
+}
+impl OrdinaryFiles {
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "isolated file seam has no install RPC routing")
+    )]
+    pub(crate) fn execute<T: crate::install::Transport>(
+        &self,
+        destination: &crate::store::ArtifactRoot,
+        store: &crate::store::Store,
+        options: crate::install::Options,
+        transport: &T,
+        reporter: Option<
+            &(dyn Fn(crate::install::ByteEvent) -> Result<(), crate::install::Error> + Sync),
+        >,
+    ) -> Result<crate::install::Summary, crate::install::Error> {
+        crate::install::execute_bytes(
+            destination,
+            store,
+            &self.files,
+            self.total,
+            options,
+            transport,
+            reporter,
+        )
+    }
+}
+
+#[cfg(all(test, target_os = "linux"))]
+#[path = "plan_ordinary_tests.rs"]
+mod ordinary_tests;
