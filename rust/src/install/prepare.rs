@@ -2,7 +2,7 @@
 //! extracted native directories are never imported back into the CAS.
 use super::{Error, native_zip};
 use crate::{
-    plan::{File as PlannedFile, Plan, validate_relative_path},
+    plan::{Plan, validate_relative_path},
     store::ArtifactRoot,
 };
 use serde::Serialize;
@@ -18,9 +18,6 @@ pub struct Preparation {
     pub native_files: usize,
     pub projections_created: usize,
     pub projections_cached: usize,
-}
-fn verified(root: &ArtifactRoot, expected: &PlannedFile) -> Result<File, Error> {
-    verified_parts(root, &expected.path, &expected.sha1, expected.size)
 }
 fn verified_parts(root: &ArtifactRoot, path: &str, sha1: &str, size: u64) -> Result<File, Error> {
     let mut file = root.open_file(path)?;
@@ -58,33 +55,40 @@ pub fn cleanup_native(root: &ArtifactRoot, relative: &str) -> Result<(), Error> 
     }
 }
 pub fn prepare(root: &ArtifactRoot, plan: &Plan) -> Result<Preparation, Error> {
-    let mut result = Preparation {
-        native_directory: None,
-        native_files: 0,
-        projections_created: 0,
-        projections_cached: 0,
-    };
-    project_only(
+    prepare_with(
         root,
         &plan.asset_projections,
+        &plan.native_extractions,
         |path| {
             plan.files
                 .iter()
                 .find(|f| f.path == path)
                 .map(|f| (f.sha1.as_str(), f.size))
         },
-        &mut result,
-    )?;
+        secure_nonce,
+    )
+}
+pub(crate) fn prepare_with<'a>(
+    root: &ArtifactRoot,
+    projections: &[crate::plan::AssetProjection],
+    natives: &[crate::plan::NativeExtraction],
+    lookup: impl Fn(&str) -> Option<(&'a str, u64)>,
+    nonce: impl FnMut(&mut [u8; 8]) -> Result<(), Error>,
+) -> Result<Preparation, Error> {
+    let mut result = Preparation {
+        native_directory: None,
+        native_files: 0,
+        projections_created: 0,
+        projections_cached: 0,
+    };
+    project_only(root, projections, &lookup, &mut result)?;
     let mut archives = Vec::new();
     let mut names = HashSet::new();
     let mut total = 0u64;
-    for extraction in &plan.native_extractions {
-        let expected = plan
-            .files
-            .iter()
-            .find(|f| f.path == extraction.archive_path)
+    for extraction in natives {
+        let (sha1, size) = lookup(&extraction.archive_path)
             .ok_or_else(|| Error::named("NativeArchiveNotPlanned"))?;
-        let mut file = verified(root, expected)?;
+        let mut file = verified_parts(root, &extraction.archive_path, sha1, size)?;
         let entries = native_zip::entries(&mut file, |entry| {
             if extraction
                 .exclude
@@ -120,7 +124,7 @@ pub fn prepare(root: &ArtifactRoot, plan: &Plan) -> Result<Preparation, Error> {
         })?;
         archives.push((file, entries));
     }
-    let (relative, native) = create_native_directory(root, secure_nonce)?;
+    let (relative, native) = create_native_directory(root, nonce)?;
     let extraction = (|| {
         for (file, entries) in &mut archives {
             for entry in entries {

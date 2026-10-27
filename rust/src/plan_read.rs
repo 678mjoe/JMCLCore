@@ -223,3 +223,37 @@ impl ZeroNativePreparation<'_> {
 #[cfg(all(test, target_os = "linux"))]
 #[path = "plan_zero_native_tests.rs"]
 mod zero_native_tests;
+
+impl ReadPlan {
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "game-native adapter awaits routing")
+    )]
+    pub(crate) fn prepare_game_native(
+        &self,
+        root: &crate::store::ArtifactRoot,
+    ) -> Result<crate::install::Preparation, crate::install::Error> {
+        self.prepare_game_native_with(root, crate::install::prepare::secure_nonce)
+    }
+    fn prepare_game_native_with(
+        &self,
+        root: &crate::store::ArtifactRoot,
+        nonce: impl FnMut(&mut [u8; 8]) -> Result<(), crate::install::Error>,
+    ) -> Result<crate::install::Preparation, crate::install::Error> {
+        crate::install::prepare::prepare_with(
+            root,
+            &self.asset_projections,
+            &self.native_extractions,
+            |path| {
+                self.files
+                    .iter()
+                    .find(|f| f.path.0 == path.as_bytes())
+                    .map(|f| (f.sha1.as_str(), f.size))
+            },
+            nonce,
+        )
+    }
+}
+#[cfg(all(test, target_os = "linux"))]
+#[path = "plan_game_native_tests.rs"]
+mod game_native_tests;
