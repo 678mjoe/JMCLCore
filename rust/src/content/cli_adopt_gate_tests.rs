@@ -205,10 +205,14 @@ fn adoption_guards_and_manifest_failures_do_not_open_cas() {
         let (code, out, err) = f.call();
         assert_eq!(code, 1);
         assert!(out.is_empty());
-        assert!(
-            String::from_utf8(err)
-                .unwrap()
-                .starts_with("failed to load instance:")
+        let error = if raw == b"{" {
+            "UnexpectedEndOfInput"
+        } else {
+            "InstanceIdMismatch"
+        };
+        assert_eq!(
+            String::from_utf8(err).unwrap(),
+            format!("failed to load instance: {error}\n")
         );
         assert_eq!(snapshot(f.owner.path()), before);
         assert!(!f.cas.exists());
@@ -248,4 +252,21 @@ fn empty_content_failure_retains_only_created_cas_layout() {
         }
     }
     assert!(!f.root.join("demo/.minecraft/.jmcl").exists());
+}
+
+#[test]
+fn manifest_precedes_cas_root_failure_without_adoption_effects() {
+    for valid in [false, true] {
+        let bytes = if valid { manifest() } else { b"{".to_vec() };
+        let f = Fixture::new(&bytes, b"opaque");
+        std::fs::write(&f.cas, b"owned blocking file").unwrap();
+        let before = snapshot(f.owner.path());
+        let expected = if valid {
+            "failed to open artifact store: NotDir\n"
+        } else {
+            "failed to load instance: UnexpectedEndOfInput\n"
+        };
+        assert_eq!(f.call(), (1, vec![], expected.as_bytes().to_vec()));
+        assert_eq!(snapshot(f.owner.path()), before);
+    }
 }
