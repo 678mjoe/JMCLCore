@@ -363,9 +363,9 @@ impl<T: Transport> Service<T> {
                 .0,
         )
     }
-    pub fn get(&self, id: &str, source: Source) -> Result<Value, Error> {
+    fn fetch_metadata_bytes(&self, id: &[u8], source: Source) -> Result<(Vec<u8>, Vec<u8>), Error> {
         let manifest = self.listing_manifest(source)?;
-        let selected = manifest.lookup_metadata_entry(id.as_bytes())?;
+        let selected = manifest.lookup_metadata_entry(id)?;
         // COMPAT-URL-001: only the selected URL crosses the existing String
         // transport boundary. Preserve its existing non-UTF8 rejection; never
         // substitute/percent-encode opaque bytes or reject unrelated entries.
@@ -385,8 +385,12 @@ impl<T: Transport> Service<T> {
                 return Err(Error::MetadataHashMismatch);
             }
         }
+        Ok((bytes, selected.id.into_owned()))
+    }
+    pub fn get(&self, id: &str, source: Source) -> Result<Value, Error> {
+        let (bytes, selected_id) = self.fetch_metadata_bytes(id.as_bytes(), source)?;
         let version = metadata::metadata(&bytes)?;
-        if version["id"].as_str().map(str::as_bytes) != Some(selected.id.as_ref()) {
+        if version["id"].as_str().map(str::as_bytes) != Some(selected_id.as_slice()) {
             return Err(Error::MetadataIdMismatch);
         }
         Ok(version)

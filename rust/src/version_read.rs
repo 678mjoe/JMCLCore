@@ -38,3 +38,26 @@ pub(super) fn prepare(value: Option<&Value>) -> Result<Request, RpcError> {
     }
     Ok(Request { id, source })
 }
+
+impl<T: Transport> Service<T> {
+    fn get_read(&self, id: &[u8], source: Source) -> Result<metadata::ReadMetadata, Error> {
+        let (bytes, selected_id) = self.fetch_metadata_bytes(id, source)?;
+        let metadata = metadata::ReadMetadata::parse(&bytes)?;
+        if metadata.id() != selected_id {
+            return Err(Error::MetadataIdMismatch);
+        }
+        Ok(metadata)
+    }
+}
+pub(super) fn rpc<T: Transport>(
+    service: &Service<T>,
+    request: Request,
+) -> Result<Response, RpcError> {
+    let result = service
+        .get_read(&request.id, request.source)
+        .map_err(|e| map_error("version.get", e))?;
+    Ok(Response {
+        source: request.source,
+        result: result.into_value(),
+    })
+}
