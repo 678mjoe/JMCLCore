@@ -471,3 +471,319 @@ fn unsupported_capabilities_and_root_order_do_not_enter_execution() {
     assert_eq!(*t.calls.lock().unwrap(), 0);
     o.check();
 }
+
+fn rpc_raw(o: &Owned, id: Value) -> Box<serde_json::value::RawValue> {
+    // All effectful invocations have explicit owned roots; defaults are pure-only.
+    assert!(
+        o.destination.starts_with(o.owner.path())
+            && o.cas.starts_with(o.owner.path())
+            && o.cache.starts_with(o.owner.path())
+    );
+    serde_json::value::RawValue::from_string(json!({"id":id,"directory":o.destination,"store_directory":o.cas,"workers":1,"retries":0,"os":"linux","arch":"x86_64","java_paths":[[255]],"java_policy":"managed"}).to_string()).unwrap()
+}
+#[test]
+fn vanilla_phase_retains_deferred_descriptions_and_string_file_behavior() {
+    let o = Owned::new();
+    let mut p = planned(&o, json!("v"));
+    p.native_extractions.push(NativeExtraction {
+        archive_path: String::from_utf8(p.files[0].path.0.clone()).unwrap(),
+        exclude: vec!["META-INF/".into()],
+    });
+    p.asset_projections.push(AssetProjection {
+        source_path: String::from_utf8(p.files[0].path.0.clone()).unwrap(),
+        destination_path: "resources/deferred".into(),
+        kind: "resources".into(),
+    });
+    let before = serde_json::to_vec(&p).unwrap();
+    assert!(p.ordinary_files().is_none());
+    let t = Files::new(vec![DATA.to_vec()]);
+    let mut output = vec![];
+    p.vanilla_download_phase()
+        .unwrap()
+        .complete(
+            "test",
+            o.destination.as_os_str().as_encoded_bytes(),
+            o.cas.as_os_str().as_encoded_bytes(),
+            install::Options {
+                workers: 1,
+                retries: 0,
+                sync_files: true,
+            },
+            &t,
+            &mut output,
+        )
+        .unwrap();
+    assert_eq!(serde_json::to_vec(&p).unwrap(), before);
+    assert!(!o.destination.join("resources").exists());
+    assert!(!o.destination.join("natives").exists());
+    check_files(&o, &p, 2);
+}
+#[test]
+fn injected_execute_rpc_opaque_cached_metadata_and_native_descriptions_do_not_prepare() {
+    let o = Owned::new();
+    let mut body: Value = serde_json::from_slice(&raw(json!([255]))).unwrap();
+    body["libraries"] = json!([{"name":"fixture:opaque:1","natives":{"linux":"natives-linux"},"downloads":{"artifact":{"path":"fixture/ordinary.bin","url":FILE,"sha1":hash(DATA),"size":DATA.len()},"classifiers":{"natives-linux":{"path":"fixture/native.bin","url":FILE,"sha1":hash(DATA),"size":DATA.len()}}},"extract":{"exclude":["META-INF/"]}}]);
+    let svc = o.service(json!([255]), serde_json::to_vec(&body).unwrap());
+    let t = Files::new(vec![DATA.to_vec()]);
+    let req = rpc_raw(&o, json!([255]));
+    let mut out = vec![];
+    crate::install::vanilla::handle_with(&mut out, "test", Some(&req), &svc, &t)
+        .unwrap()
+        .unwrap();
+    let events = lines(&out);
+    assert_eq!(events.last().unwrap()["event"], "result");
+    assert_eq!(events.last().unwrap()["result"]["files_total"], 3);
+    assert_eq!(events.last().unwrap()["result"]["version_id"], json!([255]));
+    assert_eq!(svc.transport.calls.borrow().len(), 2);
+    assert_eq!(*t.calls.lock().unwrap(), 1);
+    assert!(!o.destination.join("natives").exists());
+    let receipt: Value = serde_json::from_slice(&fs::read(o.receipt()).unwrap()).unwrap();
+    assert_eq!(receipt["version_id"], json!([255]));
+    let before = snap(&o.destination.join("libraries/fixture/native.bin"));
+    out.clear();
+    crate::install::vanilla::handle_with(&mut out, "test", Some(&req), &svc, &t)
+        .unwrap()
+        .unwrap();
+    assert_eq!(svc.transport.calls.borrow().len(), 2);
+    assert_eq!(*t.calls.lock().unwrap(), 1);
+    assert_eq!(
+        snap(&o.destination.join("libraries/fixture/native.bin")),
+        before
+    );
+    o.check();
+}
+#[test]
+fn injected_execute_planning_precedes_root_conversion_and_destination_precedes_cas() {
+    let o = Owned::new();
+    let svc = o.service(json!("v"), raw(json!("wrong")));
+    let t = Files::new(vec![]);
+    let mut params: Value = serde_json::from_str(rpc_raw(&o, json!("v")).get()).unwrap();
+    params["directory"] = json!([0]);
+    let req = serde_json::value::RawValue::from_string(params.to_string()).unwrap();
+    let mut out = vec![];
+    crate::install::vanilla::handle_with(&mut out, "test", Some(&req), &svc, &t)
+        .unwrap()
+        .unwrap();
+    assert_eq!(lines(&out)[0]["error"]["code"], "INSTALL_PLAN_ERROR");
+    assert!(!o.destination.exists());
+    assert!(!o.cas.exists());
+    let o = Owned::new();
+    let svc = o.service(json!("v"), raw(json!("v")));
+    fs::write(&o.cas, b"blocked store").unwrap();
+    let req = rpc_raw(&o, json!("v"));
+    out.clear();
+    crate::install::vanilla::handle_with(&mut out, "test", Some(&req), &svc, &t)
+        .unwrap()
+        .unwrap();
+    assert_eq!(lines(&out)[0]["error"]["code"], "STORE_ROOT_ERROR");
+    assert!(o.destination.exists());
+    assert_eq!(fs::read(&o.cas).unwrap(), b"blocked store");
+    assert!(!o.receipt().exists());
+    assert_eq!(*t.calls.lock().unwrap(), 0);
+    o.check();
+}
+struct ChangeManifest<'a> {
+    files: Files,
+    path: &'a Path,
+}
+impl install::Transport for ChangeManifest<'_> {
+    fn fetch(&self, url: &str, out: &mut dyn Write) -> Result<u16, install::Error> {
+        fs::write(
+            self.path,
+            br#"{"id":"demo","name":"changed","version_id":"after"}"#,
+        )?;
+        self.files.fetch(url, out)
+    }
+}
+#[test]
+fn injected_execute_keeps_captured_selection_when_owned_manifest_changes() {
+    let o = Owned::new();
+    let manifest = o.owner.path().join("instance.json");
+    fs::write(
+        &manifest,
+        br#"{"id":"demo","name":"before","version_id":"v"}"#,
+    )
+    .unwrap();
+    let captured: Value = serde_json::from_slice(&fs::read(&manifest).unwrap()).unwrap();
+    let svc = o.service(
+        captured["version_id"].clone(),
+        raw(captured["version_id"].clone()),
+    );
+    let t = ChangeManifest {
+        files: Files::new(vec![DATA.to_vec()]),
+        path: &manifest,
+    };
+    let req = rpc_raw(&o, captured["version_id"].clone());
+    let mut out = vec![];
+    crate::install::vanilla::handle_with(&mut out, "test", Some(&req), &svc, &t)
+        .unwrap()
+        .unwrap();
+    assert_eq!(lines(&out).last().unwrap()["event"], "result");
+    let r: Value = serde_json::from_slice(&fs::read(o.receipt()).unwrap()).unwrap();
+    assert_eq!(r["version_id"], "v");
+    let changed: Value = serde_json::from_slice(&fs::read(&manifest).unwrap()).unwrap();
+    assert_eq!(changed["version_id"], "after");
+    o.check();
+    // Demonstrates captured standalone selection only; no managed wrapper integration claim.
+}
+#[test]
+fn injected_execute_failure_mapping_preserves_receipts_and_peer_identity() {
+    for stage in ["file", "event", "receipt", "result"] {
+        let o = Owned::new();
+        let svc = o.service(json!("v"), raw(json!("v")));
+        let req = rpc_raw(&o, json!("v"));
+        let old = if stage == "receipt" {
+            fs::create_dir_all(o.receipt()).unwrap();
+            None
+        } else {
+            Some(o.old_receipt())
+        };
+        let t = Files::new(vec![if stage == "file" {
+            b"short".to_vec()
+        } else {
+            DATA.to_vec()
+        }]);
+        let mut out = Failing {
+            bytes: vec![],
+            pending: vec![],
+            fail_event: if stage == "event" {
+                "file"
+            } else if stage == "result" {
+                "result"
+            } else {
+                "never"
+            },
+        };
+        let result =
+            crate::install::vanilla::handle_with(&mut out, "test", Some(&req), &svc, &t).unwrap();
+        if matches!(stage, "event" | "result") {
+            assert!(result.is_err())
+        } else {
+            result.unwrap();
+            assert_eq!(
+                lines(&out.bytes).last().unwrap()["error"]["code"],
+                if stage == "file" {
+                    "DOWNLOAD_FAILED"
+                } else {
+                    "INSTALL_STATE_ERROR"
+                }
+            );
+        }
+        if let Some(mut old) = old {
+            if stage == "result" {
+                old.3 = 1;
+                assert_ne!(fs::read(o.receipt()).unwrap(), old.0);
+            } else {
+                assert_eq!(snap(&o.receipt()), old);
+            }
+            assert_eq!(snap(&o.owner.path().join("receipt-peer")), old);
+        }
+        assert!(
+            o.cas
+                .join(format!("locks/sha1/{}.lock", hash(DATA)))
+                .exists()
+        );
+        o.check();
+    }
+}
+
+#[test]
+fn injected_execute_assets_fetched_once_for_planning_and_deferred_projections_retained() {
+    const ASSET: &str = "https://fixture.invalid/assets";
+    struct Meta {
+        queue: RefCell<VecDeque<(String, usize, Vec<u8>)>>,
+        calls: RefCell<Vec<String>>,
+    }
+    impl version::Transport for Meta {
+        fn get(&self, url: &str, max: usize) -> Result<Vec<u8>, metadata::Error> {
+            self.calls.borrow_mut().push(url.into());
+            let (u, n, b) = self
+                .queue
+                .borrow_mut()
+                .pop_front()
+                .expect("unexpected metadata request");
+            assert_eq!((url, max), (u.as_str(), n));
+            Ok(b)
+        }
+    }
+    struct FileQueue {
+        queue: Mutex<VecDeque<(String, Vec<u8>)>>,
+        calls: Mutex<Vec<String>>,
+    }
+    impl install::Transport for FileQueue {
+        fn fetch(&self, url: &str, out: &mut dyn Write) -> Result<u16, install::Error> {
+            self.calls.lock().unwrap().push(url.into());
+            let (u, b) = self
+                .queue
+                .lock()
+                .unwrap()
+                .pop_front()
+                .expect("unexpected artifact request");
+            assert_eq!(url, u);
+            out.write_all(&b)?;
+            Ok(200)
+        }
+    }
+    let o = Owned::new();
+    let assets=serde_json::to_vec(&json!({"objects":{"fixture/item":{"hash":hash(DATA),"size":DATA.len()}},"virtual":true,"map_to_resources":true})).unwrap();
+    let mut body: Value = serde_json::from_slice(&raw(json!("v"))).unwrap();
+    body["assetIndex"] = json!({"id":"fixture","url":ASSET,"sha1":hash(&assets),"size":assets.len(),"totalSize":DATA.len()});
+    let body = serde_json::to_vec(&body).unwrap();
+    let manifest=serde_json::to_vec(&json!({"latest":{"release":"v","snapshot":"v"},"versions":[{"id":"v","type":"release","url":META,"sha1":hash(&body),"time":"t","releaseTime":"t"}]})).unwrap();
+    let mut svc = version::Service::new(
+        Meta {
+            queue: RefCell::new(
+                vec![
+                    (
+                        Source::Official.manifest_url().into(),
+                        2 * 1024 * 1024,
+                        manifest,
+                    ),
+                    (META.into(), 4 * 1024 * 1024, body),
+                    (ASSET.into(), 64 * 1024 * 1024, assets.clone()),
+                ]
+                .into(),
+            ),
+            calls: RefCell::new(vec![]),
+        },
+        &o.cache,
+    );
+    svc.now = 1000;
+    let t = FileQueue {
+        queue: Mutex::new(
+            vec![(FILE.into(), DATA.to_vec()), (ASSET.into(), assets.clone())].into(),
+        ),
+        calls: Mutex::new(vec![]),
+    };
+    let req = rpc_raw(&o, json!("v"));
+    let mut out = vec![];
+    crate::install::vanilla::handle_with(&mut out, "test", Some(&req), &svc, &t)
+        .unwrap()
+        .unwrap();
+    let events = lines(&out);
+    assert_eq!(events.last().unwrap()["event"], "result");
+    assert_eq!(events.last().unwrap()["result"]["files_total"], 3);
+    assert_eq!(
+        svc.transport.calls.borrow().as_slice(),
+        [Source::Official.manifest_url(), META, ASSET]
+    );
+    assert_eq!(t.calls.lock().unwrap().as_slice(), [FILE, ASSET]);
+    assert!(svc.transport.queue.borrow().is_empty());
+    assert!(t.queue.lock().unwrap().is_empty());
+    assert!(!o.destination.join("resources").exists());
+    assert!(!o.destination.join("assets/virtual").exists());
+    assert_eq!(
+        fs::read(o.destination.join("assets/indexes/fixture.json")).unwrap(),
+        assets
+    );
+    let client = snap(&o.destination.join("versions/v/v.jar"));
+    let asset = snap(&o.destination.join(format!(
+        "assets/objects/{}/{}",
+        &hash(DATA)[..2],
+        hash(DATA)
+    )));
+    assert_eq!(client, asset);
+    assert_eq!(client.3, 3);
+    assert_eq!(client.4 & 0o222, 0);
+    o.check();
+}
