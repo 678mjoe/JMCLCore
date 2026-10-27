@@ -110,6 +110,25 @@ impl ObjectTransaction<'_> {
         self.store
             .materialize_at_locked(&dir, name.as_ref(), &self.hash, size)
     }
+    pub(crate) fn import_bytes(
+        &self,
+        source: &ArtifactRoot,
+        relative: &[u8],
+        size: u64,
+    ) -> std::io::Result<Placement> {
+        let (dir, name) = source.content_parent_bytes(relative, false)?;
+        self.store.import_at_locked(&dir, &name, &self.hash, size)
+    }
+    pub(crate) fn materialize_bytes(
+        &self,
+        destination: &ArtifactRoot,
+        relative: &[u8],
+        size: u64,
+    ) -> std::io::Result<Placement> {
+        let (dir, name) = destination.content_parent_bytes(relative, true)?;
+        self.store
+            .materialize_at_locked(&dir, &name, &self.hash, size)
+    }
     /// Remove a failed verification result while the digest lock is held, as
     /// the legacy installer does before reacquiring the object.
     pub fn remove_invalid(&self, size: u64) -> std::io::Result<()> {
@@ -152,4 +171,51 @@ fn native_parts(path: &[u8]) -> std::io::Result<Vec<&[u8]>> {
         ));
     }
     Ok(parts)
+}
+
+#[cfg(test)]
+mod content_byte_bridge_tests {
+    use super::*;
+    #[test]
+    fn content_bytes_missing_source_parent_never_creates_directories() {
+        let temp = tempfile::tempdir().unwrap();
+        let root_path = temp.path().join("content");
+        let root = ArtifactRoot::open(&root_path).unwrap();
+        let store = Store::open(temp.path().join("cache")).unwrap();
+        let tx = store.transaction(&"a".repeat(40)).unwrap();
+        let error = tx
+            .import_bytes(&root, b"missing/child/file.jar", 1)
+            .unwrap_err();
+        assert_eq!(error.kind(), std::io::ErrorKind::NotFound);
+        assert!(!root_path.join("missing").exists());
+        for path in [
+            b"../outside".as_slice(),
+            b"/outside",
+            b"x//file",
+            b"x\\file",
+            b"x:\0",
+        ] {
+            assert_eq!(
+                tx.import_bytes(&root, path, 1).unwrap_err().kind(),
+                std::io::ErrorKind::InvalidInput
+            );
+        }
+        assert_eq!(std::fs::read_dir(&root_path).unwrap().count(), 0);
+    }
+    #[cfg(unix)]
+    #[test]
+    fn content_bytes_source_parent_alias_is_not_followed_by_cas() {
+        let temp = tempfile::tempdir().unwrap();
+        let root_path = temp.path().join("content");
+        let root = ArtifactRoot::open(&root_path).unwrap();
+        let outside = temp.path().join("peer");
+        std::fs::create_dir(&outside).unwrap();
+        std::fs::write(outside.join("opaque"), b"unchanged").unwrap();
+        std::os::unix::fs::symlink(&outside, root_path.join("alias")).unwrap();
+        let store = Store::open(temp.path().join("cache")).unwrap();
+        let tx = store.transaction(&"a".repeat(40)).unwrap();
+        assert!(tx.import_bytes(&root, b"alias/opaque", 9).is_err());
+        assert_eq!(std::fs::read(outside.join("opaque")).unwrap(), b"unchanged");
+        assert_eq!(std::fs::read_dir(&outside).unwrap().count(), 1);
+    }
 }

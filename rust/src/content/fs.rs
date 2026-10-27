@@ -28,6 +28,11 @@ mod platform {
             )?)))
         }
         pub fn child(&self, name: &str, create: bool) -> io::Result<Self> {
+            self.child_bytes(name.as_bytes(), create)
+        }
+        pub(super) fn child_bytes(&self, bytes: &[u8], create: bool) -> io::Result<Self> {
+            let name = crate::store::path_from_bytes(bytes)?;
+            let name = name.as_os_str();
             if create {
                 match fs::mkdirat(&self.0, name, Mode::from_raw_mode(0o755)) {
                     Ok(()) | Err(rustix::io::Errno::EXIST) => (),
@@ -42,6 +47,11 @@ mod platform {
             )?)))
         }
         pub fn file(&self, name: &str, write: bool) -> io::Result<File> {
+            self.file_bytes(name.as_bytes(), write)
+        }
+        pub fn file_bytes(&self, bytes: &[u8], write: bool) -> io::Result<File> {
+            let name = crate::store::path_from_bytes(bytes)?;
+            let name = name.as_os_str();
             let f = File::from(fs::openat(
                 &self.0,
                 name,
@@ -113,40 +123,85 @@ mod platform {
     use windows_sys::Win32::Storage::FileSystem::{
         FILE_ATTRIBUTE_DIRECTORY, FILE_ATTRIBUTE_REPARSE_POINT,
     };
+    fn name_bytes(name: &OsStr) -> Vec<u8> {
+        use std::os::windows::ffi::OsStrExt;
+        let mut bytes = Vec::new();
+        for value in char::decode_utf16(name.encode_wide()) {
+            match value {
+                Ok(c) => {
+                    let mut buf = [0; 4];
+                    bytes.extend_from_slice(c.encode_utf8(&mut buf).as_bytes());
+                }
+                Err(e) => {
+                    let n = e.unpaired_surrogate();
+                    bytes.extend_from_slice(&[
+                        (0xe0 | (n >> 12)) as u8,
+                        (0x80 | ((n >> 6) & 63)) as u8,
+                        (0x80 | (n & 63)) as u8,
+                    ]);
+                }
+            }
+        }
+        bytes
+    }
+    #[test]
+    fn filename_wtf8_is_exact_and_roundtrips() {
+        use std::os::windows::ffi::{OsStrExt, OsStringExt};
+        for units in [
+            vec![0x61],
+            vec![0xd800, 0x2e, 0x6a],
+            vec![0xdc00],
+            vec![0xd83d, 0xde00],
+            vec![0xd800, 0xd800],
+        ] {
+            let name = std::ffi::OsString::from_wide(&units);
+            let bytes = name_bytes(&name);
+            let decoded = crate::store::path_from_bytes(&bytes).unwrap();
+            assert_eq!(decoded.encode_wide().collect::<Vec<_>>(), units);
+        }
+        assert_eq!(
+            name_bytes(&std::ffi::OsString::from_wide(&[0xd800])),
+            b"\xed\xa0\x80"
+        );
+    }
     impl Dir {
         pub fn root(path: &str) -> io::Result<Self> {
             Ok(Self(fs::walk(Path::new(path), true)?))
         }
         pub fn child(&self, name: &str, create: bool) -> io::Result<Self> {
-            match fs::read_dir_follow_at(&self.0, OsStr::new(name)) {
+            self.child_bytes(name.as_bytes(), create)
+        }
+        pub(super) fn child_bytes(&self, bytes: &[u8], create: bool) -> io::Result<Self> {
+            let name = crate::store::path_from_bytes(bytes)?;
+            let name = name.as_os_str();
+            match fs::read_dir_follow_at(&self.0, name) {
                 Ok(file) => Ok(Self(file)),
-                Err(e) if create && e.kind() == io::ErrorKind::NotFound => Ok(Self(fs::child(
-                    &self.0,
-                    OsStr::new(name),
-                    true,
-                    true,
-                    false,
-                )?)),
+                Err(e) if create && e.kind() == io::ErrorKind::NotFound => {
+                    Ok(Self(fs::child(&self.0, name, true, true, false)?))
+                }
                 Err(e) => Err(e),
             }
         }
         pub fn file(&self, name: &str, write: bool) -> io::Result<File> {
+            self.file_bytes(name.as_bytes(), write)
+        }
+        pub fn file_bytes(&self, bytes: &[u8], write: bool) -> io::Result<File> {
+            let name = crate::store::path_from_bytes(bytes)?;
+            let name = name.as_os_str();
             if write {
-                fs::child(&self.0, OsStr::new(name), false, false, true)
+                fs::child(&self.0, name, false, false, true)
             } else {
-                fs::read_follow_at(&self.0, OsStr::new(name))
+                fs::read_follow_at(&self.0, name)
             }
         }
         pub fn names(&self) -> io::Result<Vec<(Vec<u8>, bool)>> {
             Ok(fs::entries(&self.0)?
                 .into_iter()
-                .filter_map(|(n, a)| {
-                    n.to_str().map(|s| {
-                        (
-                            s.as_bytes().to_vec(),
-                            a & (FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_REPARSE_POINT) == 0,
-                        )
-                    })
+                .map(|(n, a)| {
+                    (
+                        name_bytes(&n),
+                        a & (FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_REPARSE_POINT) == 0,
+                    )
                 })
                 .collect())
         }
@@ -201,6 +256,17 @@ impl Dir {
             }
         }
         Ok((dir, leaf.to_string()))
+    }
+    pub fn parent_bytes(&self, path: &[u8]) -> io::Result<(Self, Vec<u8>)> {
+        let mut parts = path.rsplitn(2, |b| *b == b'/');
+        let leaf = parts.next().ok_or_else(|| io::Error::other("EmptyPath"))?;
+        let mut dir = Self(self.0.try_clone()?);
+        if let Some(parent) = parts.next() {
+            for part in parent.split(|b| *b == b'/') {
+                dir = dir.child_bytes(part, false)?;
+            }
+        }
+        Ok((dir, leaf.to_vec()))
     }
     pub fn read(&self, name: &str, max: usize) -> io::Result<Vec<u8>> {
         let mut bytes = vec![];

@@ -551,6 +551,20 @@ impl ArtifactRoot {
         dir_at(&parent, name.as_ref(), true)?;
         Ok(())
     }
+    // Content-only bridge: source lookup must never create missing parents.
+    pub(super) fn content_parent_bytes(
+        &self,
+        relative: &[u8],
+        create: bool,
+    ) -> io::Result<(File, std::ffi::OsString)> {
+        let mut parts = native_parts(relative)?;
+        let name = path_from_bytes(parts.pop().unwrap())?;
+        let mut dir = self.dir.try_clone()?;
+        for part in parts {
+            dir = dir_at(&dir, &path_from_bytes(part)?, create)?;
+        }
+        Ok((dir, name))
+    }
     fn native_parent(&self, relative: &[u8]) -> io::Result<(File, std::ffi::OsString)> {
         let mut parts = native_parts(relative)?;
         let name = std::ffi::OsStr::from_bytes(parts.pop().unwrap()).to_owned();
