@@ -180,7 +180,7 @@ fn guarded_malformed_and_mismatched_manifests_prevent_content_changes() {
     let mut empty = manifest();
     empty["version_id"] = json!([]);
     for (raw, error) in [
-        ("{".to_owned(), "SyntaxError"),
+        ("{".to_owned(), "UnexpectedEndOfInput"),
         (mismatch.to_string(), "InstanceIdMismatch"),
         (empty.to_string(), "InvalidVersionId"),
     ] {
