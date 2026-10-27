@@ -8,7 +8,7 @@ use std::{
 };
 
 type Snapshot = std::collections::BTreeMap<std::path::PathBuf, (Vec<u8>, u64, u64, u32, u64)>;
-fn snapshot(root: &Path) -> Snapshot {
+pub(super) fn snapshot(root: &Path) -> Snapshot {
     fn walk(root: &Path, path: &Path, out: &mut Snapshot) {
         let m = fs::symlink_metadata(path).unwrap();
         out.insert(
@@ -37,7 +37,7 @@ fn snapshot(root: &Path) -> Snapshot {
 }
 
 const BODY: &[u8] = b"opaque synthetic projection bytes";
-fn plan(id: serde_json::Value) -> ReadPlan {
+pub(super) fn plan(id: serde_json::Value) -> ReadPlan {
     let h = format!("{:x}", Sha1::digest(BODY));
     let v = serde_json::json!({"id":id,"type":"release","mainClass":"Main","libraries":[],"downloads":{"client":{"url":"https://example.invalid/client","sha1":"a".repeat(40),"size":1}},"assetIndex":{"id":"idx","url":"https://example.invalid/index","sha1":"b".repeat(40),"size":2,"totalSize":BODY.len()}});
     let m = metadata::ReadMetadata::parse(&serde_json::to_vec(&v).unwrap()).unwrap();
@@ -62,7 +62,7 @@ fn identity(p: &Path) -> (Vec<u8>, u64, u64, u32, u64) {
     let m = fs::metadata(p).unwrap();
     (fs::read(p).unwrap(), m.dev(), m.ino(), m.mode(), m.nlink())
 }
-fn source(p: &Path, plan: &ReadPlan) -> std::path::PathBuf {
+pub(super) fn source(p: &Path, plan: &ReadPlan) -> std::path::PathBuf {
     let s = p.join(&plan.asset_projections[0].source_path);
     fs::create_dir_all(s.parent().unwrap()).unwrap();
     fs::write(&s, BODY).unwrap();
