@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "reviewed_commit": "9c8d3314c6e524d76188f9f6484ed2fdaed70023",
+  "reviewed_commit": "70300ce34a2d973790ddbfcfecbf2f0008b8f8cd",
   "oracle_commit": "5a4310debbcee26b3d2391bab2339f79cd6ec52e",
   "source_digest_encoding": "utf8_crlf_to_lf",
   "source_sha256": {
@@ -12,7 +12,7 @@
     "rust/src/install/rpc.rs": "84f3d4050fa7cb271e65f8e6adccb77e12f166d862f1f66e3aaaea5c8d825f50",
     "rust/src/modpack/rpc.rs": "e521da6aa00f9468e3637b43e059e3d79ef7ea76e13d86092fae4a1768383dda",
     "rust/src/launch/rpc.rs": "ceb84ea7bb890aecec89ac3b01388dcc76a84ff804148fad6a363ae6118e5dda",
-    "rust/src/version.rs": "33f74b42ad6ddf7313e9e985d5a0eb0c628a684ef1f6d26c408fbae29ae2a61c",
+    "rust/src/version.rs": "ce68629729e4af78de94bb1f21985865cb5818d5c92153ef77641e010a10fbfb",
     "rust/src/java/select.rs": "e8e9c0f07ad7eaad106d998489af240ff089079118ead7a3055a8fd2c43fec6e",
     "rust/src/accounts.rs": "f1efb49ca4cc61a7f5a3fb6859a9d0e91aff6d4d66178dc4fa5795e8f0867117",
     "rust/src/instances.rs": "b814f3117c6a83408a374d686f574a95582e2b492c9ac9da80c9e42c26615f4a",
@@ -315,7 +315,8 @@
         "paths": [
           "rust/compat/version_check.py",
           "rust/src/version_listing_tests.rs",
-          "rust/src/metadata/listing.rs"
+          "rust/src/metadata/listing.rs",
+          "rust/src/version_lookup_tests.rs"
         ]
       }
     },
