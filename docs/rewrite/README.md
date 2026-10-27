@@ -81,6 +81,16 @@ observable behavior, or required caller coordination needs an explicit decision.
 A known defect is documented and tested rather than reproduced blindly; any
 observable compatibility exception is recorded and resolved before replacement.
 
+Minecraft may be launched for scoped acceptance in isolated test instances when
+the required runtime, game files and platform prerequisites are available.
+There is no project-wide prohibition on launching Minecraft. Follow applicable
+environment access and account authorization requirements; this permission does
+not implicitly authorize additional network access or downloads, changes to daily
+instances, releases, or promotion to `main`. Record actual launch results
+separately from synthetic tests and historical evidence; fixture-specific
+no-process guards remain valid. A successful launch does not itself establish
+completion of Java runtime acquisition implementation.
+
 ## Writing alongside the rewrite
 
 [Technical article index](../blog/README.md). The first article explains the
