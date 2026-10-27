@@ -354,6 +354,10 @@
         {
           "path": "rust/src/main.rs",
           "anchor": "jmcl_core_rust::version::plan_cli_os("
+        },
+        {
+          "path": "rust/src/native_bytes.rs",
+          "anchor": "pub(crate) fn os_bytes"
         }
       ],
       "selector": {
