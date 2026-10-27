@@ -364,30 +364,29 @@ impl<T: Transport> Service<T> {
         )
     }
     pub fn get(&self, id: &str, source: Source) -> Result<Value, Error> {
-        let manifest = self.manifest(source)?;
-        let selected = manifest["versions"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .find(|v| v["id"] == id)
-            .ok_or(Error::VersionNotFound)?;
-        let official = selected["url"].as_str().unwrap();
+        let manifest = self.listing_manifest(source)?;
+        let selected = manifest.lookup_metadata_entry(id.as_bytes())?;
+        // COMPAT-URL-001: only the selected URL crosses the existing String
+        // transport boundary. Preserve its existing non-UTF8 rejection; never
+        // substitute/percent-encode opaque bytes or reject unrelated entries.
+        let official =
+            std::str::from_utf8(&selected.url).map_err(|_| Error::Json("UnexpectedToken"))?;
         let url = source.rewrite(official).unwrap_or_else(|| official.into());
         let (mut bytes, cached) = self.cached(&url, 4 * 1024 * 1024, Policy::Immutable)?;
-        if let Some(hash) = selected["sha1"].as_str()
-            && !metadata::verify_sha1(&bytes, hash)
+        if let Some(hash) = selected.sha1.as_deref()
+            && !std::str::from_utf8(hash).is_ok_and(|hash| metadata::verify_sha1(&bytes, hash))
         {
             if !cached {
                 return Err(Error::MetadataHashMismatch);
             }
             self.evict(&url);
             bytes = self.cached(&url, 4 * 1024 * 1024, Policy::Immutable)?.0;
-            if !metadata::verify_sha1(&bytes, hash) {
+            if !std::str::from_utf8(hash).is_ok_and(|hash| metadata::verify_sha1(&bytes, hash)) {
                 return Err(Error::MetadataHashMismatch);
             }
         }
         let version = metadata::metadata(&bytes)?;
-        if version["id"] != id {
+        if version["id"].as_str().map(str::as_bytes) != Some(selected.id.as_ref()) {
             return Err(Error::MetadataIdMismatch);
         }
         Ok(version)
