@@ -1576,3 +1576,7 @@ mod params_contract_tests;
 #[cfg(all(test, unix))]
 #[path = "version_listing_tests.rs"]
 mod listing_tests;
+
+#[cfg(all(test, unix))]
+#[path = "version_lookup_tests.rs"]
+mod lookup_tests;
