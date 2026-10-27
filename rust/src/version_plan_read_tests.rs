@@ -414,3 +414,180 @@ fn cached_hash_retry_changes_exactly_one_entry_and_preserves_canaries() {
     assert_eq!(snapshot(owner.path()), stable);
     assert_eq!(svc.transport.calls.borrow().len(), 1);
 }
+
+#[test]
+fn native_plan_grammar_matches_string_options_and_repetition_order() {
+    use std::ffi::OsString;
+    for words in [
+        vec!["demo"],
+        vec![
+            "版本", "--source", "bmclapi", "--source", "official", "--os", "windows", "--os",
+            "osx", "--arch", "amd64", "--arch", "aarch64", "--json", "--json",
+        ],
+    ] {
+        let strings: Vec<String> = words.iter().map(|s| s.to_string()).collect();
+        let args: Vec<OsString> = words.iter().map(OsString::from).collect();
+        let (value, json) = cli_params("install.plan", &strings).unwrap();
+        let expected = prepare_value(&value).unwrap();
+        let (actual, flag) = native::parse_options(&args).unwrap().unwrap();
+        assert_eq!(actual.id, expected.id);
+        assert_eq!(actual.source, expected.source);
+        assert_eq!(actual.os, expected.os);
+        assert_eq!(actual.arch, expected.arch);
+        assert_eq!(flag, json);
+    }
+    for words in [
+        vec!["demo", "--source"],
+        vec!["demo", "--source", "bad", "--source", "official"],
+        vec!["demo", "--os", "bad"],
+        vec!["demo", "--arch", "bad"],
+        vec!["demo", "--unknown", "x"],
+        vec!["demo", "--json", "extra"],
+        vec![""],
+    ] {
+        let strings: Vec<String> = words.iter().map(|s| s.to_string()).collect();
+        let args: Vec<OsString> = words.iter().map(OsString::from).collect();
+        assert!(cli_params("install.plan", &strings).is_err());
+        assert!(native::parse_options(&args).unwrap().is_err());
+    }
+}
+#[test]
+fn native_plan_dispatch_excludes_loaders_and_rejects_options_without_execution() {
+    use std::{cell::Cell, ffi::OsString, os::unix::ffi::OsStringExt};
+    let raw_id = OsString::from_vec(vec![255]);
+    for loader in ["--fabric-loader", "--neoforge-version", "--forge-version"] {
+        for tail in [
+            vec![],
+            vec![OsString::from("")],
+            vec![OsString::from("1")],
+            vec![
+                OsString::from_vec(vec![254]),
+                OsString::from("--forge-version"),
+                OsString::from("2"),
+            ],
+        ] {
+            let mut args = vec![
+                "install".into(),
+                "plan".into(),
+                raw_id.clone(),
+                loader.into(),
+            ];
+            args.extend(tail);
+            assert!(
+                native::dispatch(&args, &mut vec![], &mut vec![], |_, _, _, _| panic!(
+                    "loader execution forbidden"
+                ))
+                .is_none()
+            );
+        }
+    }
+    for args in [
+        vec!["install".into(), "execute".into(), raw_id.clone()],
+        vec!["version".into(), "show".into(), raw_id.clone()],
+        vec!["install".into(), "plan".into(), "demo".into()],
+    ] {
+        assert!(
+            native::dispatch(&args, &mut vec![], &mut vec![], |_, _, _, _| panic!(
+                "unclaimed execution forbidden"
+            ))
+            .is_none()
+        );
+    }
+    for tail in [
+        vec!["--unknown".into()],
+        vec!["--source".into()],
+        vec!["--os".into(), "bad".into()],
+        vec!["--arch".into(), OsString::from_vec(vec![254])],
+        vec!["--json".into(), "extra".into()],
+        vec![
+            "--source".into(),
+            "bad".into(),
+            "--fabric-loader".into(),
+            "1".into(),
+        ],
+    ] {
+        let calls = Cell::new(0);
+        let mut args = vec!["install".into(), "plan".into(), raw_id.clone()];
+        args.extend(tail);
+        let mut out = vec![];
+        let mut err = vec![];
+        assert_eq!(
+            native::dispatch(&args, &mut out, &mut err, |_, _, _, _| {
+                calls.set(calls.get() + 1);
+                Ok(0)
+            })
+            .unwrap()
+            .unwrap(),
+            2
+        );
+        assert_eq!(calls.get(), 0);
+        assert!(out.is_empty());
+        assert_eq!(err, format!("{}\n", cli_usage("install.plan")).as_bytes());
+    }
+}
+#[test]
+fn native_plan_injected_cached_output_preserves_bytes_and_utf8_baseline() {
+    use std::{cell::Cell, ffi::OsString, os::unix::ffi::OsStringExt};
+    for id in [json!("demo"), json!("版本"), json!([255, 128])] {
+        let (owner, svc) = fixture(vec![]);
+        let bytes = body(id.clone(), None);
+        setup(&svc, Source::Official, id.clone(), &bytes);
+        let before = snapshot(owner.path());
+        let metadata = metadata::ReadMetadata::parse(&bytes).unwrap();
+        let options = vec![
+            OsString::from_vec(metadata.id().to_vec()),
+            "--os".into(),
+            "linux".into(),
+            "--arch".into(),
+            "amd64".into(),
+        ];
+        for json_output in [false, true] {
+            let mut args = options.clone();
+            if json_output {
+                args.push("--json".into());
+            }
+            let (request, json) = native::parse_options(&args).unwrap().unwrap();
+            let mut out = vec![];
+            let mut err = vec![];
+            assert_eq!(
+                execute(&svc, &request, json, &mut out, &mut err).unwrap(),
+                0
+            );
+            assert!(err.is_empty());
+            let p = json!({"id":id,"os":"linux","arch":"x86_64"});
+            let mut baseline = vec![];
+            assert_eq!(
+                cli_execute(
+                    &svc,
+                    "install.plan",
+                    &p,
+                    json_output,
+                    &mut baseline,
+                    &mut vec![]
+                )
+                .unwrap(),
+                0
+            );
+            assert_eq!(out, baseline);
+            if std::str::from_utf8(metadata.id()).is_err() {
+                let mut full = vec!["install".into(), "plan".into()];
+                full.extend(args);
+                let calls = Cell::new(0);
+                let mut dispatched = vec![];
+                assert_eq!(
+                    native::dispatch(&full, &mut dispatched, &mut vec![], |r, j, o, e| {
+                        calls.set(calls.get() + 1);
+                        execute(&svc, &r, j, o, e)
+                    })
+                    .unwrap()
+                    .unwrap(),
+                    0
+                );
+                assert_eq!(calls.get(), 1);
+                assert_eq!(dispatched, out);
+            }
+        }
+        assert!(svc.transport.calls.borrow().is_empty());
+        assert_eq!(snapshot(owner.path()), before);
+    }
+}
