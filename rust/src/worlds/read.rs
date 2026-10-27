@@ -181,33 +181,7 @@ pub(super) fn world_read_with_metadata(
     Ok((Value::Object(obj), has_metadata))
 }
 pub(super) fn listed_name_bytes(name: &std::ffi::OsStr) -> Vec<u8> {
-    #[cfg(unix)]
-    {
-        use std::os::unix::ffi::OsStrExt;
-        name.as_bytes().to_vec()
-    }
-    #[cfg(windows)]
-    {
-        use std::os::windows::ffi::OsStrExt;
-        let mut bytes = Vec::new();
-        for value in char::decode_utf16(name.encode_wide()) {
-            match value {
-                Ok(c) => {
-                    let mut buf = [0; 4];
-                    bytes.extend_from_slice(c.encode_utf8(&mut buf).as_bytes());
-                }
-                Err(e) => {
-                    let n = e.unpaired_surrogate();
-                    bytes.extend_from_slice(&[
-                        (0xe0 | (n >> 12)) as u8,
-                        (0x80 | ((n >> 6) & 63)) as u8,
-                        (0x80 | (n & 63)) as u8,
-                    ]);
-                }
-            }
-        }
-        bytes
-    }
+    crate::native_bytes::os_bytes(name)
 }
 fn listed_name_is_temp(name: &[u8]) -> bool {
     [b".jmcl-copy-".as_slice(), b".jmcl-trash-".as_slice()]

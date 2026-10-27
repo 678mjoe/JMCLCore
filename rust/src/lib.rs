@@ -28,3 +28,5 @@ pub mod loaders;
 
 pub(crate) mod json_number;
 pub mod server_content;
+
+pub(crate) mod native_bytes;
