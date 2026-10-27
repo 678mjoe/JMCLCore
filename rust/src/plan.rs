@@ -582,3 +582,7 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+#[path = "plan_component_tests.rs"]
+mod component_tests;
