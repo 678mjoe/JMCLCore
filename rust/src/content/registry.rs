@@ -54,10 +54,11 @@ pub struct Source {
     pub slug: Option<String>,
 }
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Entry {
+#[serde(bound(deserialize = "F: RegistryFile"))]
+pub struct EntryRecord<F: RegistryFile> {
     pub kind: Kind,
-    #[serde(deserialize_with = "super::modrinth::string")]
-    pub file: String,
+    #[serde(deserialize_with = "file")]
+    pub file: F,
     #[serde(deserialize_with = "super::modrinth::string")]
     pub sha1: String,
     #[serde(deserialize_with = "number")]
@@ -69,19 +70,49 @@ pub struct Entry {
     pub as_dependency: bool,
 }
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Registry {
+#[serde(bound(deserialize = "F: RegistryFile"))]
+pub struct RegistryRecord<F: RegistryFile> {
     #[serde(default = "one", deserialize_with = "schema")]
     pub schema_version: u32,
     #[serde(default)]
-    pub entries: Vec<Entry>,
+    pub entries: Vec<EntryRecord<F>>,
 }
-impl Default for Registry {
+impl<F: RegistryFile> Default for RegistryRecord<F> {
     fn default() -> Self {
         Self {
             schema_version: 1,
             entries: vec![],
         }
     }
+}
+// Existing public mutation/storage types remain String-specialized.
+pub type Entry = EntryRecord<String>;
+pub type Registry = RegistryRecord<String>;
+pub type ListingEntry = EntryRecord<super::ListedPath>;
+pub(super) type ListingRegistry = RegistryRecord<super::ListedPath>;
+
+pub trait RegistryFile: Clone + std::fmt::Debug + PartialEq + Eq + Serialize {
+    fn file_bytes(&self) -> &[u8];
+    fn decode<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error>;
+}
+impl RegistryFile for String {
+    fn file_bytes(&self) -> &[u8] {
+        self.as_bytes()
+    }
+    fn decode<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        super::modrinth::string(d)
+    }
+}
+impl RegistryFile for super::ListedPath {
+    fn file_bytes(&self) -> &[u8] {
+        &self.0
+    }
+    fn decode<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        super::modrinth::MetadataBytes::deserialize(d).map(|v| Self(v.into_bytes()))
+    }
+}
+fn file<'de, D: serde::Deserializer<'de>, F: RegistryFile>(d: D) -> Result<F, D::Error> {
+    F::decode(d)
 }
 fn typed_number<'de, D: serde::Deserializer<'de>>(d: D, width: usize) -> Result<u64, D::Error> {
     // Zig content_registry.parse reads the disk document directly into Registry,
@@ -97,6 +128,12 @@ fn schema<'de, D: serde::Deserializer<'de>>(d: D) -> Result<u32, D::Error> {
     typed_number(d, 32).map(|n| n as u32)
 }
 pub fn parse(bytes: &[u8]) -> Result<Registry, &'static str> {
+    parse_as(bytes)
+}
+pub(super) fn parse_listing(bytes: &[u8]) -> Result<ListingRegistry, &'static str> {
+    parse_as(bytes)
+}
+fn parse_as<F: RegistryFile>(bytes: &[u8]) -> Result<RegistryRecord<F>, &'static str> {
     if bytes.len() > MAX_BYTES {
         return Err("ContentRegistryTooLarge");
     }
@@ -111,7 +148,7 @@ pub fn parse(bytes: &[u8]) -> Result<Registry, &'static str> {
             "UnexpectedToken"
         });
     };
-    let r: Registry = serde_json::from_slice(bytes).map_err(|e| {
+    let r: RegistryRecord<F> = serde_json::from_slice(bytes).map_err(|e| {
         let m = e.to_string();
         if m.starts_with("Zig:InvalidNumber") || m.starts_with("InvalidNumber") {
             "InvalidNumber"
@@ -134,7 +171,7 @@ pub fn parse(bytes: &[u8]) -> Result<Registry, &'static str> {
     r.validate()?;
     Ok(r)
 }
-impl Registry {
+impl<F: RegistryFile> RegistryRecord<F> {
     pub fn validate(&self) -> Result<(), &'static str> {
         if self.schema_version != 1 {
             return Err("UnsupportedContentSchema");
@@ -143,16 +180,16 @@ impl Registry {
             return Err("TooManyContentEntries");
         }
         for (i, e) in self.entries.iter().enumerate() {
-            if !relative_path(&e.file) {
+            if !relative_path_bytes(e.file.file_bytes()) {
                 return Err("UnsafePath");
             }
-            if e.file.len() > 512 {
+            if e.file.file_bytes().len() > 512 {
                 return Err("InvalidContentFile");
             }
             let prefix = format!("{}/", e.kind.directory());
-            if !e.file.starts_with(&prefix)
-                || e.file.len() <= prefix.len()
-                || (e.kind == Kind::Datapack && !e.file.ends_with(".zip"))
+            if !e.file.file_bytes().starts_with(prefix.as_bytes())
+                || e.file.file_bytes().len() <= prefix.len()
+                || (e.kind == Kind::Datapack && !e.file.file_bytes().ends_with(b".zip"))
             {
                 return Err("ContentKindPathMismatch");
             };
@@ -226,42 +263,46 @@ fn numeric_id(s: &str) -> bool {
         && s.parse::<u32>().is_ok_and(|n| n > 0)
 }
 pub fn relative_path(p: &str) -> bool {
+    relative_path_bytes(p.as_bytes())
+}
+fn relative_path_bytes(p: &[u8]) -> bool {
     !p.is_empty()
-        && !p.contains('\\')
-        && p.split('/').all(|s| {
+        && !p.contains(&b'\\')
+        && p.split(|b| *b == b'/').all(|s| {
             if s.is_empty()
-                || s == "."
-                || s == ".."
-                || s.ends_with(['.', ' '])
-                || s.bytes().any(|b| b < 32 || b == 127 || b == b':')
+                || s == b"."
+                || s == b".."
+                || s.ends_with(b".")
+                || s.ends_with(b" ")
+                || s.iter().any(|b| *b < 32 || *b == 127 || *b == b':')
             {
                 return false;
             };
-            let stem = s.split('.').next().unwrap().to_ascii_uppercase();
+            let stem = s.split(|b| *b == b'.').next().unwrap().to_ascii_uppercase();
             !matches!(
-                stem.as_str(),
-                "CON"
-                    | "PRN"
-                    | "AUX"
-                    | "NUL"
-                    | "COM1"
-                    | "COM2"
-                    | "COM3"
-                    | "COM4"
-                    | "COM5"
-                    | "COM6"
-                    | "COM7"
-                    | "COM8"
-                    | "COM9"
-                    | "LPT1"
-                    | "LPT2"
-                    | "LPT3"
-                    | "LPT4"
-                    | "LPT5"
-                    | "LPT6"
-                    | "LPT7"
-                    | "LPT8"
-                    | "LPT9"
+                stem.as_slice(),
+                b"CON"
+                    | b"PRN"
+                    | b"AUX"
+                    | b"NUL"
+                    | b"COM1"
+                    | b"COM2"
+                    | b"COM3"
+                    | b"COM4"
+                    | b"COM5"
+                    | b"COM6"
+                    | b"COM7"
+                    | b"COM8"
+                    | b"COM9"
+                    | b"LPT1"
+                    | b"LPT2"
+                    | b"LPT3"
+                    | b"LPT4"
+                    | b"LPT5"
+                    | b"LPT6"
+                    | b"LPT7"
+                    | b"LPT8"
+                    | b"LPT9"
             )
         })
 }

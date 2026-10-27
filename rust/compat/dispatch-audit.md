@@ -115,3 +115,12 @@ Manual review of the registry parser correction confirmed that `Kind` variants,
 string deserialization and ordered persisted-source validation changed. The
 registry source fingerprint was refreshed after this review; the route map and
 all 106 inventory classifications remain unchanged.
+
+## Read-only byte-path listing review
+
+Manual review of the byte-preserving listing view confirmed unchanged method
+selection and content-kind mapping in `content/mod.rs` and `registry.rs`. The
+new datapack-list error guards affect source-compatible error classification,
+not routing membership. Read-only list records now preserve bytes, while the
+mutation/adoption and save types remain String-specialized. Only these two
+reviewed source fingerprints were updated; classifications are unchanged.
