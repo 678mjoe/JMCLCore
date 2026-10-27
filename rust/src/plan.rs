@@ -591,3 +591,7 @@ mod tests {
 #[cfg(test)]
 #[path = "plan_component_tests.rs"]
 mod component_tests;
+
+#[cfg(test)]
+#[path = "plan_byte_tests.rs"]
+mod byte_tests;
