@@ -15,7 +15,7 @@
     "rust/src/version.rs": "d7bd85e0db962b21dd4607aedacbed2c4ce99651542aa89d0652b93f582039fd",
     "rust/src/java/select.rs": "e8e9c0f07ad7eaad106d998489af240ff089079118ead7a3055a8fd2c43fec6e",
     "rust/src/accounts.rs": "f1efb49ca4cc61a7f5a3fb6859a9d0e91aff6d4d66178dc4fa5795e8f0867117",
-    "rust/src/instances.rs": "b814f3117c6a83408a374d686f574a95582e2b492c9ac9da80c9e42c26615f4a",
+    "rust/src/instances.rs": "296043d7ab0781cc53a0e3e12601f759e29a9dfaad31d97485dd811e2409f2a5",
     "rust/src/worlds/rpc.rs": "c2d852a361b99ce13246a8c74b4c11c7943d6a684b4730f13b2bc061d0d86f83",
     "rust/src/worlds/mod.rs": "4ba808be41ea28d5965ed01f5d2e88b60045212ccba0a7fab4ccc372692d7b95",
     "rust/src/content/mod.rs": "b2f4a5ad98e611e016f9cecc4a004543253950142cd3535fe68791476e25ad04",
@@ -35,14 +35,16 @@
     "rust/src/version_read.rs": "d13e0f5da1dd88852b6b964038e519dad37c379048a12b6f502b453be8d9fc51",
     "rust/src/metadata.rs": "626a32c82277ca65e5f6475fe94d46e569be001655dad9e620a98e9147a8c5fe",
     "rust/src/version_plan_read.rs": "326e85a78223c07876a7f0f3578dc61e4afce6d5c0de75b301c61de3a7c01420",
-    "rust/src/plan.rs": "85d7a2604b5835d2d90f6d430cb19aaf4fd963b8fae0e923d639e1f0212e3dc2",
-    "rust/src/plan_read.rs": "a3dc2be7b015618d61a4f1231a9f6eb6bb1fd5f2ffa412acf019d199082dad45",
+    "rust/src/plan.rs": "29ed2d2c4f7a19d33b09139aff2db1cd3724ebf9704a6f30ebe1fc6c0be566d9",
+    "rust/src/plan_read.rs": "d9b39b97416fd3a05a2fe94ad6fa1b71d4386bb69857b4a6adceeabe41978633",
     "rust/src/version_plan_preflight.rs": "975aadf7061663d89aafe765200ff786d6b98b371ad3c8794b0f7ad93189d23d",
     "rust/src/version_plan_native.rs": "659d2597ec3ebd8b21cd776ce5a82b39a22f26ac095e2278d305cda075d1612b",
     "rust/src/main.rs": "d1e8f94ce41c5698f333a54c29d72a67a6072419450b497960fa3f131d1ae710",
-    "rust/src/install/vanilla.rs": "72fae1116f7e3ece54d3ec071b6cf75027737a96540d694b7bfc11b94843589b",
-    "rust/src/plan_completion.rs": "fcb18265426eddd4d1a4d2f92ceec12b989b80eb14e259287003cbecce2820cf",
-    "rust/src/native_bytes.rs": "028cdf49e7ca05b490b0861387012558bb1989da63cc9b5f926b34ffb9e22978"
+    "rust/src/install/vanilla.rs": "05692fcd8b54f93f1c6a18f1a21f8796be5d284d8f86ef37abcb83baaafde6dd",
+    "rust/src/plan_completion.rs": "eab6476abbba1f7f998b36e96b2532ae63ab408cbc30af65f3ebd4d9986a0bd0",
+    "rust/src/native_bytes.rs": "028cdf49e7ca05b490b0861387012558bb1989da63cc9b5f926b34ffb9e22978",
+    "rust/src/launch/instance_install.rs": "6a226d03bf8b74ffa815efee139ace99eb00813260aa16e1ee330abcdfbd4525",
+    "rust/src/instances/install_selection.rs": "17edd193e7cbea21136abd16be2849293c4a10b7f6d08a8e975a37e17675c9ed"
   },
   "routes": [
     {
@@ -237,6 +239,14 @@
         {
           "path": "rust/src/plan_completion.rs",
           "anchor": "pub(crate) struct VanillaDownloadPhase"
+        },
+        {
+          "path": "rust/src/launch/instance_install.rs",
+          "anchor": "fn managed_request"
+        },
+        {
+          "path": "rust/src/instances/install_selection.rs",
+          "anchor": "pub(super) fn parse"
         }
       ],
       "selector": {
@@ -251,7 +261,9 @@
         "paths": [
           "rust/tests/install_rpc_differential.rs",
           "rust/src/install/vanilla/tests.rs",
-          "rust/src/plan_completion_tests.rs"
+          "rust/src/plan_completion_tests.rs",
+          "rust/src/launch/instance_install/tests.rs",
+          "rust/src/instances/install_selection/tests.rs"
         ]
       }
     },

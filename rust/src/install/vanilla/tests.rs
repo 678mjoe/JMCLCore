@@ -105,6 +105,23 @@ fn managed_cli_presentation_notice_and_raw_identity_are_pure() {
         err: &mut err,
         last_completed: 0,
     };
+    cli.event(ByteEvent::Retry(ByteRetryEvent {
+        path: BytePath(vec![255]),
+        attempt: 1,
+        max_attempts: 3,
+        error_name: "DownloadHashMismatch".into(),
+    }))
+    .unwrap();
+    for completed in [1, 2, 2] {
+        cli.event(ByteEvent::Progress(Progress {
+            files_completed: completed,
+            files_total: 2,
+            bytes_verified: 4,
+            bytes_total: 4,
+            ..Default::default()
+        }))
+        .unwrap();
+    }
     cli.completed(
         crate::plan::CompletionInfo {
             version: &[255],
@@ -116,5 +133,5 @@ fn managed_cli_presentation_notice_and_raw_identity_are_pure() {
     )
     .unwrap();
     assert_eq!(out,b"# source\tBMCLAPI\nversion\t\xff\ndownloaded\t0\ncached\t0\nhardLinked\t0\ncopied\t0\nverifiedBytes\t0\ntransferredBytes\t0\n");
-    assert!(err.is_empty());
+    assert_eq!(err,b"retry 1/3: \xff (DownloadHashMismatch)\ndownload progress: 2/2 files, 4/4 bytes verified\n");
 }

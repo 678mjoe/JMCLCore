@@ -111,6 +111,9 @@ impl Owned {
         fs::create_dir_all(self.receipt().parent().unwrap()).unwrap();
         fs::write(self.receipt(), b"previous receipt").unwrap();
         fs::hard_link(self.receipt(), self.owner.path().join("receipt-peer")).unwrap();
+        let mut permissions = fs::metadata(self.receipt()).unwrap().permissions();
+        permissions.set_readonly(true);
+        fs::set_permissions(self.receipt(), permissions).unwrap();
         snap(&self.receipt())
     }
     fn service(&self, id: Value) -> version::Service<Meta> {
@@ -231,7 +234,7 @@ fn managed_initial_manifest_failures_do_not_plan_or_open_cas() {
             Some(vec![b' '; instances::MAX_MANIFEST_BYTES + 1]),
             "InstanceManifestTooLarge",
         ),
-        (Some(b"{".to_vec()), "SyntaxError"),
+        (Some(b"{".to_vec()), "UnexpectedEndOfInput"),
         (
             Some(br#"{"id":"demo","name":"n","version_id":"v","version_id":"v"}"#.to_vec()),
             "DuplicateField",
@@ -451,6 +454,13 @@ fn managed_failure_order_preserves_existing_receipts_and_peers() {
         }
         if stage != "file" {
             check_file(&o, b"v", 2);
+        } else {
+            assert!(
+                !o.cas
+                    .join(store::object_path(&hash(DATA)).unwrap())
+                    .exists()
+            );
+            assert!(!o.destination.join("versions/v/v.jar").exists());
         }
         assert!(
             o.cas
