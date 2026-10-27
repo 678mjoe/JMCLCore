@@ -3,7 +3,7 @@ use crate::{metadata, store::ArtifactRoot};
 use sha1::{Digest, Sha1};
 use std::{
     fs,
-    os::unix::fs::{MetadataExt, PermissionsExt},
+    os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt},
     path::Path,
 };
 
@@ -156,7 +156,15 @@ fn owned_replacement_preserves_old_readonly_inode_and_cleans_temporary_files() {
     assert_eq!(after.4, 1);
     assert_eq!(fs::read(&dest).unwrap(), BODY);
     assert_ne!(identity(&dest).2, before.2);
-    assert_eq!(identity(&dest).3 & 0o777, 0o644);
+    // The unchanged writer requests 0644; the process umask still applies.
+    let mode_control = temp.path().join("mode-control");
+    fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(0o644)
+        .open(&mode_control)
+        .unwrap();
+    assert_eq!(identity(&dest).3 & 0o777, identity(&mode_control).3 & 0o777);
     assert_eq!(fs::read_dir(dest.parent().unwrap()).unwrap().count(), 1);
     assert!(!p.join(".jmcl").exists());
 }
