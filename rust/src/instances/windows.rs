@@ -105,6 +105,9 @@ impl Root {
         }
         result
     }
+    pub(crate) fn load_install_selection(&self, id: &str) -> io::Result<super::InstallSelection> {
+        self.load_with(id, super::install_selection::parse)
+    }
     pub fn load(&self, id: &str) -> io::Result<Manifest> {
         self.load_with(id, Manifest::parse)
     }

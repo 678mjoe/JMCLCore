@@ -8,7 +8,13 @@ mod cli;
 mod create_unvalidated;
 #[cfg(all(test, unix))]
 mod delete_byte_tests;
+mod install_selection;
 mod manifest_ordered;
+pub(crate) use install_selection::Selection as InstallSelection;
+#[cfg(test)]
+pub(crate) use install_selection::{
+    parse_count as install_parse_count, reset_count as reset_install_parse_count,
+};
 #[cfg(unix)]
 mod unix;
 #[cfg(unix)]
