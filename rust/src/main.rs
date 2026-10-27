@@ -76,6 +76,9 @@ fn main() {
             .or_else(|| {
                 jmcl_core_rust::worlds::read_cli_os(&os_args, &mut io::stdout(), &mut io::stderr())
             });
+    let raw_result = raw_result.or_else(|| {
+        jmcl_core_rust::version::read_cli_os(&os_args, &mut io::stdout(), &mut io::stderr())
+    });
     let args = if raw_result.is_none() {
         Some(std::env::args().skip(1).collect::<Vec<_>>())
     } else {

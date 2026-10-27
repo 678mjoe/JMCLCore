@@ -825,6 +825,20 @@ pub fn handle(method: &str, params: Option<&RawValue>) -> Option<Result<Response
         Ok(x) => x,
         Err(_) => return Some(Err(param_error(method))),
     };
+    if method == "version.get" {
+        let request = match read::prepare(parsed.as_ref()) {
+            Ok(r) => r,
+            Err(e) => return Some(Err(e)),
+        };
+        let transport = match HttpTransport::new() {
+            Ok(t) => t,
+            Err(e) => return Some(Err(map_error(method, e))),
+        };
+        return Some(read::rpc(
+            &Service::new(transport, Path::new(".jmclcore/metadata-cache")),
+            request,
+        ));
+    }
     let canonical = match canonical_params_view(method, parsed.as_ref()) {
         Ok(value) => value,
         Err(error) => return Some(Err(error)),
@@ -924,6 +938,9 @@ pub fn handle_with<T: Transport>(
     method: &str,
     value: Option<&Value>,
 ) -> Result<Response, RpcError> {
+    if method == "version.get" {
+        return read::rpc(service, read::prepare(value)?);
+    }
     let canonical = canonical_params_view(method, value)?;
     let value = canonical.as_deref();
     validate_params(method, value)?;
@@ -1281,6 +1298,13 @@ fn cli_execute<T: Transport>(
     out: &mut impl Write,
     err: &mut impl Write,
 ) -> std::io::Result<u8> {
+    if method == "version.get" {
+        let request = match read::prepare(Some(p)) {
+            Ok(r) => r,
+            Err(_) => return writeln!(err, "{}", cli_usage(method)).map(|_| 2),
+        };
+        return read::execute(svc, &request, json, out, err);
+    }
     let source = p
         .get("source")
         .and_then(Value::as_str)
@@ -1587,3 +1611,5 @@ mod lookup_tests;
 
 #[path = "version_read.rs"]
 mod read;
+
+pub use read::cli_os as read_cli_os;
