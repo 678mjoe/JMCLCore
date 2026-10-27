@@ -35,6 +35,7 @@ fn event(
         id: &'a str,
         event: &'a str,
         source: Source,
+        #[serde(flatten)]
         payload: T,
     }
     serde_json::to_writer(
@@ -48,7 +49,11 @@ fn event(
         },
     )?;
     out.write_all(b"\n")?;
-    out.flush()
+    if kind == "result" {
+        Ok(())
+    } else {
+        out.flush()
+    }
 }
 impl ReadPlan {
     #[cfg_attr(

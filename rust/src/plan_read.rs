@@ -1,4 +1,4 @@
-//! Private in-memory representation. Not accepted by acquisition or materialization.
+//! Private byte plan. Public String APIs remain unchanged; guarded ordinary completion is internal.
 use super::*;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

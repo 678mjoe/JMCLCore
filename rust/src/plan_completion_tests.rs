@@ -26,7 +26,15 @@ struct Metadata {
     calls: RefCell<Vec<String>>,
 }
 impl version::Transport for Metadata {
-    fn get(&self, url: &str, _max: usize) -> Result<Vec<u8>, metadata::Error> {
+    fn get(&self, url: &str, max: usize) -> Result<Vec<u8>, metadata::Error> {
+        assert_eq!(
+            max,
+            if url == META {
+                4 * 1024 * 1024
+            } else {
+                2 * 1024 * 1024
+            }
+        );
         self.calls.borrow_mut().push(url.into());
         let (u, b) = self
             .replies
@@ -204,7 +212,7 @@ fn utf8_completion_matches_existing_string_sequence_exact_output() {
             .unwrap();
             let root = ArtifactRoot::open(&o.destination).unwrap();
             let store = Store::open(&o.cas).unwrap();
-            write!(out,"{{\"protocol\":1,\"id\":\"test\",\"event\":\"started\",\"source\":\"official\",\"payload\":{{\"started\":{{\"stage\":\"download\",\"version_id\":\"版本\",\"files_total\":1,\"bytes_total\":{}}}}}}}\n",DATA.len()).unwrap();
+            write!(out,"{{\"protocol\":1,\"id\":\"test\",\"event\":\"started\",\"source\":\"official\",\"started\":{{\"stage\":\"download\",\"version_id\":\"版本\",\"files_total\":1,\"bytes_total\":{}}}}}\n",DATA.len()).unwrap();
             let summary = install::stream::stream(
                 |sink| {
                     install::execute(
@@ -239,7 +247,7 @@ fn utf8_completion_matches_existing_string_sequence_exact_output() {
             )
             .unwrap();
             let summary = serde_json::to_string(&summary).unwrap();
-            writeln!(out,"{{\"protocol\":1,\"id\":\"test\",\"event\":\"result\",\"source\":\"official\",\"payload\":{{\"result\":{{\"stage\":\"download\",\"version_id\":\"版本\",{}}}}}}}",&summary[1..summary.len()-1]).unwrap();
+            writeln!(out,"{{\"protocol\":1,\"id\":\"test\",\"event\":\"result\",\"source\":\"official\",\"result\":{{\"stage\":\"download\",\"version_id\":\"版本\",{}}}}}",&summary[1..summary.len()-1]).unwrap();
         }
         check_files(&o, &p, 2);
         assert_eq!(*t.calls.lock().unwrap(), 1);
@@ -283,8 +291,8 @@ fn opaque_completion_repeat_preserves_file_peers_and_visible_locks() {
             .collect::<Vec<_>>(),
         ["started", "file", "progress", "result"]
     );
-    assert_eq!(events[0]["payload"]["started"]["version_id"], json!([255]));
-    assert_eq!(events[1]["payload"]["file"]["status"], "cached");
+    assert_eq!(events[0]["started"]["version_id"], json!([255]));
+    assert_eq!(events[1]["file"]["status"], "cached");
 }
 #[test]
 fn metadata_failure_precedes_destination_and_cas() {
@@ -365,7 +373,7 @@ impl Write for Failing {
 }
 #[test]
 fn event_failure_prevents_receipt_but_final_output_failure_keeps_it() {
-    for stage in ["started", "file", "result"] {
+    for stage in ["started", "file", "progress", "result"] {
         let o = Owned::new();
         let p = planned(&o, json!("v"));
         let old = o.old_receipt();
