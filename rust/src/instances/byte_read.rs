@@ -330,6 +330,42 @@ mod tests {
         );
     }
     #[test]
+    fn encoded_byte_receipt_roundtrip_keeps_ordered_identity_guards() {
+        use crate::install::receipt::{Identity, encode};
+        let m = Manifest::parse(document("[254]", "[253]").as_bytes(), "demo").unwrap();
+        let p = Identity {
+            version: &[254],
+            fabric: Some(&[253]),
+            neo: None,
+            forge: None,
+            source: crate::metadata::Source::Official,
+        };
+        let target = crate::plan::Target {
+            os: "linux".into(),
+            arch: "x86_64".into(),
+            os_version: None,
+        };
+        let encoded = encode(&p, &target).unwrap();
+        assert!(m.matches_receipt(&encoded)); // Synthetic identity match, not installation evidence.
+        let text = String::from_utf8(encoded).unwrap();
+        for (from, to) in [
+            ("[254]", "[252]"),
+            ("[253]", "null"),
+            ("\"schema_version\":1", "\"schema_version\":2"),
+            (
+                "\"version_id\":[254]",
+                "\"version_id\":[254],\"version_id\":[254]",
+            ),
+            ("\"os\":\"linux\"", "\"os\":[]"),
+        ] {
+            assert!(
+                !m.matches_receipt(text.replace(from, to).as_bytes()),
+                "{to}"
+            );
+        }
+    }
+
+    #[test]
     fn installed_identity_compares_bytes_after_receipt_validation() {
         let m = Manifest::parse(document("[254]", "[253]").as_bytes(), "demo").unwrap();
         assert!(m.matches_receipt(receipt("[254]", "[253]").as_bytes()));
