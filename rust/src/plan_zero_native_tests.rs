@@ -158,13 +158,15 @@ fn owned_collision_retry_and_exhaustion_preserve_existing_directories() {
     );
 }
 #[test]
-fn owned_projection_blocked_parent_and_injected_rng_failures_keep_rust_order() {
+fn owned_projection_and_parent_failures_precede_rng_and_retain_required_parents() {
     let mut p = plan(serde_json::json!([255]));
     assert!(p.zero_native_preparation().is_some());
     let temp = tempfile::tempdir().unwrap();
     let path = temp.path().join("artifact");
     assert!(path.is_absolute());
     let root = ArtifactRoot::open(&path).unwrap();
+    fs::write(temp.path().join("sibling"), b"canary").unwrap();
+    fs::hard_link(temp.path().join("sibling"), temp.path().join("peer")).unwrap();
     let mut calls = 0;
     let before = snapshot(temp.path());
     assert_eq!(
@@ -183,26 +185,62 @@ fn owned_projection_blocked_parent_and_injected_rng_failures_keep_rust_order() {
     p.asset_projections.clear();
     let cap = p.zero_native_preparation().unwrap();
     assert_eq!(
-        cap.prepare_with(&root, |_| Err(Error::named("RandomSourceFailed")))
-            .unwrap_err()
-            .name(),
+        cap.prepare_with(&root, |_| {
+            calls += 1;
+            assert!(path.join(".jmcl/runtime/natives").is_dir());
+            assert_eq!(
+                fs::read_dir(path.join(".jmcl/runtime/natives"))
+                    .unwrap()
+                    .count(),
+                0
+            );
+            Err(Error::named("RandomSourceFailed"))
+        })
+        .unwrap_err()
+        .name(),
         "RandomSourceFailed"
     );
-    assert_eq!(snapshot(temp.path()), before);
-    fs::write(path.join(".jmcl"), b"blocked").unwrap();
+    assert_eq!(calls, 1);
+    let after = snapshot(temp.path());
+    let added: Vec<_> = after
+        .keys()
+        .filter(|k| !before.contains_key(*k))
+        .map(|p| p.to_str().unwrap())
+        .collect();
+    assert_eq!(
+        added,
+        [
+            "artifact/.jmcl",
+            "artifact/.jmcl/runtime",
+            "artifact/.jmcl/runtime/natives"
+        ]
+    );
+    for name in ["sibling", "peer"] {
+        assert_eq!(
+            after[std::path::Path::new(name)],
+            before[std::path::Path::new(name)]
+        );
+    }
+    let blocked = temp.path().join("blocked-artifact");
+    assert!(blocked.is_absolute());
+    let blocked_root = ArtifactRoot::open(&blocked).unwrap();
+    fs::write(blocked.join(".jmcl"), b"blocked").unwrap();
     let before = snapshot(temp.path());
+    calls = 0;
     assert_eq!(
-        cap.prepare_with(&root, |_| Err(Error::named("RandomSourceFailed")))
-            .unwrap_err()
-            .name(),
-        "RandomSourceFailed"
-    );
-    assert_eq!(snapshot(temp.path()), before);
-    assert_eq!(
-        cap.prepare_with(&root, nonce).unwrap_err().name(),
+        cap.prepare_with(&blocked_root, |_| {
+            calls += 1;
+            Err(Error::named("RandomSourceFailed"))
+        })
+        .unwrap_err()
+        .name(),
         "FileIoError"
     );
+    assert_eq!(calls, 0);
     assert_eq!(snapshot(temp.path()), before);
-    assert_eq!(cap.prepare(&root).unwrap_err().name(), "FileIoError");
+    assert_eq!(
+        cap.prepare(&blocked_root).unwrap_err().name(),
+        "FileIoError"
+    );
     assert_eq!(snapshot(temp.path()), before);
 }
