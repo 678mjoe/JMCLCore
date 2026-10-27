@@ -508,3 +508,95 @@ pub fn local_cli_os(
     }
     Some(local_inner(kind, op, &local, out, errors))
 }
+
+#[cfg(all(test, unix))]
+mod byte_manifest_list_tests {
+    use super::*;
+    use std::{
+        os::unix::{ffi::OsStrExt, fs::MetadataExt},
+        path::Path,
+    };
+    type Snapshot =
+        std::collections::BTreeMap<std::path::PathBuf, (Vec<u8>, u64, u64, u64, u32, i64, i64)>;
+    fn snapshot(root: &Path) -> Snapshot {
+        fn walk(root: &Path, path: &Path, out: &mut Snapshot) {
+            let m = std::fs::symlink_metadata(path).unwrap();
+            let bytes = if m.is_file() {
+                std::fs::read(path).unwrap()
+            } else {
+                vec![]
+            };
+            out.insert(
+                path.strip_prefix(root).unwrap().into(),
+                (
+                    bytes,
+                    m.dev(),
+                    m.ino(),
+                    m.nlink(),
+                    m.mode(),
+                    m.mtime(),
+                    m.mtime_nsec(),
+                ),
+            );
+            if m.is_dir() {
+                for item in std::fs::read_dir(path).unwrap() {
+                    walk(root, &item.unwrap().path(), out);
+                }
+            }
+        }
+        let mut out = Snapshot::new();
+        walk(root, root, &mut out);
+        out
+    }
+
+    #[test]
+    fn owned_empty_content_lists_accept_opaque_manifest_without_changes() {
+        for raw in [false, true] {
+            let owner = tempfile::tempdir().unwrap();
+            let root = owner.path().join(std::ffi::OsStr::from_bytes(if raw {
+                b"instances-\xff"
+            } else {
+                b"instances"
+            }));
+            std::fs::create_dir_all(root.join("demo/.minecraft")).unwrap();
+            std::fs::write(
+                root.join("demo/instance.json"),
+                br#"{"id":"demo","name":[255],"version_id":[254],"forge_version":[253]}"#,
+            )
+            .unwrap();
+            std::fs::write(owner.path().join("sentinel"), b"unchanged").unwrap();
+            std::fs::hard_link(owner.path().join("sentinel"), owner.path().join("peer")).unwrap();
+            let before = snapshot(owner.path());
+            for kind in [Kind::Mod, Kind::Resourcepack, Kind::Shaderpack] {
+                for json in [false, true] {
+                    let mut args = vec![
+                        LocalArg::Text("demo"),
+                        LocalArg::Text("--instances-directory"),
+                        LocalArg::File(root.as_os_str().as_bytes().to_vec()),
+                    ];
+                    if json {
+                        args.push(LocalArg::Text("--json"));
+                    }
+                    let (mut out, mut err) = (Vec::new(), Vec::new());
+                    // Explicit owned root and fixed list-only route; all folders already exist.
+                    assert_eq!(root.parent(), Some(owner.path()));
+                    assert_eq!(
+                        local_inner(kind, "list", &args, &mut out, &mut err).unwrap(),
+                        0,
+                        "{err:?}"
+                    );
+                    assert!(err.is_empty());
+                    if json {
+                        assert_eq!(
+                            serde_json::from_slice::<Value>(&out).unwrap(),
+                            serde_json::json!({"entries":[],"unmanaged":[]})
+                        );
+                    } else {
+                        assert!(out.is_empty());
+                    }
+                    assert_eq!(snapshot(owner.path()), before);
+                }
+            }
+        }
+    }
+}
