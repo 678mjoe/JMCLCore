@@ -403,19 +403,12 @@ mod tests {
     }
 
     #[cfg(unix)]
-    fn snapshot(
-        root: &std::path::Path,
-    ) -> std::collections::BTreeMap<std::path::PathBuf, (Vec<u8>, u64, u64, u64, u32, i64, i64)>
-    {
+    type Snapshot =
+        std::collections::BTreeMap<std::path::PathBuf, (Vec<u8>, u64, u64, u64, u32, i64, i64)>;
+    #[cfg(unix)]
+    fn snapshot(root: &std::path::Path) -> Snapshot {
         use std::os::unix::fs::MetadataExt;
-        fn walk(
-            root: &std::path::Path,
-            p: &std::path::Path,
-            out: &mut std::collections::BTreeMap<
-                std::path::PathBuf,
-                (Vec<u8>, u64, u64, u64, u32, i64, i64),
-            >,
-        ) {
+        fn walk(root: &std::path::Path, p: &std::path::Path, out: &mut Snapshot) {
             let m = std::fs::symlink_metadata(p).unwrap();
             let bytes = if m.is_file() {
                 std::fs::read(p).unwrap()
