@@ -176,7 +176,7 @@ impl Root {
         Ok(values)
     }
     pub fn delete(&self, id: &str) -> io::Result<()> {
-        self.load_read(id)?;
+        self.load_bytes(id)?;
         fs::remove_tree(&self.dir, id.as_ref())
     }
     #[cfg(test)]

@@ -609,7 +609,7 @@ fn handle_unix(method: &str, p: Option<&RawValue>) -> Result<Value, RpcError> {
                     fail("INSTANCE_DELETE_FAILED", "Failed to delete the instance")
                 }
             };
-            root.load_read(id).map_err(delete_error)?;
+            root.load_bytes(id).map_err(delete_error)?;
             root.delete(id).map_err(delete_error)?;
             Ok(json!({"stage":"instance.delete","id":id,"deleted":true}))
         }

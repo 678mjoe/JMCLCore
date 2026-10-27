@@ -255,7 +255,7 @@ impl Root {
         Ok(list)
     }
     pub fn delete(&self, id: &str) -> io::Result<()> {
-        self.load_read(id)?;
+        self.load_bytes(id)?;
         remove_tree(&self.dir, id.as_ref())
     }
     #[cfg(test)]
