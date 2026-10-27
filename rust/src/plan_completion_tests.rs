@@ -189,30 +189,60 @@ fn lines(out: &[u8]) -> Vec<Value> {
         .map(|s| serde_json::from_str(s).unwrap())
         .collect()
 }
-#[test]
-fn utf8_completion_matches_existing_string_sequence_exact_output() {
+fn compare_utf8_completion(deferred: bool) {
     let mut outcomes = vec![];
     for byte in [false, true] {
         let o = Owned::new();
-        let p = planned(&o, json!("版本"));
+        let mut p = planned(&o, json!("版本"));
+        if deferred {
+            p.native_extractions.push(NativeExtraction {
+                archive_path: String::from_utf8(p.files[0].path.0.clone()).unwrap(),
+                exclude: vec![],
+            });
+            p.asset_projections.push(AssetProjection {
+                source_path: String::from_utf8(p.files[0].path.0.clone()).unwrap(),
+                destination_path: "resources/deferred".into(),
+                kind: "resources".into(),
+            });
+        }
         let t = Files::new(vec![DATA.to_vec()]);
         let mut out = vec![];
         if byte {
-            p.complete_ordinary("test", &o.destination, &o.cas, &t, &mut out)
-                .unwrap()
-                .unwrap();
+            if deferred {
+                p.vanilla_download_phase()
+                    .unwrap()
+                    .complete(
+                        "test",
+                        o.destination.as_os_str().as_encoded_bytes(),
+                        o.cas.as_os_str().as_encoded_bytes(),
+                        install::Options {
+                            workers: 1,
+                            retries: 0,
+                            sync_files: true,
+                        },
+                        &t,
+                        &mut out,
+                    )
+                    .unwrap();
+            } else {
+                p.complete_ordinary("test", &o.destination, &o.cas, &t, &mut out)
+                    .unwrap()
+                    .unwrap();
+            }
         } else {
             // Existing injected String sequence, without invoking the full handler.
-            let public = crate::plan::build(
+            let mut public = crate::plan::build(
                 &metadata::metadata(&raw(json!("版本"))).unwrap(),
                 None,
                 Source::Official,
                 target(),
             )
             .unwrap();
+            public.native_extractions = p.native_extractions.clone();
+            public.asset_projections = p.asset_projections.clone();
             let root = ArtifactRoot::open(&o.destination).unwrap();
             let store = Store::open(&o.cas).unwrap();
-            write!(out,"{{\"protocol\":1,\"id\":\"test\",\"event\":\"started\",\"source\":\"official\",\"started\":{{\"stage\":\"download\",\"version_id\":\"版本\",\"files_total\":1,\"bytes_total\":{}}}}}\n",DATA.len()).unwrap();
+            writeln!(out,"{{\"protocol\":1,\"id\":\"test\",\"event\":\"started\",\"source\":\"official\",\"started\":{{\"stage\":\"download\",\"version_id\":\"版本\",\"files_total\":1,\"bytes_total\":{}}}}}",DATA.len()).unwrap();
             let summary = install::stream::stream(
                 |sink| {
                     install::execute(
@@ -254,6 +284,10 @@ fn utf8_completion_matches_existing_string_sequence_exact_output() {
         outcomes.push((out, fs::read(o.receipt()).unwrap()));
     }
     assert_eq!(outcomes[0], outcomes[1]);
+}
+#[test]
+fn utf8_completion_matches_existing_string_sequence_exact_output() {
+    compare_utf8_completion(false);
 }
 #[test]
 fn opaque_completion_repeat_preserves_file_peers_and_visible_locks() {
@@ -483,6 +517,7 @@ fn rpc_raw(o: &Owned, id: Value) -> Box<serde_json::value::RawValue> {
 }
 #[test]
 fn vanilla_phase_retains_deferred_descriptions_and_string_file_behavior() {
+    compare_utf8_completion(true);
     let o = Owned::new();
     let mut p = planned(&o, json!("v"));
     p.native_extractions.push(NativeExtraction {
@@ -532,7 +567,7 @@ fn injected_execute_rpc_opaque_cached_metadata_and_native_descriptions_do_not_pr
         .unwrap();
     let events = lines(&out);
     assert_eq!(events.last().unwrap()["event"], "result");
-    assert_eq!(events.last().unwrap()["result"]["files_total"], 3);
+    assert_eq!(events.last().unwrap()["result"]["files_total"], 2);
     assert_eq!(events.last().unwrap()["result"]["version_id"], json!([255]));
     assert_eq!(svc.transport.calls.borrow().len(), 2);
     assert_eq!(*t.calls.lock().unwrap(), 1);
@@ -740,7 +775,7 @@ fn injected_execute_assets_fetched_once_for_planning_and_deferred_projections_re
                         manifest,
                     ),
                     (META.into(), 4 * 1024 * 1024, body),
-                    (ASSET.into(), 64 * 1024 * 1024, assets.clone()),
+                    (ASSET.into(), 16 * 1024 * 1024, assets.clone()),
                 ]
                 .into(),
             ),

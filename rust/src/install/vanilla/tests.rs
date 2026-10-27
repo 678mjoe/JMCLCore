@@ -54,3 +54,43 @@ fn loader_classification_excludes_selected_malformed_conflicting_and_duplicate_f
         r#"{"id":"v","fabric_loader":null,"forge_version":null,"neoforge_version":null}"#
     ))));
 }
+
+#[test]
+fn ordinary_string_request_matches_existing_decoder_and_retains_range_errors() {
+    for s in [
+        r#"{"id":"v"}"#,
+        r#"{"id":"版本","source":"bmclapi","os":"linux","arch":"x86_64","directory":"owned-root","store_directory":"owned-cas","workers":1,"retries":0,"java_paths":["opaque-command"],"java_policy":"local","fabric_loader":null}"#,
+    ] {
+        let r = raw(s);
+        let p = parse(Some(&r)).unwrap();
+        let super::super::rpc::Request::Execute(old) =
+            super::super::rpc::parse("install.execute", Some(&r)).unwrap()
+        else {
+            panic!()
+        };
+        assert_eq!(p.id, old.prepare.selection.id.as_bytes());
+        assert_eq!(p.source, old.prepare.selection.source);
+        assert_eq!(p.os, old.prepare.selection.os);
+        assert_eq!(p.arch, old.prepare.selection.arch);
+        assert_eq!((p.workers, p.retries), (old.workers, old.retries));
+        assert_eq!(
+            crate::store::path_from_bytes(&p.directory).unwrap(),
+            old.prepare.directory.path().unwrap()
+        );
+        assert_eq!(
+            crate::store::path_from_bytes(&p.store).unwrap(),
+            old.store_directory.path().unwrap()
+        );
+    }
+    for s in [
+        r#"{"id":"v","workers":0}"#,
+        r#"{"id":"v","workers":33}"#,
+        r#"{"id":"v","retries":6}"#,
+        r#"{"id":"v","store_directory":""}"#,
+    ] {
+        assert_eq!(
+            parse(Some(&raw(s))).unwrap_err().message,
+            "install.execute parameters are out of range"
+        );
+    }
+}

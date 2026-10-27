@@ -60,11 +60,11 @@ pub(crate) fn parse(raw: Option<&RawValue>) -> Result<Request, RpcError> {
         let id = bytes(p.required("id")?)?;
         // Full declared schema before semantic/range checks, including unused Java fields.
         for key in ["fabric_loader", "neoforge_version", "forge_version"] {
-            if let Some(v) = p.field(key)? {
-                if !v.null() {
-                    bytes(v)?;
-                    return Err(());
-                }
+            if let Some(v) = p.field(key)?
+                && !v.null()
+            {
+                bytes(v)?;
+                return Err(());
             }
         }
         let default_bytes = |key, default: &[u8]| {
