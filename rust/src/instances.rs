@@ -3,6 +3,8 @@ use crate::protocol::RpcError;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json, value::RawValue};
 mod cli;
+#[cfg(any(unix, windows))]
+mod create_unvalidated;
 mod manifest_ordered;
 #[cfg(unix)]
 mod unix;
