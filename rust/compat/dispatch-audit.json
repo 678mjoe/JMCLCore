@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "reviewed_commit": "70300ce34a2d973790ddbfcfecbf2f0008b8f8cd",
+  "reviewed_commit": "e8802ed14a849ccf680f42205d70a219646b524b",
   "oracle_commit": "5a4310debbcee26b3d2391bab2339f79cd6ec52e",
   "source_digest_encoding": "utf8_crlf_to_lf",
   "source_sha256": {
@@ -12,7 +12,7 @@
     "rust/src/install/rpc.rs": "84f3d4050fa7cb271e65f8e6adccb77e12f166d862f1f66e3aaaea5c8d825f50",
     "rust/src/modpack/rpc.rs": "e521da6aa00f9468e3637b43e059e3d79ef7ea76e13d86092fae4a1768383dda",
     "rust/src/launch/rpc.rs": "ceb84ea7bb890aecec89ac3b01388dcc76a84ff804148fad6a363ae6118e5dda",
-    "rust/src/version.rs": "ce68629729e4af78de94bb1f21985865cb5818d5c92153ef77641e010a10fbfb",
+    "rust/src/version.rs": "fb61b3f5680bff347b39a86e57c0560e50e934466a01708f318001bc3e59f9ef",
     "rust/src/java/select.rs": "e8e9c0f07ad7eaad106d998489af240ff089079118ead7a3055a8fd2c43fec6e",
     "rust/src/accounts.rs": "f1efb49ca4cc61a7f5a3fb6859a9d0e91aff6d4d66178dc4fa5795e8f0867117",
     "rust/src/instances.rs": "b814f3117c6a83408a374d686f574a95582e2b492c9ac9da80c9e42c26615f4a",
@@ -31,7 +31,9 @@
     "rust/src/protocol.rs": "a65e5405caf015d1eb9f3052df2df44fea6e0ff29003b69c5ddb28d4d8a10007",
     "rust/src/worlds/read.rs": "2b67a5dc92811daf7c43af6107d1a782205191ab58cd87aa79dc6fa3fa86998e",
     "rust/src/worlds/server_read.rs": "4efb5e0a4aad0c70f31b78751b9c2e13ea305b0b3a06b495d14ed0ee749aa2c2",
-    "rust/src/instances/manifest_ordered.rs": "9eaf59f52b685c50912e9d8e6805ef75320bf4464ef21bfad5c5ddd4be1173b4"
+    "rust/src/instances/manifest_ordered.rs": "9eaf59f52b685c50912e9d8e6805ef75320bf4464ef21bfad5c5ddd4be1173b4",
+    "rust/src/version_read.rs": "1e56ecb10b89f307dc7becdad974174d9a49788eb41a799f22f0ecfd3faac60c",
+    "rust/src/metadata.rs": "626a32c82277ca65e5f6475fe94d46e569be001655dad9e620a98e9147a8c5fe"
   },
   "routes": [
     {
@@ -301,6 +303,14 @@
         {
           "path": "rust/src/version.rs",
           "anchor": "pub fn handle"
+        },
+        {
+          "path": "rust/src/version_read.rs",
+          "anchor": "pub(super) fn prepare"
+        },
+        {
+          "path": "rust/src/metadata.rs",
+          "anchor": "pub(crate) struct ReadMetadata"
         }
       ],
       "selector": {
@@ -316,7 +326,8 @@
           "rust/compat/version_check.py",
           "rust/src/version_listing_tests.rs",
           "rust/src/metadata/listing.rs",
-          "rust/src/version_lookup_tests.rs"
+          "rust/src/version_lookup_tests.rs",
+          "rust/src/version_read_tests.rs"
         ]
       }
     },
