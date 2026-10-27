@@ -156,9 +156,8 @@ pub(super) fn execute<T: Transport>(
     Ok(0)
 }
 
-#[cfg(unix)]
+#[cfg(any(unix, windows))]
 fn native_request(args: &[std::ffi::OsString]) -> Option<Result<(Request, bool), ()>> {
-    use std::os::unix::ffi::OsStrExt;
     if args.first()?.to_str() != Some("version")
         || args.get(1)?.to_str() != Some("show")
         || args.iter().all(|s| s.to_str().is_some())
@@ -166,7 +165,7 @@ fn native_request(args: &[std::ffi::OsString]) -> Option<Result<(Request, bool),
         return None;
     }
     Some((|| {
-        let id = args.get(2).ok_or(())?.as_bytes().to_vec();
+        let id = crate::native_bytes::os_bytes(args.get(2).ok_or(())?);
         if id.is_empty() {
             return Err(());
         }
@@ -190,47 +189,60 @@ fn native_request(args: &[std::ffi::OsString]) -> Option<Result<(Request, bool),
         Ok((Request { id, source }, json))
     })())
 }
+// Production and pure fixtures share dispatch; no transport is built for an
+// unclaimed or malformed argument vector.
+fn dispatch<W: Write, E: Write>(
+    args: &[std::ffi::OsString],
+    out: &mut W,
+    err: &mut E,
+    run: impl FnOnce(Request, bool, &mut W, &mut E) -> std::io::Result<u8>,
+) -> Option<std::io::Result<u8>> {
+    #[cfg(any(unix, windows))]
+    {
+        let (request, json) = match native_request(args)? {
+            Ok(v) => v,
+            Err(()) => return Some(writeln!(err, "{}", cli_usage("version.get")).map(|_| 2)),
+        };
+        Some(run(request, json, out, err))
+    }
+    #[cfg(not(any(unix, windows)))]
+    {
+        let _ = (args, out, err, run);
+        None
+    }
+}
 /// Native-byte argv adapter claims only version show. UTF-8 argv retains its CLI.
 pub fn cli_os(
     args: &[std::ffi::OsString],
     out: &mut impl Write,
     err: &mut impl Write,
 ) -> Option<std::io::Result<u8>> {
-    #[cfg(unix)]
-    {
-        let (request, json) = match native_request(args)? {
-            Ok(v) => v,
-            Err(()) => return Some(writeln!(err, "{}", cli_usage("version.get")).map(|_| 2)),
-        };
+    dispatch(args, out, err, |request, json, out, err| {
         let transport = match HttpTransport::new() {
             Ok(t) => t,
             Err(e) => {
-                return Some(
-                    writeln!(
-                        err,
-                        "failed to fetch Minecraft version metadata from {}: {}",
-                        request.source.display(),
-                        e.name()
-                    )
-                    .map(|_| 1),
-                );
+                return writeln!(
+                    err,
+                    "failed to fetch Minecraft version metadata from {}: {}",
+                    request.source.display(),
+                    e.name()
+                )
+                .map(|_| 1);
             }
         };
-        Some(execute(
+        execute(
             &Service::new(transport, ".jmclcore/metadata-cache"),
             &request,
             json,
             out,
             err,
-        ))
-    }
-    #[cfg(not(unix))]
-    {
-        let _ = (args, out, err);
-        None
-    }
+        )
+    })
 }
-
 #[cfg(all(test, unix))]
 #[path = "version_read_tests.rs"]
 mod tests;
+
+#[cfg(all(test, any(unix, windows)))]
+#[path = "version_read_native_portable_tests.rs"]
+mod native_tests;

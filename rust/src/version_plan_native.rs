@@ -1,14 +1,13 @@
 //! Narrow native argv bridge for the existing vanilla planning read path.
 use super::*;
 
-#[cfg(unix)]
+#[cfg(any(unix, windows))]
 pub(super) fn parse_options(args: &[std::ffi::OsString]) -> Option<Result<(Request, bool), ()>> {
-    use std::os::unix::ffi::OsStrExt;
     let Some(id) = args.first().filter(|s| !s.is_empty()) else {
         return Some(Err(()));
     };
     let mut request = Request {
-        id: id.as_bytes().to_vec(),
+        id: crate::native_bytes::os_bytes(id),
         source: Source::Official,
         os: None,
         arch: None,
@@ -58,7 +57,7 @@ pub(super) fn parse_options(args: &[std::ffi::OsString]) -> Option<Result<(Reque
     }
     Some(Ok((request, json)))
 }
-#[cfg(unix)]
+#[cfg(any(unix, windows))]
 fn selected(args: &[std::ffi::OsString]) -> bool {
     args.first().and_then(|s| s.to_str()) == Some("install")
         && args.get(1).and_then(|s| s.to_str()) == Some("plan")
@@ -72,7 +71,7 @@ pub(super) fn dispatch<W: Write, E: Write>(
     err: &mut E,
     run: impl FnOnce(Request, bool, &mut W, &mut E) -> std::io::Result<u8>,
 ) -> Option<std::io::Result<u8>> {
-    #[cfg(unix)]
+    #[cfg(any(unix, windows))]
     {
         if !selected(args) {
             return None;
@@ -82,7 +81,7 @@ pub(super) fn dispatch<W: Write, E: Write>(
             Err(()) => Some(writeln!(err, "{}", cli_usage("install.plan")).map(|_| 2)),
         }
     }
-    #[cfg(not(unix))]
+    #[cfg(not(any(unix, windows)))]
     {
         let _ = (args, out, err, run);
         None
@@ -116,3 +115,7 @@ pub fn cli_os(
         )
     })
 }
+
+#[cfg(all(test, any(unix, windows)))]
+#[path = "version_plan_native_portable_tests.rs"]
+mod portable_tests;
