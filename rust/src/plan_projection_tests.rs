@@ -177,7 +177,7 @@ fn owned_missing_corrupt_and_blocked_parent_preserve_error_order() {
     let before = snapshot(temp.path());
     let missing = plan.project_assets(&r).unwrap_err();
     assert_eq!(snapshot(temp.path()), before);
-    assert_eq!(missing.name(), "FileIoError");
+    assert_eq!(missing.name(), "FileNotFound");
     assert!(!p.join("assets/virtual").exists());
     let s = source(&p, &plan);
     fs::set_permissions(&s, fs::Permissions::from_mode(0o644)).unwrap();
