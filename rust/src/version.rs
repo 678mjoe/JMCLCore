@@ -1568,3 +1568,7 @@ pub mod server;
 #[cfg(test)]
 #[path = "../tests/support/version_params_contract.rs"]
 mod params_contract_tests;
+
+#[cfg(all(test, unix))]
+#[path = "version_listing_tests.rs"]
+mod listing_tests;
