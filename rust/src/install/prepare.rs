@@ -120,21 +120,7 @@ pub fn prepare(root: &ArtifactRoot, plan: &Plan) -> Result<Preparation, Error> {
         })?;
         archives.push((file, entries));
     }
-    let mut chosen = None;
-    for _ in 0..16 {
-        let mut bytes = [0; 8];
-        getrandom::fill(&mut bytes).map_err(|_| Error::named("RandomSourceFailed"))?;
-        let relative = format!(".jmcl/runtime/natives/{:x}", u64::from_ne_bytes(bytes));
-        match root.create_directory(&relative) {
-            Ok(dir) => {
-                chosen = Some((relative, dir));
-                break;
-            }
-            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
-            Err(e) => return Err(e.into()),
-        }
-    }
-    let (relative, native) = chosen.ok_or_else(|| Error::named("NativeDirectoryCollision"))?;
+    let (relative, native) = create_native_directory(root, secure_nonce)?;
     let extraction = (|| {
         for (file, entries) in &mut archives {
             for entry in entries {
@@ -186,4 +172,29 @@ pub(crate) fn project_only<'a>(
         result.projections_created += 1;
     }
     Ok(())
+}
+
+pub(crate) fn secure_nonce(bytes: &mut [u8; 8]) -> Result<(), Error> {
+    getrandom::fill(bytes).map_err(|_| Error::named("RandomSourceFailed"))
+}
+/// Same bounded exclusive creation loop as the String preparer.
+pub(crate) fn create_native_directory(
+    root: &ArtifactRoot,
+    mut nonce: impl FnMut(&mut [u8; 8]) -> Result<(), Error>,
+) -> Result<(String, ArtifactRoot), Error> {
+    let mut chosen = None;
+    for _ in 0..16 {
+        let mut bytes = [0; 8];
+        nonce(&mut bytes)?;
+        let relative = format!(".jmcl/runtime/natives/{:x}", u64::from_ne_bytes(bytes));
+        match root.create_directory(&relative) {
+            Ok(dir) => {
+                chosen = Some((relative, dir));
+                break;
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
+            Err(e) => return Err(e.into()),
+        }
+    }
+    chosen.ok_or_else(|| Error::named("NativeDirectoryCollision"))
 }

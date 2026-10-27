@@ -179,3 +179,47 @@ impl ReadPlan {
 #[cfg(all(test, target_os = "linux"))]
 #[path = "plan_projection_tests.rs"]
 mod projection_tests;
+
+/// Private capability selected before opening destination roots. No archive callbacks.
+#[cfg_attr(
+    not(test),
+    expect(dead_code, reason = "zero-archive preparation awaits routing")
+)]
+pub(crate) struct ZeroNativePreparation<'a>(&'a ReadPlan);
+impl ReadPlan {
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "zero-archive preparation awaits routing")
+    )]
+    pub(crate) fn zero_native_preparation(&self) -> Option<ZeroNativePreparation<'_>> {
+        self.native_extractions
+            .is_empty()
+            .then_some(ZeroNativePreparation(self))
+    }
+}
+impl ZeroNativePreparation<'_> {
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "zero-archive preparation awaits routing")
+    )]
+    pub(crate) fn prepare(
+        &self,
+        root: &crate::store::ArtifactRoot,
+    ) -> Result<crate::install::Preparation, crate::install::Error> {
+        self.prepare_with(root, crate::install::prepare::secure_nonce)
+    }
+    fn prepare_with(
+        &self,
+        root: &crate::store::ArtifactRoot,
+        nonce: impl FnMut(&mut [u8; 8]) -> Result<(), crate::install::Error>,
+    ) -> Result<crate::install::Preparation, crate::install::Error> {
+        let mut result = self.0.project_assets(root)?;
+        let (relative, native) = crate::install::prepare::create_native_directory(root, nonce)?;
+        drop(native);
+        result.native_directory = Some(relative);
+        Ok(result)
+    }
+}
+#[cfg(all(test, target_os = "linux"))]
+#[path = "plan_zero_native_tests.rs"]
+mod zero_native_tests;
