@@ -97,7 +97,7 @@ pub struct Plan {
 }
 #[path = "plan_read.rs"]
 mod read;
-pub(crate) use read::ReadPlan;
+pub(crate) use read::{CompletionFailure, ReadPlan};
 use read::{PlanBytes, ReadFile};
 
 struct Builder {

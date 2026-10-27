@@ -1,4 +1,4 @@
-//! Private synthetic-capable completion seam. No public install dispatch.
+//! Shared vanilla download completion; preparation descriptions remain deferred.
 use super::*;
 use crate::{
     install,
@@ -71,10 +71,41 @@ impl ReadPlan {
         let Some(files) = self.ordinary_files() else {
             return Ok(None);
         };
+        self.complete_files(
+            id,
+            files,
+            || Ok(destination.to_path_buf()),
+            || Ok(cas.to_path_buf()),
+            install::Options {
+                workers: 1,
+                retries: 0,
+                sync_files: true,
+            },
+            transport,
+            out,
+        )
+        .map(Some)
+    }
+    pub(crate) fn vanilla_download_phase(&self) -> Option<VanillaDownloadPhase<'_>> {
+        (self.loader == "none").then_some(VanillaDownloadPhase { plan: self })
+    }
+    #[allow(clippy::too_many_arguments)]
+    fn complete_files<T: install::Transport>(
+        &self,
+        id: &str,
+        files: OrdinaryFiles,
+        destination: impl FnOnce() -> io::Result<std::path::PathBuf>,
+        cas: impl FnOnce() -> io::Result<std::path::PathBuf>,
+        options: install::Options,
+        transport: &T,
+        out: &mut impl Write,
+    ) -> Result<install::Summary, Failure> {
+        let destination = destination().map_err(|_| Failure::Root)?;
         if destination.as_os_str().is_empty() {
             return Err(Failure::Root);
         }
         let root = ArtifactRoot::open(destination).map_err(|_| Failure::Root)?;
+        let cas = cas().map_err(|_| Failure::Store)?;
         if cas.as_os_str().is_empty() {
             return Err(Failure::Store);
         }
@@ -118,19 +149,7 @@ impl ReadPlan {
         )
         .map_err(Failure::Output)?;
         let summary = install::stream::stream(
-            |sink| {
-                files.execute(
-                    &root,
-                    &store,
-                    install::Options {
-                        workers: 1,
-                        retries: 0,
-                        sync_files: true,
-                    },
-                    transport,
-                    Some(sink),
-                )
-            },
+            |sink| files.execute(&root, &store, options, transport, Some(sink)),
             |e| match e {
                 install::ByteEvent::File(v) => {
                     event(out, id, self.source, "file", FilePayload { file: v })
@@ -186,7 +205,48 @@ impl ReadPlan {
             },
         )
         .map_err(Failure::Output)?;
-        Ok(Some(summary))
+        Ok(summary)
+    }
+}
+/// Download-phase capability: keeps the entire validated plan alive. Native and
+/// projection descriptions belong to later preparation, never to this phase.
+pub(crate) struct VanillaDownloadPhase<'a> {
+    plan: &'a ReadPlan,
+}
+impl VanillaDownloadPhase<'_> {
+    pub(crate) fn complete<T: install::Transport>(
+        &self,
+        id: &str,
+        destination: &[u8],
+        cas: &[u8],
+        options: install::Options,
+        transport: &T,
+        out: &mut impl Write,
+    ) -> Result<install::Summary, Failure> {
+        let files = OrdinaryFiles {
+            files: self
+                .plan
+                .files
+                .iter()
+                .map(|f| install::ByteFile {
+                    path: install::BytePath(f.path.0.clone()),
+                    url: f.url.clone(),
+                    fallback_url: f.fallback_url.clone(),
+                    sha1: f.sha1.clone(),
+                    size: f.size,
+                })
+                .collect(),
+            total: self.plan.total_download_size,
+        };
+        self.plan.complete_files(
+            id,
+            files,
+            || crate::store::path_from_bytes(destination).map(Into::into),
+            || crate::store::path_from_bytes(cas).map(Into::into),
+            options,
+            transport,
+            out,
+        )
     }
 }
 #[cfg(all(test, target_os = "linux"))]

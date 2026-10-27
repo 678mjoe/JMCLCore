@@ -142,3 +142,4 @@ mod ordinary_tests;
 
 #[path = "plan_completion.rs"]
 mod completion;
+pub(crate) use completion::Failure as CompletionFailure;
