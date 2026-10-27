@@ -605,3 +605,7 @@ mod byte_manifest_list_tests {
 #[cfg(all(test, unix))]
 #[path = "cli_gate_tests.rs"]
 mod gate_tests;
+
+#[cfg(all(test, unix))]
+#[path = "cli_adopt_gate_tests.rs"]
+mod adopt_gate_tests;
