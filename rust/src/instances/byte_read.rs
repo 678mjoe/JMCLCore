@@ -213,6 +213,15 @@ mod tests {
         )
     }
     #[test]
+    fn world_version_accessor_forwards_exact_bytes_without_operational_conversion() {
+        let input = br#"{"id":"demo","name":[255],"version_id":[0,254,65],"fabric_loader":[253]}"#;
+        assert_eq!(version_bytes(input, "demo").unwrap(), vec![0, 254, 65]);
+        assert!(super::super::Manifest::parse(input, "demo").is_err());
+        let utf8 = br#"{"id":"demo","name":"N","version_id":[231,137,136]}"#;
+        assert_eq!(version_bytes(utf8, "demo").unwrap(), "版".as_bytes());
+    }
+
+    #[test]
     fn persisted_byte_view_preserves_fields_without_widening_operational_api() {
         let raw = document("[254]", "[253]");
         assert_eq!(
