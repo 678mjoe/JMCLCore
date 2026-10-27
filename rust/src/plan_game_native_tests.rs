@@ -109,6 +109,28 @@ fn owned_benign_native_equivalence_opaque_identity_exclusion_and_peers() {
             0
         );
         let after = snapshot(temp.path());
+        let mut permitted = std::collections::BTreeSet::new();
+        for destination in p
+            .asset_projections
+            .iter()
+            .map(|x| path.join(&x.destination_path))
+            .chain([directory.join("data/plain.txt")])
+        {
+            let mut current = destination.as_path();
+            while current != temp.path() {
+                let relative = current.strip_prefix(temp.path()).unwrap().to_owned();
+                if !before.contains_key(&relative) {
+                    permitted.insert(relative);
+                }
+                current = current.parent().unwrap();
+            }
+        }
+        let added: std::collections::BTreeSet<_> = after
+            .keys()
+            .filter(|key| !before.contains_key(*key))
+            .cloned()
+            .collect();
+        assert_eq!(added, permitted);
         for name in [
             std::path::Path::new("readonly-cas-peer"),
             std::path::Path::new("sibling"),
