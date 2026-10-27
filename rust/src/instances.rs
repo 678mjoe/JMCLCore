@@ -6,6 +6,8 @@ mod byte_read;
 mod cli;
 #[cfg(any(unix, windows))]
 mod create_unvalidated;
+#[cfg(all(test, unix))]
+mod delete_byte_tests;
 mod manifest_ordered;
 #[cfg(unix)]
 mod unix;
