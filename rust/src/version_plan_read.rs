@@ -196,3 +196,6 @@ pub(super) fn execute<T: Transport>(
 #[cfg(all(test, unix))]
 #[path = "version_plan_read_tests.rs"]
 mod tests;
+
+#[path = "version_plan_native.rs"]
+pub(super) mod native;

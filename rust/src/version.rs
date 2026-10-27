@@ -1640,3 +1640,5 @@ mod plan_read;
 
 #[path = "version_plan_preflight.rs"]
 mod plan_preflight;
+
+pub use plan_read::native::cli_os as plan_cli_os;
