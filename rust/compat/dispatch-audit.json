@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "reviewed_commit": "a0fe9e59f63e486f7ea6c2ce847fb7b2142a5985",
+  "reviewed_commit": "04ad875d99faca52bc557e86694cb3f5f2c68311",
   "oracle_commit": "5a4310debbcee26b3d2391bab2339f79cd6ec52e",
   "source_digest_encoding": "utf8_crlf_to_lf",
   "source_sha256": {
@@ -12,7 +12,7 @@
     "rust/src/install/rpc.rs": "84f3d4050fa7cb271e65f8e6adccb77e12f166d862f1f66e3aaaea5c8d825f50",
     "rust/src/modpack/rpc.rs": "e521da6aa00f9468e3637b43e059e3d79ef7ea76e13d86092fae4a1768383dda",
     "rust/src/launch/rpc.rs": "ceb84ea7bb890aecec89ac3b01388dcc76a84ff804148fad6a363ae6118e5dda",
-    "rust/src/version.rs": "eaf7e90d33402c9e781c25dc5b8f61a9448edfa75072e91c0c1a54056b8115f6",
+    "rust/src/version.rs": "0821d88f04fd49b5b7a37d6bda2d5463c0c1307672295ce04f306d349aaa7cc5",
     "rust/src/java/select.rs": "e8e9c0f07ad7eaad106d998489af240ff089079118ead7a3055a8fd2c43fec6e",
     "rust/src/accounts.rs": "f1efb49ca4cc61a7f5a3fb6859a9d0e91aff6d4d66178dc4fa5795e8f0867117",
     "rust/src/instances.rs": "b814f3117c6a83408a374d686f574a95582e2b492c9ac9da80c9e42c26615f4a",
@@ -34,10 +34,12 @@
     "rust/src/instances/manifest_ordered.rs": "9eaf59f52b685c50912e9d8e6805ef75320bf4464ef21bfad5c5ddd4be1173b4",
     "rust/src/version_read.rs": "0475401c81933c4bdff54c910c075a799535e2acddda2e4a4e5600032c4e785f",
     "rust/src/metadata.rs": "626a32c82277ca65e5f6475fe94d46e569be001655dad9e620a98e9147a8c5fe",
-    "rust/src/version_plan_read.rs": "54bcecd8d30ca9f1bd4f89dc3217e72999a88942287f3eec2f0452bf6302207a",
+    "rust/src/version_plan_read.rs": "70f51dee81e3d809daa22d0296878eb22fc1a250c97e2b0c6d6b5797e1250745",
     "rust/src/plan.rs": "f0505305c195563c444ca94990a501a53c4c1a2a60aaf19f2091b54ee61dc909",
     "rust/src/plan_read.rs": "184b4e9506500d5ecdd06167f0c16ef36dd6dc03049216665a6c88739711696a",
-    "rust/src/version_plan_preflight.rs": "975aadf7061663d89aafe765200ff786d6b98b371ad3c8794b0f7ad93189d23d"
+    "rust/src/version_plan_preflight.rs": "975aadf7061663d89aafe765200ff786d6b98b371ad3c8794b0f7ad93189d23d",
+    "rust/src/version_plan_native.rs": "f2184ed00a63ec90ebce887f8df69e90c94c390b66ed670110c286f866398bae",
+    "rust/src/main.rs": "d1e8f94ce41c5698f333a54c29d72a67a6072419450b497960fa3f131d1ae710"
   },
   "routes": [
     {
@@ -331,6 +333,14 @@
         {
           "path": "rust/src/version_plan_preflight.rs",
           "anchor": "pub(super) fn prepare("
+        },
+        {
+          "path": "rust/src/version_plan_native.rs",
+          "anchor": "pub fn cli_os("
+        },
+        {
+          "path": "rust/src/main.rs",
+          "anchor": "jmcl_core_rust::version::plan_cli_os("
         }
       ],
       "selector": {
