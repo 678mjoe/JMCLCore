@@ -54,7 +54,10 @@ fn parse(args: &[String]) -> Option<(super::creation::linux::Params, bool)> {
             "--neoforge-version" => "neoforge_version",
             "--forge-version" => "forge_version",
             "--name" => "name",
-            "--source" => "source",
+            "--source" => {
+                crate::metadata::Source::parse(value)?;
+                "source"
+            }
             "--java-path" => "java_path",
             "--servers-directory" => "directory",
             _ => return None,
@@ -142,4 +145,44 @@ fn run(
         )?
     }
     Ok(0)
+}
+
+#[cfg(all(test, target_os = "linux"))]
+mod source_order_tests {
+    use super::parse;
+    #[test]
+    fn every_source_is_validated_before_later_repetition() {
+        for values in [
+            ["mirror", "official"],
+            ["official", "mirror"],
+            ["OFFICIAL", "bmclapi"],
+            ["", "official"],
+        ] {
+            assert!(
+                parse(&[
+                    "demo".into(),
+                    "--version".into(),
+                    "fake".into(),
+                    "--source".into(),
+                    values[0].into(),
+                    "--source".into(),
+                    values[1].into()
+                ])
+                .is_none()
+            );
+        }
+        for values in [["official", "bmclapi"], ["bmclapi", "official"]] {
+            let (p, _) = parse(&[
+                "demo".into(),
+                "--version".into(),
+                "fake".into(),
+                "--source".into(),
+                values[0].into(),
+                "--source".into(),
+                values[1].into(),
+            ])
+            .unwrap();
+            assert_eq!(p.source, values[1]);
+        }
+    }
 }
