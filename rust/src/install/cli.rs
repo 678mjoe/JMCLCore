@@ -79,13 +79,19 @@ fn parse(method: &str, args: &[String]) -> Result<Request, ()> {
                 p.prepare.selection.forge_version = Some(value.clone())
             }
             "--source" => p.prepare.selection.source = Source::parse(value).ok_or(())?,
-            "--os" => p.prepare.selection.os = Some(value.clone()),
+            "--os" => {
+                if !matches!(value.as_str(), "linux" | "windows" | "osx") {
+                    return Err(());
+                }
+                p.prepare.selection.os = Some(value.clone());
+            }
             "--arch" => {
                 p.prepare.selection.arch = Some(
                     match value.as_str() {
                         "amd64" => "x86_64",
                         "aarch64" => "arm64",
-                        _ => value,
+                        "x86" | "x86_64" | "arm" | "arm64" => value,
+                        _ => return Err(()),
                     }
                     .into(),
                 )
@@ -416,3 +422,57 @@ pub fn cli_with_environment<P: Planner, T: Transport>(
 pub use super::vanilla::prepare_cli::cli_os;
 
 pub use super::vanilla::execute_cli::cli_os as execute_cli_os;
+
+#[cfg(test)]
+mod target_order_tests {
+    use super::*;
+    #[test]
+    fn each_target_option_is_validated_before_repetition() {
+        for method in ["execute", "prepare"] {
+            for (flag, first, second) in [
+                ("--os", "bad", "linux"),
+                ("--os", "", "linux"),
+                ("--arch", "bad", "amd64"),
+                ("--arch", "", "aarch64"),
+                ("--os", "linux", "bad"),
+                ("--arch", "amd64", "bad"),
+            ] {
+                assert!(
+                    parse(
+                        method,
+                        &[
+                            "fake".into(),
+                            flag.into(),
+                            first.into(),
+                            flag.into(),
+                            second.into()
+                        ]
+                    )
+                    .is_err(),
+                    "{method}: {flag} {first:?} {second:?}"
+                );
+            }
+            let r = parse(
+                method,
+                &[
+                    "fake".into(),
+                    "--os".into(),
+                    "windows".into(),
+                    "--os".into(),
+                    "linux".into(),
+                    "--arch".into(),
+                    "amd64".into(),
+                    "--arch".into(),
+                    "aarch64".into(),
+                ],
+            )
+            .unwrap();
+            let s = match r {
+                Request::Execute(p) => p.prepare.selection,
+                Request::Prepare(p) => p.selection,
+            };
+            assert_eq!(s.os.as_deref(), Some("linux"));
+            assert_eq!(s.arch.as_deref(), Some("arm64"));
+        }
+    }
+}
