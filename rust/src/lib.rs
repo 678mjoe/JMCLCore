@@ -33,3 +33,5 @@ pub(crate) mod native_bytes;
 
 #[cfg(any(unix, windows))]
 pub mod cli_native;
+
+pub(crate) mod cli_number;

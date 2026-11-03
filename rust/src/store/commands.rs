@@ -154,20 +154,7 @@ pub fn cli(args: &[String], out: &mut impl Write, err: &mut impl Write) -> io::R
                     if key == "--store-directory" {
                         p.store_directory = value.clone()
                     } else {
-                        // Zig parseInt accepts separators, but not a trailing separator.
-                        if value.ends_with('_') || value.starts_with('_') {
-                            return None;
-                        }
-                        let digits = value.replace('_', "");
-                        p.min_age_seconds = if let Some(negative) = digits.strip_prefix('-') {
-                            let n: u64 = negative.parse().ok()?;
-                            if n != 0 {
-                                return None;
-                            }
-                            n
-                        } else {
-                            digits.parse().ok()?
-                        };
+                        p.min_age_seconds = crate::cli_number::unsigned(value)?;
                     }
                 }
                 _ => return None,
@@ -235,3 +222,47 @@ pub fn cli(args: &[String], out: &mut impl Write, err: &mut impl Write) -> io::R
 #[cfg(test)]
 #[path = "../../tests/support/store_params.rs"]
 mod params_tests;
+
+#[cfg(test)]
+mod cli_number_tests {
+    use crate::cli_number::unsigned as cli_age;
+    #[test]
+    fn pure_decimal_age_matches_pinned_parse_int_boundary() {
+        for (raw, expected) in [
+            ("0", Some(0)),
+            ("+0", Some(0)),
+            ("-0", Some(0)),
+            ("-00_0", Some(0)),
+            ("1__2", Some(12)),
+            ("+01_2", Some(12)),
+            ("18446744073709551615", Some(u64::MAX)),
+            ("00018446744073709551615", Some(u64::MAX)),
+            ("18446744073709551616", None),
+            ("-1", None),
+            ("+_1", None),
+            ("-_0", None),
+            ("-+0", None),
+            ("-_+0", None),
+            ("++0", None),
+            ("--0", None),
+            ("+-0", None),
+            ("", None),
+            ("+", None),
+            ("-", None),
+            ("_", None),
+            ("_0", None),
+            ("0_", None),
+            ("+0_", None),
+            (" 0", None),
+            ("0 ", None),
+            ("0x0", None),
+            ("0e0", None),
+            ("0.0", None),
+            ("０", None),
+            ("1_+2", None),
+            ("0\n", None),
+        ] {
+            assert_eq!(cli_age(raw), expected, "{raw:?}");
+        }
+    }
+}

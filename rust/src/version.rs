@@ -1239,7 +1239,7 @@ fn cli_params(method: &str, args: &[String]) -> Result<(Value, bool), ()> {
                 "type"
             }
             "--limit" if method == "version.list" => {
-                let n = value.replace('_', "").parse::<u64>().map_err(|_| ())?;
+                let n = crate::cli_number::unsigned(value).ok_or(())?;
                 if !(1..=1000).contains(&n) {
                     return Err(());
                 }
@@ -1642,3 +1642,34 @@ mod plan_read;
 mod plan_preflight;
 
 pub use plan_read::native::cli_os as plan_cli_os;
+
+#[cfg(test)]
+mod cli_number_tests {
+    use super::*;
+    #[test]
+    fn list_limit_rejects_bad_separators_before_transport() {
+        for raw in ["_1", "1_", "+_1", "-+0", "-_0", "0", "1001", "1e0", "1.0"] {
+            assert!(
+                cli_params("version.list", &["--limit".into(), raw.into()]).is_err(),
+                "{raw}"
+            );
+        }
+        for (raw, expected) in [
+            ("1", 1),
+            ("+1", 1),
+            ("1__0", 10),
+            ("0001", 1),
+            ("1_000", 1000),
+        ] {
+            let (p, _) = cli_params("version.list", &["--limit".into(), raw.into()]).unwrap();
+            assert_eq!(p["limit"], expected);
+        }
+        assert!(
+            cli_params(
+                "version.list",
+                &["--limit".into(), "_1".into(), "--limit".into(), "1".into()]
+            )
+            .is_err()
+        );
+    }
+}
