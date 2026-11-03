@@ -5,6 +5,10 @@ use serde_json::{Value, json, value::RawValue};
 mod byte_read;
 mod cli;
 #[cfg(any(unix, windows))]
+mod read_cli;
+#[cfg(any(unix, windows))]
+pub use read_cli::run as read_cli_os;
+#[cfg(any(unix, windows))]
 mod create_unvalidated;
 #[cfg(all(test, unix))]
 mod delete_byte_tests;

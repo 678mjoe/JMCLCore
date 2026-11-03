@@ -88,6 +88,10 @@ fn main() {
     let raw_result = raw_result.or_else(|| {
         jmcl_core_rust::install::cli::execute_cli_os(&os_args, &mut io::stdout(), &mut io::stderr())
     });
+    #[cfg(any(unix, windows))]
+    let raw_result = raw_result.or_else(|| {
+        jmcl_core_rust::instances::read_cli_os(&os_args, &mut io::stdout(), &mut io::stderr())
+    });
     let args = if raw_result.is_none() {
         Some(std::env::args().skip(1).collect::<Vec<_>>())
     } else {
