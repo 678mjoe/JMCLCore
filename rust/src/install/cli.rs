@@ -15,7 +15,7 @@ fn method(args: &[String]) -> Option<&'static str> {
         _ => None,
     }
 }
-fn usage(method: &str) -> String {
+pub(super) fn usage(method: &str) -> String {
     format!(
         "usage: jmcl-core install {method} ID [--fabric-loader VERSION | --neoforge-version VERSION | --forge-version VERSION] [--directory PATH]{} [--source SOURCE] [--os OS] [--arch ARCH]{}",
         if method == "execute" {
@@ -412,3 +412,5 @@ pub fn cli_with_environment<P: Planner, T: Transport>(
         Err(()) => writeln!(err, "{}", usage(method)).map(|_| 2),
     })
 }
+
+pub use super::vanilla::prepare_cli::cli_os;

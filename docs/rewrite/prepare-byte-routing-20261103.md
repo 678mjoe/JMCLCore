@@ -15,3 +15,9 @@ Local Linux checks:
 Oracle checkout: `5a4310debbcee26b3d2391bab2339f79cd6ec52e`; oracle binary SHA-256 `0d49ff4130720c67397c3f673afaaf226f4b1f8384f68ea599e43340030c164b`.
 
 These are focused synthetic/local checks, not a full-suite, Windows/macOS native, real-download, authentication or Minecraft launch acceptance. CLI byte-argument adaptation remains separate. The experimental recovery branch still contains other unintegrated work; this record does not establish compatibility or replacement readiness of that combined branch. Production main is unchanged.
+
+## Native CLI continuation
+
+The native argv bridge additionally claims vanilla `install prepare` requests containing non-UTF-8 arguments. It preserves raw version/directory bytes and architecture aliases; validates all option pairs before handing valid Fabric/NeoForge selections back to the legacy path; and preserves the pinned CLI's parsed-but-unused Forge option. Ordinary UTF-8 requests keep their previous path.
+
+The combined vanilla suite passes 16 tests, including two injected CLI execution cases and argument/error dispatch. Nine raw POSIX argv rejection cases match the pinned Zig binary byte-for-byte and leave no files (`rust/compat/prepare-byte-cli.py`). All-target Clippy and the binary build pass. These CLI fixtures were run on Linux only. Valid Fabric/NeoForge selections containing non-UTF-8 argv still use the legacy path and remain a known unsupported gap; this work does not claim their completion.

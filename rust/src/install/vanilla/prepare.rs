@@ -172,11 +172,11 @@ mod tests {
 }
 
 #[cfg(all(test, target_os = "linux"))]
-mod execution_tests {
+pub(crate) mod execution_tests {
     use super::*;
     use serde_json::json;
     use std::{cell::RefCell, collections::VecDeque, os::unix::ffi::OsStrExt};
-    struct Fake(RefCell<VecDeque<(String, Vec<u8>)>>);
+    pub(crate) struct Fake(RefCell<VecDeque<(String, Vec<u8>)>>);
     impl version::Transport for Fake {
         fn get(&self, url: &str, _: usize) -> Result<Vec<u8>, crate::metadata::Error> {
             let (expected, body) = self
@@ -188,7 +188,7 @@ mod execution_tests {
             Ok(body)
         }
     }
-    fn service(owner: &std::path::Path) -> version::Service<Fake> {
+    pub(crate) fn service(owner: &std::path::Path) -> version::Service<Fake> {
         fixture(owner, false)
     }
     fn fixture(owner: &std::path::Path, native: bool) -> version::Service<Fake> {
@@ -232,7 +232,7 @@ mod execution_tests {
         );
         assert!(!root.join("fixture/native.jar").exists());
     }
-    fn request(path: &std::path::Path) -> Request {
+    pub(crate) fn request(path: &std::path::Path) -> Request {
         Request {
             id: vec![255],
             directory: path.as_os_str().as_bytes().to_vec(),
