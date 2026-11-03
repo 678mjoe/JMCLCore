@@ -1,6 +1,6 @@
 # Vanilla execute native argv, 2026-11-03
 
-Implementation checkpoint: `f3270c4775333c4227a138eb7fa4297c572f8318`.
+Implementation checkpoint: `d60e32ca3eca277ba700c8455b549fac52346959`.
 Base: local integrated checkpoint `9d9c222f60d7fdcffd2eab91561ce1aff4e5c686`.
 Neither this record nor this local branch authorizes replacement of production main.
 
@@ -24,10 +24,10 @@ unsupported gap, not a completed feature.
 
 ## Local evidence and boundaries
 
-- Six focused bridge tests cover native argument encoding (portable Unix/Windows
-  fixture definitions), default/range/alias handling, unclaimed routes and three
+- Seven focused bridge tests cover native argument encoding (portable Unix/Windows
+  fixture definitions), default/range/alias/repeated-option handling, unclaimed routes and three
   Linux injected execution scenarios.
-- The synthetic success case verifies raw byte identity in CLI output and receipt,
+- The synthetic success case verifies raw byte identity in the receipt, exact complete CLI summaries and progress on both fresh and cached runs,
   immutable hardlinked CAS publication, and a second cached run without another
   file fetch. Failure cases verify no fetch on a blocked root and preservation of
   an existing receipt after a failed transfer. All inputs and destinations belong
@@ -35,7 +35,7 @@ unsupported gap, not a completed feature.
 - Twenty-four POSIX raw argv invalid-option comparisons pass against pinned Zig,
   with exact exit status/stdout/stderr and no filesystem writes. Reproduce with
   `python rust/compat/execute-byte-cli.py --zig PATH --rust PATH`.
-- Combined local vanilla suite: 22 passed, 0 ignored. Existing plan suite: 46
+- Combined local vanilla suite: 23 passed, 0 ignored. Existing plan suite: 46
   passed, 0 ignored. Offline locked binary build, all-target Clippy with warnings
   denied, and formatting check passed.
 - Static audit tests: 22 passed in each of normal and optimized Python. The static

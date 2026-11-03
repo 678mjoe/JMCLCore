@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "reviewed_commit": "f3270c4775333c4227a138eb7fa4297c572f8318",
+  "reviewed_commit": "d60e32ca3eca277ba700c8455b549fac52346959",
   "oracle_commit": "5a4310debbcee26b3d2391bab2339f79cd6ec52e",
   "source_digest_encoding": "utf8_crlf_to_lf",
   "source_sha256": {
@@ -48,7 +48,7 @@
     "rust/src/install/vanilla/prepare.rs": "dcf386bba3e87608a85b74a24b523339e9e1653ed1d5a765d16deb0dd7bdc043",
     "rust/src/install/vanilla/prepare_cli.rs": "8b20934b675edb887a8b2977f187299fd07a215d13bf83830229b77673a72dd9",
     "rust/src/install/cli.rs": "3b8242424dc50de36ae3286dc7336fb0aebfe42f07917c630d931dd5bfc88af3",
-    "rust/src/install/vanilla/execute_cli.rs": "ab33792f8d5c0de5261e4dd24d7e178c45ad385089f2f1882d532705dc053986"
+    "rust/src/install/vanilla/execute_cli.rs": "92dbdc7cd060b6fa55effe41f435ab892ec1aa0c3c805240cc822576963320e9"
   },
   "routes": [
     {
