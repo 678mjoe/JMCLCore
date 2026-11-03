@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "reviewed_commit": "7227cbabc3bc3b7af8a5f17ddb1a745db9df17d1",
+  "reviewed_commit": "757096bc3fa153d1b75ca161d41c2b2d587e9017",
   "oracle_commit": "5a4310debbcee26b3d2391bab2339f79cd6ec52e",
   "source_digest_encoding": "utf8_crlf_to_lf",
   "source_sha256": {
@@ -9,7 +9,7 @@
     "rust/src/content/registry.rs": "3aaac2096515b10eced77ee2b0c890cf3d06926ab49f537a8947eca50724a9b9",
     "rust/src/server_content.rs": "08f47b123e4e2147ab3a3564faaccad1f8c0cf03f84487393b262036c5ea762f",
     "rust/src/servers/installation.rs": "2f97795eaec4020b0f9ac278600ebda2f8c7745afa5c84aec2711efd745b00e6",
-    "rust/src/install/rpc.rs": "a5926aad204d1ae27be1e5fc808f181c7c765ac6ce33a9e3681cfbc26ffff68d",
+    "rust/src/install/rpc.rs": "96cbc5ea2079c57b877b790c010dcdf107790d9b24d6d94e452625f6cf58da7e",
     "rust/src/modpack/rpc.rs": "e521da6aa00f9468e3637b43e059e3d79ef7ea76e13d86092fae4a1768383dda",
     "rust/src/launch/rpc.rs": "ceb84ea7bb890aecec89ac3b01388dcc76a84ff804148fad6a363ae6118e5dda",
     "rust/src/version.rs": "d7bd85e0db962b21dd4607aedacbed2c4ce99651542aa89d0652b93f582039fd",
@@ -36,15 +36,18 @@
     "rust/src/metadata.rs": "626a32c82277ca65e5f6475fe94d46e569be001655dad9e620a98e9147a8c5fe",
     "rust/src/version_plan_read.rs": "326e85a78223c07876a7f0f3578dc61e4afce6d5c0de75b301c61de3a7c01420",
     "rust/src/plan.rs": "29ed2d2c4f7a19d33b09139aff2db1cd3724ebf9704a6f30ebe1fc6c0be566d9",
-    "rust/src/plan_read.rs": "63ea1e4fdc0962b2dd532f418159868138b992b859cc8ae7dd690d577ce7f347",
+    "rust/src/plan_read.rs": "cfe79d0faec984089e9bfd77552759602c0f22f43403eb033e621e5783ba07da",
     "rust/src/version_plan_preflight.rs": "975aadf7061663d89aafe765200ff786d6b98b371ad3c8794b0f7ad93189d23d",
     "rust/src/version_plan_native.rs": "659d2597ec3ebd8b21cd776ce5a82b39a22f26ac095e2278d305cda075d1612b",
-    "rust/src/main.rs": "d1e8f94ce41c5698f333a54c29d72a67a6072419450b497960fa3f131d1ae710",
-    "rust/src/install/vanilla.rs": "05692fcd8b54f93f1c6a18f1a21f8796be5d284d8f86ef37abcb83baaafde6dd",
+    "rust/src/main.rs": "270395914bf6777361ab7659677243c81a8dc4e07b53d837f2de2b3e16fbd066",
+    "rust/src/install/vanilla.rs": "e366f8e45cbaa25e161290f7b911b0f1bb56b7421ffdf807e0c32492ef206379",
     "rust/src/plan_completion.rs": "eab6476abbba1f7f998b36e96b2532ae63ab408cbc30af65f3ebd4d9986a0bd0",
     "rust/src/native_bytes.rs": "028cdf49e7ca05b490b0861387012558bb1989da63cc9b5f926b34ffb9e22978",
     "rust/src/launch/instance_install.rs": "6a226d03bf8b74ffa815efee139ace99eb00813260aa16e1ee330abcdfbd4525",
-    "rust/src/instances/install_selection.rs": "17edd193e7cbea21136abd16be2849293c4a10b7f6d08a8e975a37e17675c9ed"
+    "rust/src/instances/install_selection.rs": "17edd193e7cbea21136abd16be2849293c4a10b7f6d08a8e975a37e17675c9ed",
+    "rust/src/install/vanilla/prepare.rs": "dcf386bba3e87608a85b74a24b523339e9e1653ed1d5a765d16deb0dd7bdc043",
+    "rust/src/install/vanilla/prepare_cli.rs": "8b20934b675edb887a8b2977f187299fd07a215d13bf83830229b77673a72dd9",
+    "rust/src/install/cli.rs": "bd74aa4cf159ec66b7ae4bfb0e32c741052a5827a0f314bbc2a9886e01b6c63d"
   },
   "routes": [
     {
@@ -247,6 +250,18 @@
         {
           "path": "rust/src/instances/install_selection.rs",
           "anchor": "pub(super) fn parse"
+        },
+        {
+          "path": "rust/src/install/vanilla/prepare.rs",
+          "anchor": "pub(crate) fn run"
+        },
+        {
+          "path": "rust/src/install/vanilla/prepare_cli.rs",
+          "anchor": "pub fn cli_os"
+        },
+        {
+          "path": "rust/src/install/cli.rs",
+          "anchor": "pub use super::vanilla::prepare_cli::cli_os;"
         }
       ],
       "selector": {
@@ -263,7 +278,11 @@
           "rust/src/install/vanilla/tests.rs",
           "rust/src/plan_completion_tests.rs",
           "rust/src/launch/instance_install/tests.rs",
-          "rust/src/instances/install_selection/tests.rs"
+          "rust/src/instances/install_selection/tests.rs",
+          "rust/src/install/vanilla/prepare.rs",
+          "rust/src/install/vanilla/prepare_cli.rs",
+          "rust/compat/prepare-byte-schema.py",
+          "rust/compat/prepare-byte-cli.py"
         ]
       }
     },

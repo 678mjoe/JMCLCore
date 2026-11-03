@@ -299,3 +299,29 @@ routes; all-UTF8, mutation, archive and hidden routes fall through unchanged.
 RPC source links/guards are unchanged. Module/read helper digests change for
 private helper visibility and CLI export only, reviewed alongside native flag
 preservation and actual version fields.
+
+## 2026-11-03 prepare routing and branch reconciliation
+
+The vanilla `install.prepare` RPC retains the existing outer method guard, and
+selects the new byte-preserving prepare schema only when all loader selectors are
+absent or null. Missing/invalid requests still fail before transport creation.
+Planning precedes root opening; the existing game-native adapter, error mappings
+and result envelope are retained, with byte identity serialization. No runtime
+acquisition, download or receipt operation was added to preparation.
+
+The executable intercepts non-UTF-8 vanilla prepare arguments before converting
+other arguments to Strings. Ordinary UTF-8 and valid Fabric/NeoForge requests keep
+the old route; the latter's non-UTF-8 gap remains explicit. Option syntax is checked
+before handing loader requests back. Parsed Forge is omitted from selection just
+as in the pinned CLI. The main/install/plan fingerprints and new helper edges were
+reviewed and refreshed, not the RPC membership or blocked-acquisition categories.
+
+Local reconciliation with `rust-rewrite` at `02457b2` retained the experimental
+ordered byte parsers and shared validation. The incoming formal branch's content
+schema/size/path/hash/source/duplicate constraints are present in that shared
+validation. The duplicate `parent_bytes` from automatic merging was removed;
+shared Windows WTF-8 conversion is algorithmically identical to the incoming
+inline implementation. Field-specific Modrinth error expectations retain pinned
+Zig validation ordering. After these resolutions the only incoming content change
+is the approved Minecraft guidance text; no production source changed from the
+verified local prepare checkpoint. This static review is not native CI acceptance.
