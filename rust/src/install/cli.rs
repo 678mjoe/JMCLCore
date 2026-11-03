@@ -30,7 +30,7 @@ pub(super) fn usage(method: &str) -> String {
         }
     )
 }
-fn number(s: &str) -> Result<u8, ()> {
+pub(super) fn number(s: &str) -> Result<u8, ()> {
     let body = s.strip_prefix(['+', '-']).unwrap_or(s);
     if body.is_empty() || body.starts_with('_') || body.ends_with('_') {
         return Err(());
@@ -414,3 +414,5 @@ pub fn cli_with_environment<P: Planner, T: Transport>(
 }
 
 pub use super::vanilla::prepare_cli::cli_os;
+
+pub use super::vanilla::execute_cli::cli_os as execute_cli_os;
