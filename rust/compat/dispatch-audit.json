@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "reviewed_commit": "2783d8a0e5f8dfd47b6bebeefcbddeaee9cfc9a8",
+  "reviewed_commit": "bb3b5d96641a034b2d4f949db07d20f435c1af74",
   "oracle_commit": "5a4310debbcee26b3d2391bab2339f79cd6ec52e",
   "source_digest_encoding": "utf8_crlf_to_lf",
   "source_sha256": {
@@ -12,7 +12,7 @@
     "rust/src/install/rpc.rs": "96cbc5ea2079c57b877b790c010dcdf107790d9b24d6d94e452625f6cf58da7e",
     "rust/src/modpack/rpc.rs": "e521da6aa00f9468e3637b43e059e3d79ef7ea76e13d86092fae4a1768383dda",
     "rust/src/launch/rpc.rs": "ceb84ea7bb890aecec89ac3b01388dcc76a84ff804148fad6a363ae6118e5dda",
-    "rust/src/version.rs": "d7bd85e0db962b21dd4607aedacbed2c4ce99651542aa89d0652b93f582039fd",
+    "rust/src/version.rs": "c2c41cd913aab7a77a8e4c78ee9d03ca6fcec17f0f8f38080c768b45a924469f",
     "rust/src/java/select.rs": "e8e9c0f07ad7eaad106d998489af240ff089079118ead7a3055a8fd2c43fec6e",
     "rust/src/accounts.rs": "f1efb49ca4cc61a7f5a3fb6859a9d0e91aff6d4d66178dc4fa5795e8f0867117",
     "rust/src/instances.rs": "3abe78c16ce659b3d5ff04565bb85344b427ab578032d894cfaf86e7d91c4163",
@@ -21,7 +21,7 @@
     "rust/src/content/mod.rs": "b2f4a5ad98e611e016f9cecc4a004543253950142cd3535fe68791476e25ad04",
     "rust/src/content/adopt.rs": "2d1292208ed8db1a49c1a5131770898d36f1a28e8fd425a4511f21d83285c094",
     "rust/src/java/mod.rs": "c682b1b918f24c599c3bd726115d0bbf37ebe4da4460f9a2825996906f7351d1",
-    "rust/src/store/commands.rs": "caffbc947ff8b0dba36eaa32dfa0b8ab2896385fa3f40b1bee2f6f4cec6ca5fb",
+    "rust/src/store/commands.rs": "9f27abc0d0eda0ac93271d0f7628209d691a8a58eb5578c831b63e88ce8a523f",
     "rust/src/store/mod.rs": "e2b0528f9850af8198471dc1334db67de8066eff6b1bda4ce29bebbcd8d40ab9",
     "rust/src/servers/creation.rs": "38419fe848c53c5fe9cf3a74331a54eb19231702d1d8838ba08bb5be7b409d0e",
     "rust/src/servers/mod.rs": "21b312a4e2717b1c7f7f736698bb3f731da27e7cb4c588e0646d12f1913995b7",
@@ -50,8 +50,9 @@
     "rust/src/install/cli.rs": "3b8242424dc50de36ae3286dc7336fb0aebfe42f07917c630d931dd5bfc88af3",
     "rust/src/install/vanilla/execute_cli.rs": "92dbdc7cd060b6fa55effe41f435ab892ec1aa0c3c805240cc822576963320e9",
     "rust/src/instances/read_cli.rs": "f62d8c44d0d612c779128c7008c3351130cbd1a81de70ff285bf6ecb99432717",
-    "rust/src/lib.rs": "5cbfbb7de584728391b15bc3b7345198899dc14ec0f4a2e1decce94f27880e2f",
-    "rust/src/cli_native.rs": "5d62d6a5f172f62c0c739adccc09c6468687bf6a562283f9563aaff26937c991"
+    "rust/src/lib.rs": "d8fd2afab5be48a103e7fa0a1d586c97b02564cf97979bff0ac2700f8e665ecf",
+    "rust/src/cli_native.rs": "5d62d6a5f172f62c0c739adccc09c6468687bf6a562283f9563aaff26937c991",
+    "rust/src/cli_number.rs": "7833a59769a3bda2e31a99a06d1be3662ff7b80c3cdd3144598d5ba83270c08b"
   },
   "routes": [
     {
@@ -399,6 +400,10 @@
         {
           "path": "rust/src/native_bytes.rs",
           "anchor": "pub(crate) fn os_bytes"
+        },
+        {
+          "path": "rust/src/cli_number.rs",
+          "anchor": "pub(crate) fn unsigned("
         }
       ],
       "selector": {
@@ -417,7 +422,8 @@
           "rust/src/version_lookup_tests.rs",
           "rust/src/version_read_tests.rs",
           "rust/src/version_plan_read_tests.rs",
-          "rust/src/version_plan_preflight.rs"
+          "rust/src/version_plan_preflight.rs",
+          "rust/src/version.rs"
         ]
       }
     },
@@ -695,6 +701,10 @@
         {
           "path": "rust/src/store/mod.rs",
           "anchor": "pub use commands::{cli, handle};"
+        },
+        {
+          "path": "rust/src/cli_number.rs",
+          "anchor": "pub(crate) fn unsigned("
         }
       ],
       "selector": {
@@ -707,7 +717,8 @@
         "status": "referenced_not_run",
         "scope": "related_group_fixtures_not_per_method_or_platform_completion",
         "paths": [
-          "rust/tests/store_differential.rs"
+          "rust/tests/store_differential.rs",
+          "rust/src/store/commands.rs"
         ]
       }
     },
