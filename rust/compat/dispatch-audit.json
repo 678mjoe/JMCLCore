@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "reviewed_commit": "721055d12ba3e63c7e11ab91e7abbcb6dee7943e",
+  "reviewed_commit": "beff5d41ceb28c98e87c86e6d6f8da0fffb699ed",
   "oracle_commit": "5a4310debbcee26b3d2391bab2339f79cd6ec52e",
   "source_digest_encoding": "utf8_crlf_to_lf",
   "source_sha256": {
@@ -55,7 +55,8 @@
     "rust/src/cli_number.rs": "7833a59769a3bda2e31a99a06d1be3662ff7b80c3cdd3144598d5ba83270c08b",
     "rust/src/servers/cli.rs": "ffbd2dff4523e15fe87a03c9dc7137b49af29f1de54ba448f8fc44420d71f57f",
     "rust/src/servers/installation_cli.rs": "66d169388b8e2b6235abd58e426865533a46ea553d55fe39b334bcdbfde517a5",
-    "rust/src/servers/properties.rs": "9461900a17eb4f61191090e7969544e7644ea7bdec029c89e95584cda819b7e4"
+    "rust/src/servers/properties.rs": "9461900a17eb4f61191090e7969544e7644ea7bdec029c89e95584cda819b7e4",
+    "rust/src/servers/creation_cli.rs": "d45820b51b5e9a29dbad661d5e7716367860f866ac8d157a03ab2cf03e953ffa"
   },
   "routes": [
     {
@@ -756,6 +757,10 @@
         {
           "path": "rust/src/servers/rpc.rs",
           "anchor": "super::creation::handle(method, params)"
+        },
+        {
+          "path": "rust/src/servers/creation_cli.rs",
+          "anchor": "pub fn cli("
         }
       ],
       "selector": {
@@ -768,7 +773,8 @@
         "status": "referenced_not_run",
         "scope": "related_group_fixtures_not_per_method_or_platform_completion",
         "paths": [
-          "rust/compat/server_install.py"
+          "rust/compat/server_install.py",
+          "rust/src/servers/creation_cli.rs"
         ]
       }
     },
