@@ -325,3 +325,15 @@ inline implementation. Field-specific Modrinth error expectations retain pinned
 Zig validation ordering. After these resolutions the only incoming content change
 is the approved Minecraft guidance text; no production source changed from the
 verified local prepare checkpoint. This static review is not native CI acceptance.
+
+## Vanilla execute native argv continuation, 2026-11-03
+
+The executable now intercepts vanilla `install execute` requests containing
+non-UTF-8 argv before String conversion. The options bridge validates the complete
+pair sequence, source/target enums, numeric ranges and Java policy; native version,
+install-root and store-root bytes pass directly to the existing vanilla download
+and receipt controller. No loader/runtime acquisition behavior was added. The
+outer RPC handlers and membership are unchanged. Ordinary UTF-8 requests and
+valid loader selections retain legacy routing, including its documented raw-loader
+gap. The three dispatcher/re-export fingerprints and new helper edge were reviewed.
+Related fixture paths establish test scope, not a full compatibility claim.
