@@ -97,13 +97,13 @@ fn parse(args: &[String]) -> Option<(super::installation::linux::Params, bool)> 
             "--store-directory" => p.store_directory = v.clone(),
             "--java-path" => p.java_paths.push(v.clone()),
             "--workers" => {
-                p.workers = v.parse().ok()?;
+                p.workers = crate::cli_number::unsigned(v)?.try_into().ok()?;
                 if p.workers == 0 || p.workers > 32 {
                     return None;
                 }
             }
             "--retries" => {
-                p.retries = v.parse().ok()?;
+                p.retries = crate::cli_number::unsigned(v)?.try_into().ok()?;
                 if p.retries > 5 {
                     return None;
                 }
@@ -210,5 +210,50 @@ fn lower(s: &str) -> String {
     match c.next() {
         Some(first) => first.to_lowercase().collect::<String>() + c.as_str(),
         None => String::new(),
+    }
+}
+
+#[cfg(all(test, target_os = "linux"))]
+mod cli_number_tests {
+    use super::parse;
+    #[test]
+    fn pure_server_install_numbers_do_not_install_or_accept_eula() {
+        for (workers, retries, w, r) in [
+            ("3_2", "-0", 32, 0),
+            ("+1", "0_5", 1, 5),
+            ("1__0", "+2", 10, 2),
+        ] {
+            let (p, _) = parse(&[
+                "demo".into(),
+                "--workers".into(),
+                workers.into(),
+                "--retries".into(),
+                retries.into(),
+            ])
+            .unwrap();
+            assert_eq!((p.workers, p.retries), (w, r));
+            assert!(!p.accept_eula);
+        }
+        for (flag, raw) in [
+            ("--workers", "0"),
+            ("--workers", "33"),
+            ("--workers", "256"),
+            ("--workers", "+_1"),
+            ("--retries", "6"),
+            ("--retries", "-1"),
+            ("--retries", "-+0"),
+        ] {
+            assert!(parse(&["demo".into(), flag.into(), raw.into()]).is_none());
+        }
+        assert!(
+            parse(&[
+                "demo".into(),
+                "--workers".into(),
+                "0".into(),
+                "--workers".into(),
+                "1".into()
+            ])
+            .is_none()
+        );
     }
 }

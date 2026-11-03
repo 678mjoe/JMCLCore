@@ -68,14 +68,14 @@ fn options(command: &str, args: &[String]) -> Option<(Value, bool)> {
             "--servers-directory" => p["directory"] = value.clone().into(),
             "--java-path" if matches!(command, "start" | "restart") => paths.push(value.clone()),
             "--grace-ms" if matches!(command, "stop" | "restart") => {
-                let n: u32 = value.parse().ok()?;
+                let n = crate::cli_number::unsigned(value)?;
                 if n > 120000 {
                     return None;
                 }
                 p["grace_ms"] = n.into();
             }
             "--cursor" | "--file-id" | "--max-bytes" if command == "logs" => {
-                let n: u64 = value.parse().ok()?;
+                let n = crate::cli_number::unsigned(value)?;
                 if arg == "--max-bytes" && (n == 0 || n > 1024 * 1024) {
                     return None;
                 }
@@ -330,5 +330,57 @@ fn write_name(out: &mut impl std::io::Write, name: &serde_json::Value) -> std::i
         let bytes: Vec<u8> = serde_json::from_value(name.clone())
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
         out.write_all(&bytes)
+    }
+}
+
+#[cfg(test)]
+mod cli_number_tests {
+    use super::*;
+    #[test]
+    fn pure_server_numbers_keep_zig_grammar_and_ranges() {
+        for (command, flag, field, raw, n) in [
+            ("stop", "--grace-ms", "grace_ms", "1_000", 1000),
+            ("restart", "--grace-ms", "grace_ms", "-0", 0),
+            ("stop", "--grace-ms", "grace_ms", "120_000", 120000),
+            ("logs", "--cursor", "cursor", "1__0", 10),
+            ("logs", "--file-id", "file_id", "-0", 0),
+            ("logs", "--max-bytes", "max_bytes", "1_024", 1024),
+            ("logs", "--max-bytes", "max_bytes", "1_048_576", 1048576),
+            (
+                "logs",
+                "--cursor",
+                "cursor",
+                "18446744073709551615",
+                u64::MAX,
+            ),
+        ] {
+            let (p, _) = options(command, &["demo".into(), flag.into(), raw.into()]).unwrap();
+            assert_eq!(p[field], n);
+        }
+        for (command, flag, raw) in [
+            ("stop", "--grace-ms", "120001"),
+            ("restart", "--grace-ms", "4294967296"),
+            ("logs", "--max-bytes", "0"),
+            ("logs", "--max-bytes", "1048577"),
+            ("logs", "--cursor", "18446744073709551616"),
+            ("logs", "--cursor", "+_1"),
+            ("logs", "--file-id", "-+0"),
+            ("logs", "--cursor", "-1"),
+        ] {
+            assert!(options(command, &["demo".into(), flag.into(), raw.into()]).is_none());
+        }
+        assert!(
+            options(
+                "stop",
+                &[
+                    "demo".into(),
+                    "--grace-ms".into(),
+                    "120001".into(),
+                    "--grace-ms".into(),
+                    "0".into()
+                ]
+            )
+            .is_none()
+        );
     }
 }
