@@ -19,7 +19,12 @@ fn usage(command: &str) -> String {
     };
     format!("usage: jmcl-core server {command} {tail}")
 }
-fn options(command: &str, args: &[String]) -> Option<(Value, bool)> {
+struct Options {
+    params: Value,
+    json_output: bool,
+    property_pairs: Vec<super::properties::Entry>,
+}
+fn options(command: &str, args: &[String]) -> Option<Options> {
     let mut p = json!({"directory":"servers"});
     let mut i = 0;
     let mut json_output = false;
@@ -38,6 +43,7 @@ fn options(command: &str, args: &[String]) -> Option<(Value, bool)> {
         i += 1;
     }
     let mut pairs = serde_json::Map::new();
+    let mut property_pairs = Vec::new();
     let mut paths = Vec::new();
     while i < args.len() {
         let arg = args[i].as_str();
@@ -52,10 +58,17 @@ fn options(command: &str, args: &[String]) -> Option<(Value, bool)> {
             continue;
         }
         if command == "properties set" && arg != "--servers-directory" {
+            if arg.starts_with("--") || property_pairs.len() == super::properties::MAX_ENTRIES {
+                return None;
+            }
             let (k, v) = arg.split_once('=')?;
             if k.is_empty() {
                 return None;
             }
+            property_pairs.push(super::properties::Entry {
+                key: k.into(),
+                value: v.into(),
+            });
             pairs.insert(k.into(), v.into());
             i += 1;
             continue;
@@ -94,7 +107,11 @@ fn options(command: &str, args: &[String]) -> Option<(Value, bool)> {
         }
         p["properties"] = Value::Object(pairs);
     }
-    Some((p, json_output))
+    Some(Options {
+        params: p,
+        json_output,
+        property_pairs,
+    })
 }
 fn text(v: &Value) -> String {
     v.as_str()
@@ -162,7 +179,12 @@ pub fn cli(args: &[String], out: &mut impl Write, err: &mut impl Write) -> io::R
         )?;
         return Ok(1);
     }
-    let Some((params, json_output)) = options(&command, &args[offset..]) else {
+    let Some(Options {
+        params,
+        json_output,
+        property_pairs,
+    }) = options(&command, &args[offset..])
+    else {
         writeln!(err, "{}", usage(&command))?;
         return Ok(2);
     };
@@ -175,11 +197,18 @@ pub fn cli(args: &[String], out: &mut impl Write, err: &mut impl Write) -> io::R
         }
     );
     let raw = serde_json::value::to_raw_value(&params)?;
+    #[cfg(not(target_os = "linux"))]
+    let _ = &property_pairs;
     #[cfg(target_os = "linux")]
     let (response, load_diagnostic) = if command == "show" {
         super::rpc::show_with_load_diagnostic(Some(&raw))
     } else if command == "delete" {
         super::rpc::delete_with_diagnostic(Some(&raw))
+    } else if command == "properties set" {
+        (
+            super::rpc::properties_set_cli(Some(&raw), &property_pairs),
+            None,
+        )
     } else {
         (super::handle(&method, Some(&raw)).unwrap(), None)
     };
@@ -354,7 +383,8 @@ mod cli_number_tests {
                 u64::MAX,
             ),
         ] {
-            let (p, _) = options(command, &["demo".into(), flag.into(), raw.into()]).unwrap();
+            let Options { params: p, .. } =
+                options(command, &["demo".into(), flag.into(), raw.into()]).unwrap();
             assert_eq!(p[field], n);
         }
         for (command, flag, raw) in [
@@ -379,6 +409,79 @@ mod cli_number_tests {
                     "--grace-ms".into(),
                     "0".into()
                 ]
+            )
+            .is_none()
+        );
+    }
+}
+
+#[cfg(test)]
+mod property_input_tests {
+    use super::*;
+    #[test]
+    fn flag_shaped_assignments_and_raw_pair_overflow_are_rejected() {
+        for raw in ["--bogus=value", "--json=true", "--servers-directory=x"] {
+            assert!(options("properties set", &["demo".into(), raw.into()]).is_none());
+        }
+        let mut args = vec!["demo".into()];
+        args.extend(std::iter::repeat_n("a=b".into(), 1024));
+        assert!(options("properties set", &args).is_some());
+        args.push("a=b".into());
+        assert!(options("properties set", &args).is_none());
+    }
+    #[test]
+    fn ordered_duplicate_values_are_validated_without_early_rejection() {
+        use super::super::properties::{Document, MAX_VALUE_BYTES};
+        let huge = "x".repeat(MAX_VALUE_BYTES + 1);
+        for values in [[huge.as_str(), "ok"], ["ok", huge.as_str()]] {
+            let o = options(
+                "properties set",
+                &[
+                    "demo".into(),
+                    format!("motd={}", values[0]),
+                    format!("motd={}", values[1]),
+                ],
+            )
+            .unwrap();
+            assert_eq!(o.property_pairs.len(), 2);
+            let mut d = Document::default();
+            assert_eq!(
+                d.set_ordered(&o.property_pairs).unwrap_err().0,
+                "InvalidServerPropertyValue"
+            );
+        }
+        let o = options(
+            "properties set",
+            &[
+                "demo".into(),
+                "z=first".into(),
+                "a=second".into(),
+                "z=last".into(),
+            ],
+        )
+        .unwrap();
+        let mut d = Document::default();
+        d.set_ordered(&o.property_pairs).unwrap();
+        assert_eq!(
+            d.entries
+                .iter()
+                .map(|e| (e.key.as_str(), e.value.as_str()))
+                .collect::<Vec<_>>(),
+            vec![("z", "last"), ("a", "second")]
+        );
+    }
+    #[test]
+    fn directory_options_do_not_count_as_property_pairs() {
+        let mut args = vec!["demo".into(), "--servers-directory".into(), "first".into()];
+        args.extend(std::iter::repeat_n("a=b".into(), 1024));
+        args.extend(["--servers-directory".into(), "last".into()]);
+        let o = options("properties set", &args).unwrap();
+        assert_eq!(o.property_pairs.len(), 1024);
+        assert_eq!(o.params["directory"], "last");
+        assert!(
+            options(
+                "properties set",
+                &["demo".into(), "--servers-directory".into(), "root".into()]
             )
             .is_none()
         );

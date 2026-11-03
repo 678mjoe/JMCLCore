@@ -25,6 +25,15 @@ pub struct Document {
     pub entries: Vec<Entry>,
 }
 impl Document {
+    // Preserve input order and validate every occurrence before any publication.
+    #[cfg(any(target_os = "linux", test))]
+    pub(crate) fn set_ordered(&mut self, pairs: &[Entry]) -> Result<(), Error> {
+        for pair in pairs {
+            self.set(&pair.key, &pair.value)?;
+        }
+        Ok(())
+    }
+
     pub fn set(&mut self, key: &str, value: &str) -> Result<(), Error> {
         if key.is_empty()
             || key.len() > MAX_KEY_BYTES

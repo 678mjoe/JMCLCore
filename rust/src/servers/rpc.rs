@@ -71,6 +71,14 @@ pub(crate) fn delete_with_diagnostic(
 ) -> (Result<Value, RpcError>, Option<String>) {
     linux::delete_with_diagnostic(raw)
 }
+// Ordered CLI pairs stay internal; the public RPC object schema is unchanged.
+#[cfg(target_os = "linux")]
+pub(crate) fn properties_set_cli(
+    raw: Option<&RawValue>,
+    pairs: &[super::properties::Entry],
+) -> Result<Value, RpcError> {
+    linux::properties_set_cli(raw, pairs)
+}
 #[cfg(target_os = "linux")]
 mod linux {
     use super::*;
@@ -243,21 +251,27 @@ mod linux {
         fs::unlinkat(parent, name, AtFlags::REMOVEDIR).map_err(Into::into)
     }
     pub fn handle(method: &str, raw: Option<&RawValue>) -> Result<Value, RpcError> {
-        handle_inner(method, raw, None)
+        handle_inner(method, raw, None, None)
     }
     pub fn show_with_load_diagnostic(
         raw: Option<&RawValue>,
     ) -> (Result<Value, RpcError>, Option<String>) {
         let mut diagnostic = None;
-        let result = handle_inner("server.get", raw, Some(&mut diagnostic));
+        let result = handle_inner("server.get", raw, Some(&mut diagnostic), None);
         (result, diagnostic)
     }
     pub fn delete_with_diagnostic(
         raw: Option<&RawValue>,
     ) -> (Result<Value, RpcError>, Option<String>) {
         let mut diagnostic = None;
-        let result = handle_inner("server.delete", raw, Some(&mut diagnostic));
+        let result = handle_inner("server.delete", raw, Some(&mut diagnostic), None);
         (result, diagnostic)
+    }
+    pub fn properties_set_cli(
+        raw: Option<&RawValue>,
+        pairs: &[properties::Entry],
+    ) -> Result<Value, RpcError> {
+        handle_inner("server.properties.set", raw, None, Some(pairs))
     }
     fn delete_error(e: io::Error, diagnostic: Option<&mut Option<String>>) -> RpcError {
         if let Some(diagnostic) = diagnostic {
@@ -423,6 +437,7 @@ mod linux {
         method: &str,
         raw: Option<&RawValue>,
         mut diagnostic: Option<&mut Option<String>>,
+        ordered_properties: Option<&[properties::Entry]>,
     ) -> Result<Value, RpcError> {
         if method == "server.get" {
             return read_get(raw, diagnostic);
@@ -564,16 +579,25 @@ mod linux {
                 };
                 let mut d = properties(&dir)?;
                 if let Some(props) = p.properties.filter(|_| method.ends_with(".set")) {
-                    for (key, v) in props.as_object().unwrap() {
-                        let v = v
-                            .as_str()
-                            .ok_or_else(|| invalid("server property values must be strings"))?;
-                        d.set(key, v).map_err(|_| {
+                    if let Some(pairs) = ordered_properties {
+                        d.set_ordered(pairs).map_err(|_| {
                             err(
                                 "SERVER_PROPERTIES_INVALID",
                                 "A server property key or value is out of range",
                             )
                         })?;
+                    } else {
+                        for (key, v) in props.as_object().unwrap() {
+                            let v = v
+                                .as_str()
+                                .ok_or_else(|| invalid("server property values must be strings"))?;
+                            d.set(key, v).map_err(|_| {
+                                err(
+                                    "SERVER_PROPERTIES_INVALID",
+                                    "A server property key or value is out of range",
+                                )
+                            })?;
+                        }
                     }
                     lc::atomic_write(&dir, "server.properties", &d.encode()).map_err(|_| {
                         err(
