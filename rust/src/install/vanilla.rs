@@ -350,3 +350,5 @@ pub(crate) fn run_cli<M: version::Transport, T: Transport>(
         }
     }
 }
+
+pub(crate) mod prepare;

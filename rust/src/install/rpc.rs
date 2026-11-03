@@ -292,7 +292,7 @@ pub(crate) fn planning_error(e: metadata::Error) -> RpcError {
     };
     RpcError::new(code, message)
 }
-fn prepare_error(e: Error) -> RpcError {
+pub(super) fn prepare_error(e: Error) -> RpcError {
     let (code, message) = match e.name() {
         "CacheFileInvalid" | "FileNotFound" => (
             "CACHE_INVALID",
@@ -321,6 +321,18 @@ pub fn handle(
 ) -> Option<io::Result<()>> {
     if !matches!(method, "install.execute" | "install.prepare") {
         return None;
+    }
+    if method == "install.prepare" && super::vanilla::selected(params) {
+        let request = match super::vanilla::prepare::parse(params) {
+            Ok(p) => p,
+            Err(e) => return Some(failure(out, id, e)),
+        };
+        let metadata = match version::HttpTransport::new() {
+            Ok(t) => t,
+            Err(e) => return Some(failure(out, id, planning_error(e))),
+        };
+        let service = version::Service::new(metadata, ".jmclcore/metadata-cache");
+        return Some(super::vanilla::prepare::run(out, id, request, &service));
     }
     if method == "install.execute" && super::vanilla::selected(params) {
         let request = match super::vanilla::parse(params) {

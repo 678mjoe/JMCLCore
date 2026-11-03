@@ -225,10 +225,6 @@ impl ZeroNativePreparation<'_> {
 mod zero_native_tests;
 
 impl ReadPlan {
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "game-native adapter awaits routing")
-    )]
     pub(crate) fn prepare_game_native(
         &self,
         root: &crate::store::ArtifactRoot,
