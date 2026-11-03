@@ -160,6 +160,33 @@ mod tests {
         assert_eq!((p.workers, p.retries), (32, 0));
     }
     #[test]
+    fn later_valid_options_replace_prior_values() {
+        let p = options(&[
+            raw(),
+            "--directory".into(),
+            "first".into(),
+            "--directory".into(),
+            raw(),
+            "--workers".into(),
+            "1".into(),
+            "--workers".into(),
+            "2".into(),
+            "--retries".into(),
+            "5".into(),
+            "--retries".into(),
+            "-0".into(),
+            "--arch".into(),
+            "x86".into(),
+            "--arch".into(),
+            "amd64".into(),
+        ])
+        .unwrap()
+        .unwrap();
+        assert_eq!(p.directory, crate::native_bytes::os_bytes(&raw()));
+        assert_eq!((p.workers, p.retries), (2, 0));
+        assert_eq!(p.arch.as_deref(), Some("x86_64"));
+    }
+    #[test]
     fn invalid_options_fail_before_metadata_or_files() {
         for tail in [
             vec!["--directory".into()],
@@ -306,8 +333,25 @@ mod execution_tests {
         .unwrap()
         .unwrap();
         assert_eq!(code, 0, "{}", String::from_utf8_lossy(&err));
-        assert!(
-            out.starts_with(b"version\t\xff\ndownloaded\t1\ncached\t0\nhardLinked\t1\ncopied\t0\n")
+        let mut expected =
+            b"version\t\xff\ndownloaded\t1\ncached\t0\nhardLinked\t1\ncopied\t0\n".to_vec();
+        expected.extend_from_slice(
+            format!(
+                "verifiedBytes\t{}\ntransferredBytes\t{}\n",
+                DATA.len(),
+                DATA.len()
+            )
+            .as_bytes(),
+        );
+        assert_eq!(out, expected);
+        assert_eq!(
+            err,
+            format!(
+                "download progress: 1/1 files, {}/{} bytes verified\n",
+                DATA.len(),
+                DATA.len()
+            )
+            .as_bytes()
         );
         assert_eq!(files.calls.load(Ordering::SeqCst), 1);
         let receipt: serde_json::Value =
@@ -329,7 +373,21 @@ mod execution_tests {
             0
         );
         assert_eq!(files.calls.load(Ordering::SeqCst), 1);
-        assert!(out.starts_with(b"version\t\xff\ndownloaded\t0\ncached\t1\n"));
+        let mut expected =
+            b"version\t\xff\ndownloaded\t0\ncached\t1\nhardLinked\t1\ncopied\t0\n".to_vec();
+        expected.extend_from_slice(
+            format!("verifiedBytes\t{}\ntransferredBytes\t0\n", DATA.len()).as_bytes(),
+        );
+        assert_eq!(out, expected);
+        assert_eq!(
+            err,
+            format!(
+                "download progress: 1/1 files, {}/{} bytes verified\n",
+                DATA.len(),
+                DATA.len()
+            )
+            .as_bytes()
+        );
         assert_eq!(fs::metadata(&object).unwrap().ino(), m.ino());
     }
     #[test]
