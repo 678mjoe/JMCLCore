@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "reviewed_commit": "4986405a62a5a80f650cdbe917d1eeb4297443e8",
+  "reviewed_commit": "2783d8a0e5f8dfd47b6bebeefcbddeaee9cfc9a8",
   "oracle_commit": "5a4310debbcee26b3d2391bab2339f79cd6ec52e",
   "source_digest_encoding": "utf8_crlf_to_lf",
   "source_sha256": {
@@ -39,7 +39,7 @@
     "rust/src/plan_read.rs": "cfe79d0faec984089e9bfd77552759602c0f22f43403eb033e621e5783ba07da",
     "rust/src/version_plan_preflight.rs": "975aadf7061663d89aafe765200ff786d6b98b371ad3c8794b0f7ad93189d23d",
     "rust/src/version_plan_native.rs": "659d2597ec3ebd8b21cd776ce5a82b39a22f26ac095e2278d305cda075d1612b",
-    "rust/src/main.rs": "ac83f02777465f9d67f9f49cecabc4125081cee0bf00ee528abebc447198bb9a",
+    "rust/src/main.rs": "de6b8f34c1d146a821ec2dc609b07524de324e4722eaae87f872f593f5e08dbf",
     "rust/src/install/vanilla.rs": "0e4609ee51a5ffe218c34c9b5bbe9edcf6cac889ad5678334fe49b7bbfe913b5",
     "rust/src/plan_completion.rs": "eab6476abbba1f7f998b36e96b2532ae63ab408cbc30af65f3ebd4d9986a0bd0",
     "rust/src/native_bytes.rs": "028cdf49e7ca05b490b0861387012558bb1989da63cc9b5f926b34ffb9e22978",
@@ -49,7 +49,9 @@
     "rust/src/install/vanilla/prepare_cli.rs": "8b20934b675edb887a8b2977f187299fd07a215d13bf83830229b77673a72dd9",
     "rust/src/install/cli.rs": "3b8242424dc50de36ae3286dc7336fb0aebfe42f07917c630d931dd5bfc88af3",
     "rust/src/install/vanilla/execute_cli.rs": "92dbdc7cd060b6fa55effe41f435ab892ec1aa0c3c805240cc822576963320e9",
-    "rust/src/instances/read_cli.rs": "f62d8c44d0d612c779128c7008c3351130cbd1a81de70ff285bf6ecb99432717"
+    "rust/src/instances/read_cli.rs": "f62d8c44d0d612c779128c7008c3351130cbd1a81de70ff285bf6ecb99432717",
+    "rust/src/lib.rs": "5cbfbb7de584728391b15bc3b7345198899dc14ec0f4a2e1decce94f27880e2f",
+    "rust/src/cli_native.rs": "5d62d6a5f172f62c0c739adccc09c6468687bf6a562283f9563aaff26937c991"
   },
   "routes": [
     {
@@ -891,6 +893,14 @@
         {
           "path": "rust/src/protocol.rs",
           "anchor": "match request.method.as_ref() {"
+        },
+        {
+          "path": "rust/src/lib.rs",
+          "anchor": "pub mod cli_native;"
+        },
+        {
+          "path": "rust/src/cli_native.rs",
+          "anchor": "pub fn diagnostics("
         }
       ],
       "selector": {
@@ -903,7 +913,8 @@
         "status": "referenced_not_run",
         "scope": "related_group_fixtures_not_per_method_or_platform_completion",
         "paths": [
-          "rust/compat/check.py"
+          "rust/compat/check.py",
+          "rust/compat/cli-diagnostics-byte-argv.py"
         ]
       }
     },
