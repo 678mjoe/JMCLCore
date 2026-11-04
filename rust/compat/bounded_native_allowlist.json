@@ -1,0 +1,36 @@
+{
+  "common": [
+    "cli_native::tests::help_and_usage_are_pure_even_with_raw_tail",
+    "cli_native::tests::known_operational_routes_and_utf8_are_not_claimed",
+    "cli_native::tests::unknown_command_bytes_are_not_replaced",
+    "install::cli::target_order_tests::each_target_option_is_validated_before_repetition",
+    "install::vanilla::execute_cli::tests::byte_id_roots_aliases_and_numeric_options_are_preserved",
+    "install::vanilla::execute_cli::tests::invalid_options_fail_before_metadata_or_files",
+    "install::vanilla::execute_cli::tests::later_valid_options_replace_prior_values",
+    "install::vanilla::execute_cli::tests::unrelated_utf8_and_valid_loaders_remain_unclaimed",
+    "instances::read_cli::tests::display_join_preserves_native_spelling_without_normalization",
+    "instances::read_cli::tests::raw_id_and_flags_fail_before_root_open",
+    "instances::read_cli::tests::repeated_options_and_flag_shaped_path_are_preserved",
+    "instances::read_cli::tests::unrelated_commands_and_utf8_remain_unclaimed",
+    "native_bytes::tests::utf16_wtf8_finite_corpus_preserves_pairs_and_unpaired_units",
+    "servers::cli::cli_number_tests::pure_server_numbers_keep_zig_grammar_and_ranges",
+    "servers::cli::property_input_tests::directory_options_do_not_count_as_property_pairs",
+    "servers::cli::property_input_tests::flag_shaped_assignments_and_raw_pair_overflow_are_rejected",
+    "servers::cli::property_input_tests::ordered_duplicate_values_are_validated_without_early_rejection",
+    "store::commands::cli_number_tests::pure_decimal_age_matches_pinned_parse_int_boundary",
+    "version::cli_number_tests::list_limit_rejects_bad_separators_before_transport"
+  ],
+  "unix": [
+    "install::vanilla::prepare_cli::tests::byte_identity_directory_and_aliases_are_preserved",
+    "install::vanilla::prepare_cli::tests::invalid_options_stop_before_transport",
+    "install::vanilla::prepare_cli::tests::utf8_and_loader_requests_remain_unclaimed",
+    "native_bytes::tests::unix_native_wrapper_preserves_raw_ff"
+  ],
+  "linux": [
+    "servers::creation_cli::source_order_tests::every_source_is_validated_before_later_repetition",
+    "servers::installation_cli::cli_number_tests::pure_server_install_numbers_do_not_install_or_accept_eula"
+  ],
+  "windows": [
+    "native_bytes::tests::windows_native_wrapper_preserves_from_wide_surrogates"
+  ]
+}

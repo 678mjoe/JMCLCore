@@ -1,2 +1,5 @@
 # Embedded protocol/CLI text must not change with Windows checkout settings.
 rust/src/help.txt text eol=lf
+
+# Keep the reviewed pure-test allowlist digest identical on native Windows.
+rust/compat/bounded_native_allowlist.json text eol=lf

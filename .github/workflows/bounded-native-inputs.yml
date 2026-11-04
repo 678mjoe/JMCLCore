@@ -1,0 +1,51 @@
+# Authorized bounded experiment; immutable source and exact pure-test allowlist.
+name: Bounded native pure input tests
+on:
+  push:
+    branches: [rust-bounded-input-ci-20261103]
+permissions:
+  contents: read
+concurrency:
+  group: rust-bounded-inputs-${{ github.ref }}
+  cancel-in-progress: true
+env:
+  RUST_VERSION: 1.99.1
+  CARGO_INCREMENTAL: "0"
+  CARGO_PROFILE_DEV_DEBUG: "0"
+  CARGO_PROFILE_TEST_DEBUG: "0"
+jobs:
+  pure:
+    if: github.event.repository.visibility == 'public' && github.ref == 'refs/heads/rust-bounded-input-ci-20261103'
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        os: [ubuntu-24.04, macos-15, macos-15-intel, windows-2025]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          path: harness
+          persist-credentials: false
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: 495b35bee4be6706015618703de013d6b68cb6d0
+          path: source
+          persist-credentials: false
+      - name: Install official pinned compiler only
+        run: |
+          rustup toolchain install "$RUST_VERSION" --profile minimal
+          rustup default "$RUST_VERSION"
+      - name: Guard regression tests without compiler subprocesses
+        run: |
+          python harness/rust/compat/test_bounded_native_inputs.py
+          python -O harness/rust/compat/test_bounded_native_inputs.py
+      - name: Compile library tests without running the suite, then exact pure allowlist
+        run: python harness/rust/compat/bounded_native_inputs.py --source source
+      # No PR triggers, workflow_dispatch, Zig, Java, game, archive operation,
+      # server, GC, credentials, release, upload or deployment steps.
+      # Cargo still compiles dependencies and may fetch locked registry sources.
