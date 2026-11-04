@@ -70,6 +70,19 @@ def report_after_verification(source, report):
     print(json.dumps(report, indent=2))
 
 
+def build_library(command):
+    built = subprocess.run(command, stdout=subprocess.PIPE, text=True)
+    # Cargo JSON contains compiler diagnostics on stdout, including on failure.
+    for line in built.stdout.splitlines():
+        row = json.loads(line)
+        if row.get("reason") == "compiler-message":
+            rendered = row.get("message", {}).get("rendered")
+            if rendered:
+                print(rendered, file=sys.stderr, end="")
+    built.check_returncode()
+    return built
+
+
 def main():
     p = argparse.ArgumentParser()
     p.add_argument('--source', required=True, type=Path)
@@ -85,7 +98,7 @@ def main():
                    '--locked', '--lib', '--no-run', '--message-format=json', '--target-dir', build]
         if args.offline:
             command.append('--offline')
-        built = subprocess.run(command, check=True, stdout=subprocess.PIPE, text=True)
+        built = build_library(command)
         artifacts = []
         for line in built.stdout.splitlines():
             row = json.loads(line)

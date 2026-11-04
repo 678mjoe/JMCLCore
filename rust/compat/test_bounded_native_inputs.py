@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Pure guard unit tests; no compiler or test subprocess is invoked."""
 import json
+import subprocess
 import unittest
 from unittest.mock import patch
 from pathlib import Path
@@ -9,6 +10,15 @@ import bounded_native_inputs as guard
 class GuardTests(unittest.TestCase):
     def setUp(self):
         self.groups = json.loads(guard.ALLOWLIST.read_text())
+    def test_failed_build_reports_diagnostic_and_stops(self):
+        result = subprocess.CompletedProcess(["cargo"], 101, json.dumps({"reason":"compiler-message", "message":{"rendered":"specific error\n"}}))
+        with patch.object(guard.subprocess,"run",return_value=result), patch("builtins.print") as output:
+            with self.assertRaises(subprocess.CalledProcessError): guard.build_library(["cargo"])
+            output.assert_called_once_with("specific error\n",file=guard.sys.stderr,end="")
+    def test_successful_build_is_returned(self):
+        result = subprocess.CompletedProcess(["cargo"],0,"{\"reason\":\"compiler-artifact\"}")
+        with patch.object(guard.subprocess,"run",return_value=result):
+            self.assertIs(guard.build_library(["cargo"]),result)
     def test_manifest_drift_rejected(self):
         with self.assertRaises(ValueError): guard.verified_allowlist(guard.ALLOWLIST.read_bytes() + b" ")
     def test_reviewed_manifest_accepted(self):
