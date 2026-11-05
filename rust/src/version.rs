@@ -1185,6 +1185,29 @@ pub fn cli(
         err,
     ))
 }
+/// Diagnose only invalid version/list/show and install/plan native syntax.
+/// Opaque tokens become a nonempty non-ASCII marker only for pure validation:
+/// IDs/loaders allow arbitrary nonempty bytes, all other grammar is ASCII.
+/// Successful parsing always yields and discards these temporary parameters.
+pub(crate) fn native_invalid_usage(args: &[std::ffi::OsString]) -> Option<&'static str> {
+    if !args.iter().any(|arg| arg.to_str().is_none()) {
+        return None;
+    }
+    let method = match (args.first()?.to_str()?, args.get(1)?.to_str()?) {
+        ("version", "list") => "version.list",
+        ("version", "show") => "version.get",
+        ("install", "plan") => "install.plan",
+        _ => return None,
+    };
+    let params = args[2..]
+        .iter()
+        .map(|arg| arg.to_str().unwrap_or("\u{fffd}").to_owned())
+        .collect::<Vec<_>>();
+    cli_params(method, &params)
+        .is_err()
+        .then(|| cli_usage(method))
+}
+
 fn cli_method(args: &[String]) -> Option<&'static str> {
     match (
         args.first().map(String::as_str),

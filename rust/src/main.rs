@@ -35,6 +35,13 @@ fn run(args: &[String], stdout: &mut impl Write, stderr: &mut impl Write) -> io:
             writeln!(stderr, "usage: jmcl-core rpc")?;
             Ok(2)
         }
+        Some("install") => {
+            writeln!(
+                stderr,
+                "usage: jmcl-core install <plan|execute|prepare> ID [options]"
+            )?;
+            Ok(2)
+        }
         Some("store") => jmcl_core_rust::store::cli(&args[1..], stdout, stderr),
         Some("server") => jmcl_core_rust::servers::cli(&args[1..], stdout, stderr),
         Some("java") => jmcl_core_rust::java::cli(&args[1..], stdout, stderr),
@@ -55,7 +62,7 @@ fn run(args: &[String], stdout: &mut impl Write, stderr: &mut impl Write) -> io:
             } else {
                 writeln!(
                     stderr,
-                    "Rust rewrite instance command is not implemented; do not use as a replacement Core"
+                    "usage: jmcl-core instance <create|list|show|delete|install|launch|mods|resourcepacks|shaderpacks|datapacks|modpack|worlds> [options]"
                 )?;
                 Ok(2)
             }
@@ -127,4 +134,38 @@ fn main() {
     let _ = stdout.flush();
     let _ = stderr.flush();
     std::process::exit(code.into());
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn unknown_group_usage_is_exact_and_has_no_stdout() {
+        for (command, expected) in [
+            (
+                "instance",
+                "usage: jmcl-core instance <create|list|show|delete|install|launch|mods|resourcepacks|shaderpacks|datapacks|modpack|worlds> [options]\n",
+            ),
+            (
+                "install",
+                "usage: jmcl-core install <plan|execute|prepare> ID [options]\n",
+            ),
+            (
+                "launch",
+                "usage: jmcl-core launch execute ID [--directory PATH] --offline-name NAME [options]\n",
+            ),
+        ] {
+            for tail in [None, Some(""), Some("unknown"), Some("--help")] {
+                let mut args = vec![command.into()];
+                if let Some(tail) = tail {
+                    args.push(tail.into());
+                }
+                let mut out = Vec::new();
+                let mut err = Vec::new();
+                assert_eq!(run(&args, &mut out, &mut err).unwrap(), 2);
+                assert!(out.is_empty());
+                assert_eq!(err, expected.as_bytes());
+            }
+        }
+    }
 }

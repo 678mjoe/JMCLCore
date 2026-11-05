@@ -4,6 +4,9 @@ use std::{
     io::{self, Read, Write},
 };
 use zeroize::Zeroizing;
+fn parse_max_bytes(value: &str) -> Option<usize> {
+    usize::try_from(crate::cli_number::unsigned(value)?).ok()
+}
 fn usage(rcon: bool, err: &mut impl Write) -> io::Result<u8> {
     writeln!(
         err,
@@ -134,7 +137,7 @@ pub fn cli(
             "--command" if is_rcon => command = Some(value.as_str()),
             "--password-file" if is_rcon => password = Some(value.as_str()),
             "--max-bytes" if is_rcon => {
-                let Ok(n) = value.parse::<usize>() else {
+                let Some(n) = parse_max_bytes(value) else {
                     return usage(true, err);
                 };
                 limit = n;
@@ -241,5 +244,29 @@ mod tests {
         std::fs::write(t.path().join("real"), b"fixture").unwrap();
         std::os::unix::fs::symlink("real", t.path().join("alias")).unwrap();
         assert!(password_file(t.path().join("alias").to_str().unwrap()).is_err());
+    }
+}
+
+#[cfg(test)]
+mod numeric_tests {
+    use super::parse_max_bytes;
+    #[test]
+    fn rcon_limit_numeric_grammar_is_pure_and_preserves_delayed_range_check() {
+        for (text, expected) in [
+            ("1", 1),
+            ("+1", 1),
+            ("1__0", 10),
+            ("262_144", 262144),
+            ("-0", 0),
+            ("0", 0),
+            ("262145", 262145),
+        ] {
+            assert_eq!(parse_max_bytes(text), Some(expected), "{text}");
+        }
+        for text in ["", "_1", "1_", "+_1", "-_0", "-+0", "-1", "1e2", "1.0"] {
+            assert_eq!(parse_max_bytes(text), None, "{text}");
+        }
+        assert_eq!(parse_max_bytes(&usize::MAX.to_string()), Some(usize::MAX));
+        assert_eq!(parse_max_bytes(&(usize::MAX as u128 + 1).to_string()), None);
     }
 }
