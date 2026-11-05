@@ -71,7 +71,6 @@ document!(
     accept_eula,
     java_path
 );
-#[cfg(target_os = "linux")]
 document!(
     crate::servers::manifest::ReadManifest,
     DisplayName,
