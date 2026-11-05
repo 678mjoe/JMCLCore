@@ -9,8 +9,8 @@ import subprocess
 import sys
 import tempfile
 
-SOURCE_COMMIT = '190be14a4c78b4ef0d59b0ae43713b09fbe67c5f'
-SOURCE_TREE = 'facf839b53db4027a15afca12064d41c916ec422'
+SOURCE_COMMIT = '1f35702440403de2fa6a24528c7bfd50a0e56095'
+SOURCE_TREE = 'b82db244d1b402c6bd88a3d6725c9eb0f6a334a8'
 RUST_VERSION = '1.99.1'
 ALLOWLIST = Path(__file__).with_name('bounded_native_allowlist.json')
 ALLOWLIST_SHA256 = '2ee1bd23991b7cfd9867d8ea1259453d13ddc8d354352f1bef1fada2ecd15da2'
