@@ -29,7 +29,8 @@ pub struct Manifest {
     #[serde(default)]
     pub java_path: Option<String>,
 }
-#[cfg(target_os = "linux")]
+// Read-only manifest parsing is shared by portable server-world CLI paths.
+// Lifecycle/installation identity remains Linux-only.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub(crate) struct ReadManifest {
     #[serde(default = "one", deserialize_with = "crate::instances::schema_number")]
@@ -155,7 +156,6 @@ impl Validation<'_> {
         Ok(())
     }
 }
-#[cfg(target_os = "linux")]
 impl ReadManifest {
     #[cfg(target_os = "linux")]
     pub(crate) fn identity(&self) -> crate::instances::InstallationIdentity<'_> {
@@ -199,6 +199,39 @@ impl ReadManifest {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn portable_read_manifest_preserves_byte_names_and_validation() {
+        let bytes = br#"{"id":"a","name":[65,255],"version_id":"1.21"}"#;
+        let m = ReadManifest::parse(bytes, "a").unwrap();
+        assert_eq!(m.name.0, vec![65, 255]);
+        assert!(!m.accept_eula);
+        assert_eq!(m.source, "official");
+        assert_eq!(m.java_path, None);
+        assert_eq!(
+            ReadManifest::parse(bytes, "b").unwrap_err(),
+            "ServerIdMismatch"
+        );
+        assert_eq!(
+            ReadManifest::parse(bytes, "../a").unwrap_err(),
+            "InvalidServerId"
+        );
+        assert_eq!(
+            ReadManifest::parse(&vec![b' '; 65537], "a").unwrap_err(),
+            "ServerManifestTooLarge"
+        );
+        assert_eq!(
+            ReadManifest::parse(br#"{"id":"a","name":[],"version_id":"1.21"}"#, "a").unwrap_err(),
+            "InvalidServerName"
+        );
+        assert_eq!(
+            ReadManifest::parse(
+                br#"{"id":"a","name":"A","version_id":"1.21","source":"bad"}"#,
+                "a"
+            )
+            .unwrap_err(),
+            "InvalidEnumTag"
+        );
+    }
     #[test]
     fn public_disk_format_defaults_roundtrip() {
         let m = Manifest::parse(br#"{"id":"a","name":"A","version_id":"1.21"}"#, "a").unwrap();
