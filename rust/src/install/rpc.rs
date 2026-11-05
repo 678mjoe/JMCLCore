@@ -707,3 +707,26 @@ fn write_processor_event(
     )?;
     out.flush()
 }
+
+#[cfg(test)]
+mod numeric_string_tests {
+    use super::*;
+    #[test]
+    fn pure_parameter_strings_and_byte_widths() {
+        let p: ExecuteParams = serde_json::from_str(
+            r#"{"id":"demo","workers":"1_0","retries":"0x1.0p+1","directory":["6_5","0x4.2p+4"]}"#,
+        )
+        .unwrap();
+        assert_eq!((p.workers, p.retries), (10, 2));
+        assert_eq!(p.prepare.directory.0, b"AB");
+        for field in ["workers", "retries"] {
+            for value in ["2_56", "3.0000000000000001"] {
+                let raw = format!(r#"{{"id":"demo","{field}":"{value}"}}"#);
+                assert!(serde_json::from_str::<ExecuteParams>(&raw).is_err());
+            }
+        }
+        for raw in [r#"["2_56"]"#, r#"["65.00000000000001"]"#] {
+            assert!(serde_json::from_str::<PathValue>(raw).is_err());
+        }
+    }
+}

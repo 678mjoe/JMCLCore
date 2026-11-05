@@ -45,15 +45,28 @@ fn number<'de, D: serde::Deserializer<'de>, const MAX: u64>(
     let v = serde_json::Value::deserialize(d)?;
     crate::metadata::unsigned(&v, MAX).map_err(|e| serde::de::Error::custom(e.name()))
 }
+// Schema documents are parsed from source bytes, so preserve the numeric token.
+fn typed_number<'de, D: serde::Deserializer<'de>>(
+    d: D,
+    width: usize,
+) -> std::result::Result<u64, D::Error> {
+    let raw = <&serde_json::value::RawValue>::deserialize(d)?;
+    crate::json_number::typed_raw(raw.get(), width).map_err(|e| serde::de::Error::custom(e.name()))
+}
+pub(super) fn typed_u8_number<'de, D: serde::Deserializer<'de>>(
+    d: D,
+) -> std::result::Result<u8, D::Error> {
+    typed_number(d, 8).map(|n| n as u8)
+}
 pub(super) fn u32_number<'de, D: serde::Deserializer<'de>>(
     d: D,
 ) -> std::result::Result<u32, D::Error> {
-    number::<D, { u32::MAX as u64 }>(d).map(|n| n as u32)
+    typed_number(d, 32).map(|n| n as u32)
 }
 pub(super) fn u64_number<'de, D: serde::Deserializer<'de>>(
     d: D,
 ) -> std::result::Result<u64, D::Error> {
-    number::<D, { u64::MAX }>(d)
+    typed_number(d, 64)
 }
 pub(super) fn parse<T: serde::de::DeserializeOwned>(bytes: &[u8]) -> Result<T> {
     serde_json::from_slice::<Object<T>>(bytes)
@@ -437,4 +450,74 @@ pub(super) fn optional_object<'de, D: serde::Deserializer<'de>, T: Deserialize<'
     d: D,
 ) -> std::result::Result<Option<T>, D::Error> {
     Option::<Object<T>>::deserialize(d).map(|v| v.map(|v| v.0))
+}
+
+#[cfg(test)]
+mod typed_numeric_tests {
+    use super::*;
+    #[derive(Deserialize)]
+    struct Narrow {
+        #[serde(deserialize_with = "u32_number")]
+        n: u32,
+    }
+    #[derive(Deserialize)]
+    struct Wide {
+        #[serde(deserialize_with = "u64_number")]
+        n: u64,
+    }
+    #[test]
+    fn raw_schema_numbers_do_not_round_through_binary64() {
+        assert!(parse::<Narrow>(br#"{"n":1.0000000000000001}"#).is_err());
+        assert_eq!(
+            parse::<Narrow>(br#"{"n":1.00000000000000000000000000000000001}"#)
+                .unwrap()
+                .n,
+            1
+        );
+        assert_eq!(
+            parse::<Wide>(br#"{"n":9007199254740993.0}"#).unwrap().n,
+            9007199254740993
+        );
+        assert_eq!(
+            parse::<Wide>(br#"{"n":18446744073709551615.0}"#).unwrap().n,
+            u64::MAX
+        );
+        assert!(parse::<Wide>(br#"{"n":18446744073709551615.1}"#).is_err());
+    }
+}
+
+#[cfg(test)]
+mod numeric_wrapper_tests {
+    use super::*;
+    #[derive(Deserialize)]
+    struct Typed {
+        #[serde(deserialize_with = "typed_u8_number")]
+        n: u8,
+    }
+    #[derive(Deserialize)]
+    struct Dynamic {
+        #[serde(deserialize_with = "u8_number")]
+        n: u8,
+    }
+    #[derive(Deserialize)]
+    struct Wrapped {
+        #[serde(deserialize_with = "optional_object")]
+        one: Option<Typed>,
+        #[serde(deserialize_with = "object_vec")]
+        many: Vec<Typed>,
+    }
+    #[test]
+    fn object_wrappers_retain_tokens_and_rpc_retains_dynamic_numbers() {
+        let w: Wrapped = parse(br#"{"one":{"n":255.0},"many":[{"n":"2_54"}]}"#).unwrap();
+        assert_eq!(w.one.unwrap().n, 255);
+        assert_eq!(w.many[0].n, 254);
+        assert!(parse::<Wrapped>(br#"{"one":{"n":1.0000000000000001},"many":[]}"#).is_err());
+        assert!(parse::<Wrapped>(br#"{"one":null,"many":[{"n":1.0000000000000001}]}"#).is_err());
+        assert!(parse::<Typed>(br#"{"n":256}"#).is_err());
+        assert_eq!(
+            parse::<Dynamic>(br#"{"n":3.0000000000000001}"#).unwrap().n,
+            3
+        );
+        assert!(parse::<Dynamic>(br#"{"n":"3.0000000000000001"}"#).is_err());
+    }
 }

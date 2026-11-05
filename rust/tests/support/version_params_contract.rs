@@ -550,3 +550,17 @@ fn utf8_byte_parameters_preserve_dynamic_grammar_and_schema_order() {
         unknown
     );
 }
+
+#[test]
+fn pure_limit_string_grammar_precision_and_range() {
+    for value in ["1_0", "0x1.8p+1"] {
+        let params = serde_json::json!({"limit":value});
+        assert!(validate_params("version.list", Some(&params)).is_ok());
+    }
+    for value in ["3.0000000000000001", "1_001", "_1"] {
+        let params = serde_json::json!({"limit":value});
+        assert!(validate_params("version.list", Some(&params)).is_err());
+    }
+    let params: Value = serde_json::from_str(r#"{"limit":3.0000000000000001}"#).unwrap();
+    assert!(validate_params("version.list", Some(&params)).is_ok());
+}

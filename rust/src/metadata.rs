@@ -308,15 +308,10 @@ pub fn unsigned(v: &Value, max: u64) -> Result<u64, Error> {
                 float(n.as_f64().ok_or(Error::Json("InvalidNumber"))?)?
             }
         }
+        // Dynamic JSON strings retain their lexeme; only Number values have
+        // already rounded through binary64 in the request parser.
         Value::String(s) => {
-            if let Ok(v) = s.parse::<u64>() {
-                v
-            } else {
-                float(
-                    s.parse::<f64>()
-                        .map_err(|_| Error::Json("InvalidCharacter"))?,
-                )?
-            }
+            crate::json_number::unsigned_text(s, 64).map_err(|e| Error::Json(e.name()))?
         }
         _ => return Err(Error::Json("UnexpectedToken")),
     };
@@ -785,5 +780,39 @@ mod id_array_tests {
             ),
             metadata(source.as_bytes())
         );
+    }
+}
+
+#[cfg(test)]
+mod dynamic_unsigned_string_tests {
+    use super::*;
+    #[test]
+    fn dynamic_strings_preserve_grammar_precision_and_maximum() {
+        for (text, value) in [
+            ("1_0", 10),
+            ("0x1.8p+1", 3),
+            ("9007199254740993.0", 9007199254740993),
+            ("18446744073709551615.0", u64::MAX),
+        ] {
+            assert_eq!(
+                unsigned(&Value::String(text.into()), u64::MAX),
+                Ok(value),
+                "{text}"
+            );
+        }
+        assert_eq!(
+            unsigned(&Value::String("3.0000000000000001".into()), u64::MAX),
+            Err(Error::Json("InvalidNumber"))
+        );
+        assert_eq!(
+            unsigned(&Value::String("2_56".into()), 255),
+            Err(Error::Json("Overflow"))
+        );
+        assert_eq!(
+            unsigned(&Value::String("_1".into()), 255),
+            Err(Error::Json("InvalidCharacter"))
+        );
+        let numeric: Value = serde_json::from_str("3.0000000000000001").unwrap();
+        assert_eq!(unsigned(&numeric, u64::MAX), Ok(3));
     }
 }

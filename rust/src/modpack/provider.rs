@@ -4,7 +4,7 @@
 use super::{
     Error,
     planning::{CurseforgeProvider, Project, ProviderFile},
-    schema::{Object, object_vec, optional_object, parse, u8_number, u32_number, u64_number},
+    schema::{Object, object_vec, optional_object, parse, typed_u8_number, u32_number, u64_number},
 };
 use serde::Deserialize;
 use std::io::Read;
@@ -45,14 +45,14 @@ struct Mod {
 #[derive(Deserialize)]
 struct Hash {
     value: String,
-    #[serde(deserialize_with = "u8_number")]
+    #[serde(deserialize_with = "typed_u8_number")]
     algo: u8,
 }
 #[derive(Deserialize)]
 struct Dependency {
     #[serde(rename = "modId", deserialize_with = "u32_number")]
     id: u32,
-    #[serde(rename = "relationType", deserialize_with = "u8_number")]
+    #[serde(rename = "relationType", deserialize_with = "typed_u8_number")]
     kind: u8,
 }
 #[derive(Deserialize)]
@@ -65,7 +65,7 @@ struct File {
     available: bool,
     #[serde(rename = "fileName")]
     name: String,
-    #[serde(rename = "releaseType", deserialize_with = "u8_number")]
+    #[serde(rename = "releaseType", deserialize_with = "typed_u8_number")]
     release: u8,
     #[serde(deserialize_with = "object_vec")]
     hashes: Vec<Hash>,
@@ -270,4 +270,25 @@ impl ApiTransport for HttpApi {
 
 fn required<'de, D: serde::Deserializer<'de>, T: Deserialize<'de>>(d: D) -> Result<T, D::Error> {
     T::deserialize(d)
+}
+
+#[cfg(test)]
+mod typed_numeric_tests {
+    use super::*;
+    #[test]
+    fn pure_provider_envelopes_keep_typed_numeric_tokens() {
+        let h: Envelope<Object<Hash>> = decode(
+            br#"{"data":{"value":"fixture","algo":1.0},"pagination":{"totalCount":4294967295.0}}"#,
+        )
+        .unwrap();
+        assert_eq!(h.data.0.algo, 1);
+        assert_eq!(h.pagination.unwrap().total_count, u32::MAX);
+        assert!(
+            decode::<Envelope<Object<Hash>>>(
+                br#"{"data":{"value":"fixture","algo":1.0000000000000001}}"#
+            )
+            .is_err()
+        );
+        assert!(decode::<Envelope<Object<Hash>>>(br#"{"data":{"value":"fixture","algo":1},"pagination":{"totalCount":1.0000000000000001}}"#).is_err());
+    }
 }

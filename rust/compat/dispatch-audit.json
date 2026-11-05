@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "reviewed_commit": "56dfc775ac762410911ca39c5be696472b6de660",
+  "reviewed_commit": "acc1b543dee584567c15a9b29a258fc4f96cd0af",
   "oracle_commit": "5a4310debbcee26b3d2391bab2339f79cd6ec52e",
   "source_digest_encoding": "utf8_crlf_to_lf",
   "source_sha256": {
@@ -9,7 +9,7 @@
     "rust/src/content/registry.rs": "3aaac2096515b10eced77ee2b0c890cf3d06926ab49f537a8947eca50724a9b9",
     "rust/src/server_content.rs": "08f47b123e4e2147ab3a3564faaccad1f8c0cf03f84487393b262036c5ea762f",
     "rust/src/servers/installation.rs": "2f97795eaec4020b0f9ac278600ebda2f8c7745afa5c84aec2711efd745b00e6",
-    "rust/src/install/rpc.rs": "96cbc5ea2079c57b877b790c010dcdf107790d9b24d6d94e452625f6cf58da7e",
+    "rust/src/install/rpc.rs": "6ea1f80e2f2c3e5131baa695ad99cb0b3bf8bf272cd3e44904cf34b00324a8c9",
     "rust/src/modpack/rpc.rs": "e521da6aa00f9468e3637b43e059e3d79ef7ea76e13d86092fae4a1768383dda",
     "rust/src/launch/rpc.rs": "ceb84ea7bb890aecec89ac3b01388dcc76a84ff804148fad6a363ae6118e5dda",
     "rust/src/version.rs": "4faf9474e84ae7e98f6bab886e50040171ed0630c4003e2df3c171f67057668b",
@@ -33,7 +33,7 @@
     "rust/src/worlds/server_read.rs": "4efb5e0a4aad0c70f31b78751b9c2e13ea305b0b3a06b495d14ed0ee749aa2c2",
     "rust/src/instances/manifest_ordered.rs": "c03a5a634fdca2d577de647b63c30f7adbc8f770c2da104a07f48a547f491bbc",
     "rust/src/version_read.rs": "d13e0f5da1dd88852b6b964038e519dad37c379048a12b6f502b453be8d9fc51",
-    "rust/src/metadata.rs": "626a32c82277ca65e5f6475fe94d46e569be001655dad9e620a98e9147a8c5fe",
+    "rust/src/metadata.rs": "95c46450afa7f5151f86b7f3c2851ba8153ae94ae41c25b925f3df89a9434fa7",
     "rust/src/version_plan_read.rs": "326e85a78223c07876a7f0f3578dc61e4afce6d5c0de75b301c61de3a7c01420",
     "rust/src/plan.rs": "29ed2d2c4f7a19d33b09139aff2db1cd3724ebf9704a6f30ebe1fc6c0be566d9",
     "rust/src/plan_read.rs": "cfe79d0faec984089e9bfd77552759602c0f22f43403eb033e621e5783ba07da",
@@ -55,7 +55,7 @@
     "rust/src/cli_number.rs": "7833a59769a3bda2e31a99a06d1be3662ff7b80c3cdd3144598d5ba83270c08b",
     "rust/src/servers/cli.rs": "ffbd2dff4523e15fe87a03c9dc7137b49af29f1de54ba448f8fc44420d71f57f",
     "rust/src/servers/installation_cli.rs": "66d169388b8e2b6235abd58e426865533a46ea553d55fe39b334bcdbfde517a5",
-    "rust/src/servers/properties.rs": "9461900a17eb4f61191090e7969544e7644ea7bdec029c89e95584cda819b7e4",
+    "rust/src/servers/properties.rs": "6c04cc407aff06e026d06da26cf234aca38f7f1a0b4589b1d039954ad75d10af",
     "rust/src/servers/creation_cli.rs": "d45820b51b5e9a29dbad661d5e7716367860f866ac8d157a03ab2cf03e953ffa"
   },
   "routes": [

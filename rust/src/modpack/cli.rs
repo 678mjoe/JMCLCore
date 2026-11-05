@@ -1,6 +1,9 @@
 use super::{Error, provider, rpc, service};
 use crate::install;
 use std::io::{self, Write};
+fn parse_byte_count(value: &str) -> Option<u8> {
+    u8::try_from(crate::cli_number::unsigned(value)?).ok()
+}
 /// Arguments after `instance modpack`.
 pub fn run(args: &[String], out: &mut impl Write, err: &mut impl Write) -> io::Result<u8> {
     if args.first().map(String::as_str) != Some("install") {
@@ -32,7 +35,7 @@ pub fn run(args: &[String], out: &mut impl Write, err: &mut impl Write) -> io::R
             "--instances-directory" => directory = value,
             "--store-directory" => store = value,
             "--workers" => {
-                let Ok(v) = value.parse::<u8>() else {
+                let Some(v) = parse_byte_count(value) else {
                     return bad(err);
                 };
                 if v == 0 || v > 32 {
@@ -41,7 +44,7 @@ pub fn run(args: &[String], out: &mut impl Write, err: &mut impl Write) -> io::R
                 workers = v
             }
             "--retries" => {
-                let Ok(v) = value.parse::<u8>() else {
+                let Some(v) = parse_byte_count(value) else {
                     return bad(err);
                 };
                 if v > 5 {
@@ -172,4 +175,27 @@ fn write_error(err: &mut impl Write, e: &Error) -> io::Result<()> {
 fn bad(err: &mut impl Write) -> io::Result<u8> {
     writeln!(err, "error: InvalidArguments")?;
     Ok(1)
+}
+
+#[cfg(test)]
+mod numeric_tests {
+    use super::parse_byte_count;
+    #[test]
+    fn modpack_counts_preserve_zig_unsigned_byte_grammar() {
+        for (text, expected) in [
+            ("1", 1),
+            ("+1", 1),
+            ("1__0", 10),
+            ("0_1", 1),
+            ("-0", 0),
+            ("255", 255),
+        ] {
+            assert_eq!(parse_byte_count(text), Some(expected), "{text}");
+        }
+        for text in [
+            "", "_1", "1_", "+_1", "-_0", "-+0", "-1", "256", "1e2", "1.0",
+        ] {
+            assert_eq!(parse_byte_count(text), None, "{text}");
+        }
+    }
 }

@@ -1,28 +1,19 @@
-//! Dynamic RPC numbers retain Value/binary64 coercion. Persisted server records
+//! Dynamic RPC numeric values retain binary64 coercion; strings retain their
+//! typed lexeme. Persisted server records
 //! instead retain the raw typed lexeme and use Zig-compatible binary128 parsing.
 use serde::{Deserialize, Deserializer, de::Error};
 use serde_json::Value;
-fn float(v: &Value) -> Option<f64> {
-    match v {
-        Value::String(s)
-            if !s.is_empty()
-                && s.bytes()
-                    .all(|b| matches!(b, b'0'..=b'9' | b'+' | b'-' | b'.' | b'e' | b'E')) =>
-        {
-            s.parse().ok()
-        }
-        Value::Number(n) => n.as_f64(),
-        _ => None,
-    }
-}
 pub fn u64_value(v: &Value) -> Option<u64> {
-    v.as_u64()
-        .or_else(|| v.as_str().and_then(|s| s.parse::<u64>().ok()))
-        .or_else(|| {
-            float(v)
-                .filter(|v| v.is_finite() && v.fract() == 0. && *v >= 0. && *v < u64::MAX as f64)
-                .map(|v| v as u64)
-        })
+    // Value strings retain their lexeme in Zig; only JSON numeric values
+    // have already passed through binary64 in the dynamic params parser.
+    if let Value::String(s) = v {
+        return crate::json_number::unsigned_text(s, 64).ok();
+    }
+    v.as_u64().or_else(|| {
+        v.as_f64()
+            .filter(|v| v.is_finite() && v.fract() == 0. && *v >= 0. && *v < u64::MAX as f64)
+            .map(|v| v as u64)
+    })
 }
 pub fn u64_number<'de, D: Deserializer<'de>>(d: D) -> Result<u64, D::Error> {
     u64_value(&Value::deserialize(d)?).ok_or_else(|| D::Error::custom("InvalidNumber"))
@@ -191,9 +182,8 @@ mod tests {
         assert!(serde_json::from_str::<Persisted>(raw).is_err());
         let raw = r#"{"n":"3.00000000000000000000000000000000001"}"#;
         assert_eq!(serde_json::from_str::<Persisted>(raw).unwrap().n, 3);
-        // No shared RPC grammar changes: dynamic Value and typed records are
-        // separate, including their existing string conversion behavior.
-        assert_eq!(u64_value(&serde_json::json!("3.0000000000000001")), Some(3));
+        // Strings retain their lexeme even in dynamic Values, unlike numbers.
+        assert_eq!(u64_value(&serde_json::json!("3.0000000000000001")), None);
     }
     #[test]
     fn zig_integer_strings_floats_and_boundaries() {
@@ -218,5 +208,42 @@ mod tests {
         ] {
             assert_eq!(u64_value(&v), None);
         }
+    }
+}
+
+#[cfg(test)]
+mod dynamic_string_tests {
+    use super::*;
+    #[test]
+    fn strings_keep_typed_grammar_while_numeric_values_keep_binary64() {
+        for (text, value) in [
+            ("1_0", 10),
+            ("+1__0", 10),
+            ("-0", 0),
+            ("0x1.8p+1", 3),
+            ("9007199254740993.0", 9007199254740993),
+            ("18446744073709551615.0", u64::MAX),
+            ("3.00000000000000000000000000000000001", 3),
+        ] {
+            assert_eq!(
+                u64_value(&Value::String(text.into())),
+                Some(value),
+                "{text}"
+            );
+        }
+        for text in [
+            "3.0000000000000001",
+            "18446744073709551615.1",
+            "18446744073709551616",
+            "1_",
+            "_1",
+            "-1",
+            "0x1p0",
+            "NaN",
+        ] {
+            assert_eq!(u64_value(&Value::String(text.into())), None, "{text}");
+        }
+        let numeric: Value = serde_json::from_str("3.0000000000000001").unwrap();
+        assert_eq!(u64_value(&numeric), Some(3));
     }
 }

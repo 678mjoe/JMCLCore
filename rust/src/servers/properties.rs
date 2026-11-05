@@ -24,6 +24,15 @@ pub struct Entry {
 pub struct Document {
     pub entries: Vec<Entry>,
 }
+fn validate_key(key: &str) -> Result<(), Error> {
+    if key.is_empty()
+        || key.len() > MAX_KEY_BYTES
+        || key.bytes().any(|c| matches!(c, 0 | b'\r' | b'\n'))
+    {
+        return Err(Error("InvalidServerPropertyKey"));
+    }
+    Ok(())
+}
 impl Document {
     // Preserve input order and validate every occurrence before any publication.
     #[cfg(any(target_os = "linux", test))]
@@ -35,12 +44,7 @@ impl Document {
     }
 
     pub fn set(&mut self, key: &str, value: &str) -> Result<(), Error> {
-        if key.is_empty()
-            || key.len() > MAX_KEY_BYTES
-            || key.bytes().any(|c| matches!(c, 0 | b'\r' | b'\n'))
-        {
-            return Err(Error("InvalidServerPropertyKey"));
-        }
+        validate_key(key)?;
         if value.len() > MAX_VALUE_BYTES || value.contains('\0') {
             return Err(Error("InvalidServerPropertyValue"));
         }
@@ -177,6 +181,8 @@ fn parse_line(d: &mut Document, line: &[u8]) -> Result<(), Error> {
     let key = decode(&line[start..end])?;
     let value = decode(&line[i..])?;
     let key = std::str::from_utf8(&key).map_err(|_| Error("InvalidServerPropertyKey"))?;
+    // Both escapes must decode before key validation, matching the oracle.
+    validate_key(key)?;
     let value = std::str::from_utf8(&value).map_err(|_| Error("InvalidServerPropertyValue"))?;
     d.set(key, value)
 }
@@ -295,5 +301,41 @@ mod tests {
         assert!(d.rcon_port().is_err());
         d.set("enable-query", "true").unwrap();
         assert_eq!(d.query_port().unwrap(), Some(25565));
+    }
+}
+
+#[cfg(test)]
+mod precedence_tests {
+    use super::*;
+    #[test]
+    fn decoded_invalid_key_precedes_value_utf8_but_not_decode_errors() {
+        let long_key = vec![b'k'; MAX_KEY_BYTES + 1];
+        for key in [
+            b"".as_slice(),
+            long_key.as_slice(),
+            b"bad\\nkey",
+            b"bad\\u0000key",
+            b"\xff",
+        ] {
+            let mut input = key.to_vec();
+            input.extend_from_slice(b"=\xff\n");
+            assert_eq!(
+                parse(&input),
+                Err(Error("InvalidServerPropertyKey")),
+                "{input:?}"
+            );
+            let mut decode_error = key.to_vec();
+            decode_error.extend_from_slice(b"=\\uZZZZ\n");
+            assert_eq!(
+                parse(&decode_error),
+                Err(Error("InvalidServerProperties")),
+                "{decode_error:?}"
+            );
+        }
+        assert_eq!(
+            parse(b"good=\xff\n"),
+            Err(Error("InvalidServerPropertyValue"))
+        );
+        assert_eq!(parse(b"good=ok\n").unwrap().get("good"), Some("ok"));
     }
 }
