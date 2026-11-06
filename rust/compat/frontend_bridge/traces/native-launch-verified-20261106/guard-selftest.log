@@ -1,0 +1,1 @@
+Launch guard self-tests passed: 18 denied syscalls; exact local recvfrom; six nonzero argument halves; five forbidden pair domains; x32 bit and bare512-547; architecture; two exec boundaries; thread inheritance/single-thread install; socket stdio/extra-fd hygiene

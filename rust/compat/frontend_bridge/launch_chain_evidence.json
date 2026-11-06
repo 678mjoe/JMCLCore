@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "status": "passed_native_fixture_not_game_ui_acceptance",
+  "capture_source_commit": "b7b7b9abe5360054819ace0733599163feabe25f",
+  "production_core_sha256": "dad858d76f05cc4fad65814b03790a83e02e9244c5fa1d3155f882b89c1fd1f5",
+  "test": "isolated_native_session_launch_execute_chain",
+  "passed": 1,
+  "failed": 0,
+  "ignored": 0,
+  "executing_guard": "launch_network_guard.py",
+  "guard_sha256": "2790712aaf757536329cc1ac87c73931f04bf1a1f6dc3f375f782db08423e719",
+  "independent_static_review_before_execution": true,
+  "guard_selftests": "passed before both spawn gates and Core",
+  "spawn_gates": [
+    {
+      "mode": "missing",
+      "returncode": 0,
+      "stdout": "missing spawn returned NotFound\n"
+    },
+    {
+      "mode": "success",
+      "returncode": 0,
+      "stdout": "benign child started\nsuccessful spawn returned exit 0\n"
+    }
+  ],
+  "original_guard": "unchanged; independent regression selftests passed",
+  "frontend_wire_alignment": "actual fixture params use instances/demo/.minecraft and omit java_paths; no replay request adapter",
+  "capture_boundary": "Original native Session callback objects and returned Result/SessionError, not byte-for-byte Core wire capture. Contains only synthetic auth in request params.",
+  "normalization": "Recursive fixture-root literal replacement only; IDs, PID, duration, RSS, native nonce, events and ordering unchanged",
+  "raw_sha256": "e87118512ff5a7d7da2fcad6652fb3f788108bf4f0abfed019ed572158a34e3c",
+  "normalized_sha256": "f117361e6a1222de3f169b706edb11fd937b8813a0d8b4d3a006e4815bec5c34",
+  "checks": {
+    "offline_locked_harness_build": "passed",
+    "default_off_build": "passed; no launch_chain target; no tests executed",
+    "clippy": "passed with five existing imported transport.rs warnings",
+    "standalone_fixtures_warnings_denied": "passed compile-only",
+    "python_compile": "passed",
+    "rustfmt": "passed",
+    "diff_check": "passed; exact test-output trailing blank line preserved via scoped attribute"
+  },
+  "unchanged": [
+    "production Core source",
+    "original network_guard.py",
+    "original instance runner",
+    "existing CI pins and scope",
+    "historical blocked evidence",
+    "initial passing capture"
+  ],
+  "evidence_directory": "traces/native-launch-frontend-shape-20261106",
+  "evidence_file_sha256": {
+    "clippy.log": "781f5ab7c6ce643e9bc8206f5456dd3ba11776791a53f0dc5bf01e44425a5622",
+    "normalized.json": "f117361e6a1222de3f169b706edb11fd937b8813a0d8b4d3a006e4815bec5c34",
+    "provenance.json": "335d1d70a1f47be11c42fcf92b40ea77743587fa7f8f47b0cc6777dc92330597",
+    "raw.jsonl": "e87118512ff5a7d7da2fcad6652fb3f788108bf4f0abfed019ed572158a34e3c",
+    "run.log": "47b73133509b9bdc1e8775688d625df89af11e34f3c6ece539c172fdb425714d",
+    "test-output.txt": "099e4766d0162faa2573be3e9ee6ad6c520abac81bb454684581c11a68b604ff"
+  },
+  "limits": "Local Linux x86_64 only; no Tauri/UI, real account, Java/JVM/game, archive/runtime acquisition, cancellation or cross-platform acceptance."
+}

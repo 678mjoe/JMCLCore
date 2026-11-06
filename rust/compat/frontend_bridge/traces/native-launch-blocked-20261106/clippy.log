@@ -1,0 +1,154 @@
+    Checking cfg-if v1.0.5
+    Checking adler2 v2.0.1
+    Checking simd-adler32 v0.3.10
+    Checking libc v0.2.191
+    Checking serde_core v1.0.229
+    Checking linux-raw-sys v0.12.1
+    Checking bitflags v2.13.2
+    Checking memchr v2.8.3
+    Checking hashbrown v0.17.1
+    Checking crc32fast v1.5.3
+    Checking equivalent v1.0.3
+    Checking zmij v1.0.23
+    Checking pin-project-lite v0.2.17
+    Checking miniz_oxide v0.8.9
+    Checking once_cell v1.21.4
+    Checking itoa v1.0.18
+    Checking fastrand v2.5.0
+    Checking bytes v1.12.1
+    Checking base64 v0.22.1
+    Checking flate2 v1.1.9
+    Checking rustix v1.1.5
+    Checking indexmap v2.14.2
+    Checking zip v4.6.1
+    Checking errno v0.3.14
+    Checking mio v1.2.4
+    Checking getrandom v0.4.3
+    Checking signal-hook-registry v1.4.8
+    Checking tokio v1.53.0
+    Checking tempfile v3.27.0
+    Checking serde v1.0.229
+    Checking serde_json v1.0.151
+    Checking jmcl-frontend-bridge-check v0.0.0 (/tmp/jmcl-native-launch-checks-407ezka0/harness)
+warning: this function has a `#[must_use]` attribute with no message, but returns a type already considered as `#[must_use]`
+  --> src/transport.rs:56:15
+   |
+56 |   #[async_trait]
+   |  _______________^
+57 | | pub trait LineTransport: Send {
+58 | |     /// Write one request line; the transport appends the newline.
+59 | |     async fn write_line(&mut self, line: &str) -> Result<(), TransportFailure>;
+   | |____^
+   |
+note: the return type is pinned boxed `std::future::Future` trait object
+  --> src/transport.rs:56:1
+   |
+56 | #[async_trait]
+   | ^^^^^^^^^^^^^^
+help: remove `must_use`
+  --> src/transport.rs:56:1
+   |
+56 | #[async_trait]
+   | ^^^^^^^^^^^^^^
+   = note: alternatively, you may add an explicit reason to the `must_use` attribute
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.99.0/index.html#double_must_use
+   = note: `#[warn(clippy::double_must_use)]` on by default
+   = note: this warning originates in the attribute macro `async_trait` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+warning: this function has a `#[must_use]` attribute with no message, but returns a type already considered as `#[must_use]`
+  --> src/transport.rs:56:15
+   |
+56 |   #[async_trait]
+   |  _______________^
+57 | | pub trait LineTransport: Send {
+58 | |     /// Write one request line; the transport appends the newline.
+59 | |     async fn write_line(&mut self, line: &str) -> Result<(), TransportFailure>;
+60 | |     /// Wait for the next inbound item. Yields [`TransportEvent::Closed`]
+61 | |     /// once the stream ends.
+62 | |     async fn next_event(&mut self) -> TransportEvent;
+   | |____^
+   |
+note: the return type is pinned boxed `std::future::Future` trait object
+  --> src/transport.rs:56:1
+   |
+56 | #[async_trait]
+   | ^^^^^^^^^^^^^^
+help: remove `must_use`
+  --> src/transport.rs:56:1
+   |
+56 | #[async_trait]
+   | ^^^^^^^^^^^^^^
+   = note: alternatively, you may add an explicit reason to the `must_use` attribute
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.99.0/index.html#double_must_use
+   = note: this warning originates in the attribute macro `async_trait` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+warning: this function has a `#[must_use]` attribute with no message, but returns a type already considered as `#[must_use]`
+  --> src/transport.rs:56:15
+   |
+56 |   #[async_trait]
+   |  _______________^
+57 | | pub trait LineTransport: Send {
+58 | |     /// Write one request line; the transport appends the newline.
+59 | |     async fn write_line(&mut self, line: &str) -> Result<(), TransportFailure>;
+...  |
+63 | |     /// Half-close the request stream; the core exits after draining.
+64 | |     async fn close(&mut self) -> Result<(), TransportFailure>;
+   | |____^
+   |
+note: the return type is pinned boxed `std::future::Future` trait object
+  --> src/transport.rs:56:1
+   |
+56 | #[async_trait]
+   | ^^^^^^^^^^^^^^
+help: remove `must_use`
+  --> src/transport.rs:56:1
+   |
+56 | #[async_trait]
+   | ^^^^^^^^^^^^^^
+   = note: alternatively, you may add an explicit reason to the `must_use` attribute
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.99.0/index.html#double_must_use
+   = note: this warning originates in the attribute macro `async_trait` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+warning: this function has a `#[must_use]` attribute with no message, but returns a type already considered as `#[must_use]`
+  --> src/transport.rs:56:15
+   |
+56 |   #[async_trait]
+   |  _______________^
+57 | | pub trait LineTransport: Send {
+58 | |     /// Write one request line; the transport appends the newline.
+59 | |     async fn write_line(&mut self, line: &str) -> Result<(), TransportFailure>;
+...  |
+65 | |     /// Immediately terminate this transport. Must be idempotent.
+66 | |     async fn abort(&mut self) -> Result<(), TransportFailure>;
+   | |____^
+   |
+note: the return type is pinned boxed `std::future::Future` trait object
+  --> src/transport.rs:56:1
+   |
+56 | #[async_trait]
+   | ^^^^^^^^^^^^^^
+help: remove `must_use`
+  --> src/transport.rs:56:1
+   |
+56 | #[async_trait]
+   | ^^^^^^^^^^^^^^
+   = note: alternatively, you may add an explicit reason to the `must_use` attribute
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.99.0/index.html#double_must_use
+   = note: this warning originates in the attribute macro `async_trait` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+warning: this loop could be written as a `while let` loop
+   --> src/transport.rs:192:13
+    |
+192 | /             loop {
+193 | |                 match lines.next_line().await {
+194 | |                     Ok(Some(line)) => {
+195 | |                         if tx.send(TransportEvent::Diagnostic(line)).is_err() {
+...   |
+201 | |             }
+    | |_____________^ help: try: `while let Ok(Some(line)) = lines.next_line().await { .. }`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.99.0/index.html#while_let_loop
+    = note: `#[warn(clippy::while_let_loop)]` on by default
+
+warning: `jmcl-frontend-bridge-check` (lib) generated 5 warnings
+    Finished `dev` profile [unoptimized] target(s) in 4.29s

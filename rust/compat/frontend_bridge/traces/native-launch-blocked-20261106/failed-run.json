@@ -1,0 +1,33 @@
+{
+  "format": "exact UTF-8 source lines, including original line endings",
+  "lines": [
+    "{\"frontend_revision\": \"c0107f1803c73398a99f8ddd27ed712c0ed2e1b4\", \"current_frontend_revision\": \"90b9d5472e620255af740b55315e2cf75c1c9115\", \"identical_native_module_sha256\": {\"session.rs\": \"2f5bc0e38bba77c7a0feb52c9a46a64f8d3d93d01cd3da2bb4fa87ea938c8f20\", \"transport.rs\": \"e1f75758dab1ed8bf26eef8a9d3aa94d12ec8acf580ab713508a9c791143ca82\", \"modpack_preview.rs\": \"503baae9143619d66ac304a11160dca956b8db490bd9a9ab620bdb9db0f26519\"}}\n",
+    "   Compiling jmcl-frontend-bridge-check v0.0.0 (/tmp/jmcl-native-launch-chain-i7xzxkh7/harness)\n",
+    "    Finished `test` profile [unoptimized] target(s) in 0.51s\n",
+    "Network guard self-tests passed: 16 blocked syscalls, x32, non-Unix socketpair, architecture, exec inheritance, local IPC, inherited FDs\n",
+    "\n",
+    "running 1 test\n",
+    "test isolated_native_session_launch_execute_chain ... \n",
+    "thread 'isolated_native_session_launch_execute_chain' (104) panicked at tests/launch_chain.rs:254:9:\n",
+    "Err(Transport { code: \"CORE_RPC_EOF\", message: \"core closed its RPC stream\" })\n",
+    "note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n",
+    "FAILED\n",
+    "\n",
+    "failures:\n",
+    "\n",
+    "failures:\n",
+    "    isolated_native_session_launch_execute_chain\n",
+    "\n",
+    "test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s\n",
+    "\n",
+    "\n",
+    "Traceback (most recent call last):\n",
+    "  File \"/workspace/scratch/6fda792bd6ec/JMCLCore-native-launch-chain-20261106/rust/compat/frontend_bridge/run_launch_chain.py\", line 141, in <module>\n",
+    "    main()\n",
+    "  File \"/workspace/scratch/6fda792bd6ec/JMCLCore-native-launch-chain-20261106/rust/compat/frontend_bridge/run_launch_chain.py\", line 98, in main\n",
+    "    result.check_returncode()\n",
+    "  File \"/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/subprocess.py\", line 502, in check_returncode\n",
+    "    raise CalledProcessError(self.returncode, self.args, self.stdout,\n",
+    "subprocess.CalledProcessError: Command '['/opt/codex/runtimes/codex-primary-runtime/dependencies/python/bin/python', '/workspace/scratch/6fda792bd6ec/JMCLCore-native-launch-chain-20261106/rust/compat/frontend_bridge/network_guard.py', '--exec', '/workspace/scratch/6fda792bd6ec/JMCLCore-native-launch-chain-target/debug/deps/launch_chain-acebdb64b097710a', '--exact', 'isolated_native_session_launch_execute_chain', '--test-threads=1', '--nocapture']' returned non-zero exit status 101.\n"
+  ]
+}

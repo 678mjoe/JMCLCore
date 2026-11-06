@@ -1,0 +1,63 @@
+{"frontend_revision": "c0107f1803c73398a99f8ddd27ed712c0ed2e1b4", "current_frontend_revision": "90b9d5472e620255af740b55315e2cf75c1c9115", "identical_native_module_sha256": {"session.rs": "2f5bc0e38bba77c7a0feb52c9a46a64f8d3d93d01cd3da2bb4fa87ea938c8f20", "transport.rs": "e1f75758dab1ed8bf26eef8a9d3aa94d12ec8acf580ab713508a9c791143ca82", "modpack_preview.rs": "503baae9143619d66ac304a11160dca956b8db490bd9a9ab620bdb9db0f26519"}}
+   Compiling jmcl-frontend-bridge-check v0.0.0 (/tmp/jmcl-native-launch-chain-oexyafx7/harness)
+    Finished `test` profile [unoptimized] target(s) in 0.82s
+{"core_sha256": "dad858d76f05cc4fad65814b03790a83e02e9244c5fa1d3155f882b89c1fd1f5", "native_child_sha256": "9c3125fefc2ad0547fb0e0e0bbc0d494238a2b2b4225abc619c9917c212310c5", "test_binary_sha256": "2bae62939b03ac69d459291f8d9ced417307b4b73e0bea2d9fe6daffeddd6175", "guard": "launch_network_guard", "guard_sha256": "2790712aaf757536329cc1ac87c73931f04bf1a1f6dc3f375f782db08423e719", "spawn_gate_sha256": "0c7c59002bea75b419f9f2f58486c4d8d1da6c4c18ec1b6dcc148c41f88cd073", "source_commit": "b7b7b9abe5360054819ace0733599163feabe25f"}
+Launch guard self-tests passed: 18 denied syscalls; exact local recvfrom; six nonzero argument halves; five forbidden pair domains; x32 bit and bare512-547; architecture; two exec boundaries; thread inheritance/single-thread install; socket stdio/extra-fd hygiene
+{"spawn_gate": "missing", "returncode": 0, "stdout": "missing spawn returned NotFound\n", "stderr": ""}
+{"spawn_gate": "success", "returncode": 0, "stdout": "benign child started\nsuccessful spawn returned exit 0\n", "stderr": ""}
+
+running 1 test
+test isolated_native_session_launch_execute_chain ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.14s
+
+
+{
+  "schema_version": 1,
+  "source_commit": "b7b7b9abe5360054819ace0733599163feabe25f",
+  "source_sha256": {
+    "run_launch_chain.py": "64dce4b23441bf3e458cd8077f341063dc1252bfcb88b69e19d0cd21dc3782be",
+    "run_instance_chain.py": "2ffd130437d62f6a377a5b079a9e8d5042dd9dab7ac5ed068c374a118ad1fbb0",
+    "network_guard.py": "3d316964fa98a1f9644ebd5deb44d4b33efb942ceb5c2c258f6501499a8db20f",
+    "Cargo.toml": "027381b67c953804f669379791f2ac166f9267a9899ddc50827ae8ec0fba6d7d",
+    "Cargo.lock": "3fb5dfdc5d4dd125711dfa29fd40d67393393ded11e9645fc6bf6b7fb096a2b4",
+    "tests/launch_chain.rs": "e147e77bd3dd5495f41d814e9abc916afc3ce01d717eed5084ed9fbf1378f497",
+    "tests/fixtures/launch_child.rs": "8e2b67aa00df2e302e9e8da1d0609a988eace5d595d5d5a5d85fb6be9d5160df",
+    "launch_network_guard.py": "2790712aaf757536329cc1ac87c73931f04bf1a1f6dc3f375f782db08423e719",
+    "tests/fixtures/launch_spawn_gate.rs": "77b2f1569434d5e0a7779e32f8dd6a66a7badddf9040dfccb9a5436679273767"
+  },
+  "frontend_revision": "c0107f1803c73398a99f8ddd27ed712c0ed2e1b4",
+  "identical_current_frontend_revision": "90b9d5472e620255af740b55315e2cf75c1c9115",
+  "frontend_module_sha256": {
+    "session.rs": "2f5bc0e38bba77c7a0feb52c9a46a64f8d3d93d01cd3da2bb4fa87ea938c8f20",
+    "transport.rs": "e1f75758dab1ed8bf26eef8a9d3aa94d12ec8acf580ab713508a9c791143ca82",
+    "modpack_preview.rs": "503baae9143619d66ac304a11160dca956b8db490bd9a9ab620bdb9db0f26519"
+  },
+  "core_sha256": "dad858d76f05cc4fad65814b03790a83e02e9244c5fa1d3155f882b89c1fd1f5",
+  "native_child_sha256": "9c3125fefc2ad0547fb0e0e0bbc0d494238a2b2b4225abc619c9917c212310c5",
+  "test_binary_sha256": "2bae62939b03ac69d459291f8d9ced417307b4b73e0bea2d9fe6daffeddd6175",
+  "test": "isolated_native_session_launch_execute_chain",
+  "passed": 1,
+  "failed": 0,
+  "ignored": 0,
+  "executing_guard": "launch_network_guard",
+  "guard_selftests": "passed immediately before execution; original network_guard.py unchanged",
+  "spawn_gates": [
+    {
+      "mode": "missing",
+      "returncode": 0,
+      "stdout": "missing spawn returned NotFound\n"
+    },
+    {
+      "mode": "success",
+      "returncode": 0,
+      "stdout": "benign child started\nsuccessful spawn returned exit 0\n"
+    }
+  ],
+  "raw_sha256": "e87118512ff5a7d7da2fcad6652fb3f788108bf4f0abfed019ed572158a34e3c",
+  "normalized_sha256": "f117361e6a1222de3f169b706edb11fd937b8813a0d8b4d3a006e4815bec5c34",
+  "normalization": "Recursive fixture-root literal replacement only; IDs, PID, duration, RSS, native nonce, events and ordering unchanged",
+  "capture_boundary": "Original native Session callback objects and returned Result/SessionError, not byte-for-byte Core wire capture. Contains only synthetic auth in request params.",
+  "limits": "Local Linux x86_64 only; no Tauri/UI, real account, Java/JVM/game, archive/runtime acquisition, cancellation or cross-platform acceptance."
+}
+Passed real native Session/Core/native-child launch chain; NOT Java/game/UI acceptance.

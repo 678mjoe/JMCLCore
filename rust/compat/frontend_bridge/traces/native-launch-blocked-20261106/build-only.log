@@ -1,0 +1,4 @@
+{"frontend_revision": "c0107f1803c73398a99f8ddd27ed712c0ed2e1b4", "current_frontend_revision": "90b9d5472e620255af740b55315e2cf75c1c9115", "identical_native_module_sha256": {"session.rs": "2f5bc0e38bba77c7a0feb52c9a46a64f8d3d93d01cd3da2bb4fa87ea938c8f20", "transport.rs": "e1f75758dab1ed8bf26eef8a9d3aa94d12ec8acf580ab713508a9c791143ca82", "modpack_preview.rs": "503baae9143619d66ac304a11160dca956b8db490bd9a9ab620bdb9db0f26519"}}
+    Finished `test` profile [unoptimized] target(s) in 0.04s
+{"core_sha256": "dad858d76f05cc4fad65814b03790a83e02e9244c5fa1d3155f882b89c1fd1f5", "native_child_sha256": "97c1d19da1282d92f82e8173988bc591797ff732fab98c944728c7c132a97f7a", "test_binary_sha256": "66b68bdd550ac812746f807c18da9adbbafa9cbfdf08ed85cb563cd7cd0b09b0", "source_commit": "a87c3afac372653acb0ca9bd1a92b0fc9a743a0d"}
+Offline locked build only; guard/Core/child NOT executed.

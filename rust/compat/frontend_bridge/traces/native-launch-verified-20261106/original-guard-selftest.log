@@ -1,0 +1,1 @@
+Network guard self-tests passed: 16 blocked syscalls, x32, non-Unix socketpair, architecture, exec inheritance, local IPC, inherited FDs

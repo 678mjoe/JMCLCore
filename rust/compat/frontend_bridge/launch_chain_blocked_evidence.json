@@ -1,0 +1,87 @@
+{
+  "schema_version": 1,
+  "status": "runtime_blocked_not_accepted",
+  "source_base_commit": "a87c3afac372653acb0ca9bd1a92b0fc9a743a0d",
+  "production_source_tree": "99bfa7577af7597ab8069aecd278bb4e9a352296",
+  "production_code_changed": false,
+  "existing_guard_changed": false,
+  "default_ci_changed": false,
+  "source_sha256": {
+    "Cargo.toml": "027381b67c953804f669379791f2ac166f9267a9899ddc50827ae8ec0fba6d7d",
+    "Cargo.lock": "3fb5dfdc5d4dd125711dfa29fd40d67393393ded11e9645fc6bf6b7fb096a2b4",
+    "run_launch_chain.py": "ce502fcd8e6a954462aab4d0e0ca96b61115cfefc53b59de99b4e88256c21e0c",
+    "network_guard.py": "3d316964fa98a1f9644ebd5deb44d4b33efb942ceb5c2c258f6501499a8db20f",
+    "run_instance_chain.py": "2ffd130437d62f6a377a5b079a9e8d5042dd9dab7ac5ed068c374a118ad1fbb0",
+    "tests/launch_chain.rs": "7e05313df97af2a3afe1ab50eed11ca9c71b5a48d7ad3d918a7ac7b842057135",
+    "tests/fixtures/launch_child.rs": "8e2b67aa00df2e302e9e8da1d0609a988eace5d595d5d5a5d85fb6be9d5160df",
+    "tests/fixtures/spawn_guard_probe.rs": "c6ab12559ef80c9158830d5bc68dd5a393e9122df48d008db640b7577bcb7006",
+    "LAUNCH_CHAIN.md": "67d93c23d12bacc852fa5f150e7e480ceae985456b6b1271a7969802ca254ce2",
+    "LAUNCH_GUARD_DESIGN.md": "ae47d7afcae93f60ee31e3749c044e15afe0c08e8d76f2b51a2d0c4b77ff88ea"
+  },
+  "frontend": {
+    "frontend_revision": "c0107f1803c73398a99f8ddd27ed712c0ed2e1b4",
+    "current_frontend_revision": "90b9d5472e620255af740b55315e2cf75c1c9115",
+    "identical_native_module_sha256": {
+      "session.rs": "2f5bc0e38bba77c7a0feb52c9a46a64f8d3d93d01cd3da2bb4fa87ea938c8f20",
+      "transport.rs": "e1f75758dab1ed8bf26eef8a9d3aa94d12ec8acf580ab713508a9c791143ca82",
+      "modpack_preview.rs": "503baae9143619d66ac304a11160dca956b8db490bd9a9ab620bdb9db0f26519"
+    }
+  },
+  "final_build_only_artifacts": {
+    "core_sha256": "dad858d76f05cc4fad65814b03790a83e02e9244c5fa1d3155f882b89c1fd1f5",
+    "native_child_sha256": "97c1d19da1282d92f82e8173988bc591797ff732fab98c944728c7c132a97f7a",
+    "test_binary_sha256": "66b68bdd550ac812746f807c18da9adbbafa9cbfdf08ed85cb563cd7cd0b09b0",
+    "source_commit": "a87c3afac372653acb0ca9bd1a92b0fc9a743a0d"
+  },
+  "final_build_only_artifacts_note": "These exact hashes were emitted by the final build-only command, not a successful runtime. Failed run computed hashes internally but the earlier runner did not print them before failure, so exact failed-test-binary identity is not claimed.",
+  "executed_chain": {
+    "test": "isolated_native_session_launch_execute_chain",
+    "attempts": 2,
+    "passed": 0,
+    "failed": 1,
+    "ignored": 0,
+    "counts_scope": "per attempt",
+    "guard_selftests": "passed on each attempt",
+    "exact_test_inventory": "one intended test only",
+    "last_observed": "real Session handshake then first launch.execute returns CORE_RPC_EOF",
+    "not_reached": [
+      "JAVA_NOT_FOUND semantic error",
+      "launch started",
+      "stdout/stderr forwarding",
+      "terminal process result",
+      "cleanup assertions",
+      "retry",
+      "close/reopen"
+    ]
+  },
+  "diagnostic": {
+    "rustc": "1.99.1 (58cf8f9c3 2026-10-13)",
+    "host": "x86_64-unknown-linux-gnu",
+    "empty_pre_exec_missing_path": "SIGSYS, shell exit 159",
+    "empty_pre_exec_successful_owned_child": {
+      "parent_returncode": -31,
+      "stderr": "before successful child spawn\nbenign child started\n"
+    },
+    "retained_reproducer": "tests/fixtures/spawn_guard_probe.rs compiled only; historical diagnostic runs used equivalent temporary programs",
+    "static_evidence": "std Command::spawn parent recv@GLIBC; failed-exec child Socket::write calls write@GLIBC",
+    "strace": "PTRACE_TRACEME rejected by OS; no retry or workaround"
+  },
+  "checks": {
+    "core_build": "offline locked passed; production source unchanged",
+    "launch_harness_build": "offline locked passed, test not rerun after blocker isolation",
+    "retained_probe_build": "passed, not executed",
+    "clippy": "passed with five pre-existing warnings in unchanged imported transport.rs; none from new test",
+    "default_off": "default cargo test --no-run JSON omitted launch_chain target; no tests executed",
+    "python_compile": "passed",
+    "rustfmt": "passed",
+    "git_diff_check": "passed"
+  },
+  "evidence_files": {
+    "traces/native-launch-blocked-20261106/build-only.log": "e557c65e1bc06fd36c76c558dd5a3ebf2b5997e04510cd3f1e4448ee9aa26dea",
+    "traces/native-launch-blocked-20261106/clippy.log": "ec2c46cb21d057d636bc5793f5c7de875bdcfd298ad549865931c8b45df3d07a",
+    "traces/native-launch-blocked-20261106/failed-run.json": "96e0555f7109d68a0d1531ccf0c577b17bbd6928efbdabd1bbcc5e459c7438f2",
+    "traces/native-launch-blocked-20261106/static-spawn-channel.json": "80c05230781d05e3a02c136ba58c62fa188edcb7e74aed590a938bd0d0e65b8d",
+    "traces/native-launch-blocked-20261106/strace-unavailable.log": "01c79a7d47475a07737aecab58d739206fd0dcf4a572f2efdab84f037f393c00"
+  },
+  "limits": "No passing native launch chain, Tauri/UI, Java/JVM/game, real accounts, archive/runtime acquisition, cancellation or cross-platform validation. Future filter proposal is design-only, unimplemented and unverified."
+}

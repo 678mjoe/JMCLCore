@@ -1,0 +1,2 @@
+# Preserve test harness output byte-for-byte, including its terminal blank line.
+*/test-output.txt whitespace=-blank-at-eof
