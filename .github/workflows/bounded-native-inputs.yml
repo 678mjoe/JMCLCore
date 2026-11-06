@@ -33,7 +33,7 @@ jobs:
           persist-credentials: false
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
-          ref: 1f35702440403de2fa6a24528c7bfd50a0e56095
+          ref: a4ad20ac62415397cbe6495ce238bbbcef61e2ad
           path: source
           persist-credentials: false
       - name: Install official pinned compiler only
