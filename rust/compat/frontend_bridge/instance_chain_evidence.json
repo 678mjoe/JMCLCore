@@ -1,0 +1,49 @@
+{
+  "recorded_at_utc": "2026-11-06T07:16:12.974752+00:00",
+  "core_source_base": "dc3c9f7",
+  "core_source_tree": "82967e646ca18439767ace3b701e5f5fb9ff35c0",
+  "platform": "Linux x86_64 LP64",
+  "frontend_revision": "c0107f1803c73398a99f8ddd27ed712c0ed2e1b4",
+  "subjects": [
+    {
+      "frontend": "c0107f1803c73398a99f8ddd27ed712c0ed2e1b4",
+      "module": "session.rs",
+      "sha256": "2f5bc0e38bba77c7a0feb52c9a46a64f8d3d93d01cd3da2bb4fa87ea938c8f20"
+    },
+    {
+      "frontend": "c0107f1803c73398a99f8ddd27ed712c0ed2e1b4",
+      "module": "transport.rs",
+      "sha256": "e1f75758dab1ed8bf26eef8a9d3aa94d12ec8acf580ab713508a9c791143ca82"
+    },
+    {
+      "frontend": "c0107f1803c73398a99f8ddd27ed712c0ed2e1b4",
+      "module": "modpack_preview.rs",
+      "sha256": "503baae9143619d66ac304a11160dca956b8db490bd9a9ab620bdb9db0f26519"
+    },
+    {
+      "core_sha256": "dad858d76f05cc4fad65814b03790a83e02e9244c5fa1d3155f882b89c1fd1f5"
+    }
+  ],
+  "preparation": "cargo fetch --locked succeeded; all builds thereafter offline --locked; lockfiles unchanged",
+  "guard": "16 blocked syscall probes, x32, wrong architecture, exec inheritance, local IPC and inherited FD probes passed",
+  "test": "isolated_native_session_cached_instance_chain",
+  "result": {
+    "passed": 1,
+    "failed": 0,
+    "ignored": 0,
+    "filtered_out": 0
+  },
+  "static_checks": {
+    "python_compile": "passed",
+    "rustfmt": "passed",
+    "clippy_default": "passed with 5 unchanged frontend transport warnings",
+    "clippy_deny_warnings": "failed on 4 async-trait double_must_use and 1 while_let_loop in unchanged frontend transport.rs"
+  },
+  "limits": [
+    "not Tauri IPC or UI",
+    "not real game installation or launch",
+    "no Java or archive acceptance",
+    "Linux only",
+    "guard applies to trusted binaries, not arbitrary hostile programs"
+  ]
+}

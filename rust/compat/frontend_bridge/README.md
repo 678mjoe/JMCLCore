@@ -53,3 +53,7 @@ transfer bytes. World/modpack fixtures are unrelated to Java installer archives.
 The dedicated workflow runs these same bounded checks on standard public Linux,
 Windows, macOS ARM and macOS Intel runners. It uploads no binaries or packages.
 A checked-in workflow is not evidence that those platform runs have passed.
+
+A separate local-only ordinary-instance native Session chain is documented in
+[INSTANCE_CHAIN.md](INSTANCE_CHAIN.md). It has its own explicit feature, frontend
+pin and process-level network guard; this runner and its CI do not enable it.
