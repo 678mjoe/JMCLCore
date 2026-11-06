@@ -35,8 +35,8 @@ struct Envelope<T> {
 struct Mod {
     #[serde(deserialize_with = "u32_number")]
     id: u32,
-    slug: String,
-    name: String,
+    slug: crate::content::modrinth::MetadataBytes,
+    name: crate::content::modrinth::MetadataBytes,
     #[serde(rename = "classId", deserialize_with = "u32_number")]
     class: u32,
     #[serde(default = "yes", rename = "isAvailable")]
@@ -44,7 +44,7 @@ struct Mod {
 }
 #[derive(Deserialize)]
 struct Hash {
-    value: String,
+    value: crate::content::modrinth::MetadataBytes,
     #[serde(deserialize_with = "typed_u8_number")]
     algo: u8,
 }
@@ -70,13 +70,13 @@ struct File {
     #[serde(deserialize_with = "object_vec")]
     hashes: Vec<Hash>,
     #[serde(rename = "fileDate")]
-    date: String,
+    date: crate::content::modrinth::MetadataBytes,
     #[serde(rename = "fileLength", deserialize_with = "u64_number")]
     size: u64,
     #[serde(rename = "downloadUrl")]
     url: Option<String>,
     #[serde(rename = "gameVersions")]
-    games: Vec<String>,
+    games: Vec<crate::content::modrinth::MetadataBytes>,
     #[serde(default, deserialize_with = "object_vec")]
     dependencies: Vec<Dependency>,
 }
@@ -111,17 +111,18 @@ pub fn project(bytes: &[u8]) -> Result<Project, Error> {
     if p.id == 0 {
         return Err("InvalidCurseforgeId".into());
     }
-    if p.slug.is_empty()
-        || p.slug.len() > 128
+    if p.slug.as_bytes().is_empty()
+        || p.slug.as_bytes().len() > 128
         || p.slug
-            .bytes()
-            .any(|b| !b.is_ascii_alphanumeric() && !b"-_.".contains(&b))
+            .as_bytes()
+            .iter()
+            .any(|b| !b.is_ascii_alphanumeric() && !b"-_.".contains(b))
     {
         return Err("InvalidCurseforgeSlug".into());
     }
     Ok(Project {
         class_id: p.class,
-        slug: p.slug,
+        slug: String::from_utf8(p.slug.into_bytes()).expect("validated ASCII slug"),
     })
 }
 pub fn file(bytes: &[u8]) -> Result<ProviderFile, Error> {
@@ -139,7 +140,9 @@ pub fn file(bytes: &[u8]) -> Result<ProviderFile, Error> {
     }
     if f.games.is_empty()
         || f.games.len() > 128
-        || f.games.iter().any(|s| s.is_empty() || s.len() > 64)
+        || f.games
+            .iter()
+            .any(|s| s.as_bytes().is_empty() || s.as_bytes().len() > 64)
     {
         return Err("InvalidCurseforgeGameVersions".into());
     }
@@ -149,11 +152,14 @@ pub fn file(bytes: &[u8]) -> Result<ProviderFile, Error> {
     let mut sha1 = None;
     for hash in f.hashes {
         if hash.algo == 1 {
-            if hash.value.len() != 40 || !hash.value.bytes().all(|b| b.is_ascii_hexdigit()) {
+            if hash.value.as_bytes().len() != 40
+                || !hash.value.as_bytes().iter().all(|b| b.is_ascii_hexdigit())
+            {
                 return Err("InvalidCurseforgeHash".into());
             }
             if sha1.is_none() {
-                sha1 = Some(hash.value)
+                sha1 =
+                    Some(String::from_utf8(hash.value.into_bytes()).expect("validated ASCII SHA1"))
             }
         }
     }
@@ -290,5 +296,145 @@ mod typed_numeric_tests {
             .is_err()
         );
         assert!(decode::<Envelope<Object<Hash>>>(br#"{"data":{"value":"fixture","algo":1},"pagination":{"totalCount":1.0000000000000001}}"#).is_err());
+    }
+}
+
+#[cfg(test)]
+mod opaque_metadata_tests {
+    use super::*;
+    #[test]
+    fn ignored_project_name_and_file_date_preserve_typed_bytes() {
+        for name in [r#""plain""#, "[]", "[65,255,0]", r#"["6_5",66.0]"#] {
+            let json =
+                format!(r#"{{"data":{{"id":1,"slug":"fixture","name":{name},"classId":6}}}}"#);
+            assert!(project(json.as_bytes()).is_ok(), "{name}");
+        }
+        for name in ["[256]", "[65.00000000000001]", "null", "{}"] {
+            let json =
+                format!(r#"{{"data":{{"id":1,"slug":"fixture","name":{name},"classId":6}}}}"#);
+            assert!(project(json.as_bytes()).is_err(), "{name}");
+        }
+        for date in [
+            r#""plain""#,
+            "[]",
+            "[255,0]",
+            r#"["6_5",66.0]"#,
+            "[256]",
+            "[65.00000000000001]",
+            "null",
+            "{}",
+        ] {
+            let json = format!(
+                r#"{{"data":{{"id":1,"modId":1,"fileName":"fixture.jar","releaseType":1,"hashes":[{{"value":"1111111111111111111111111111111111111111","algo":1}}],"fileDate":{date},"fileLength":1,"gameVersions":["1.20.1"]}}}}"#
+            );
+            let expected = !["[256]", "[65.00000000000001]", "null", "{}"].contains(&date);
+            assert_eq!(file(json.as_bytes()).is_ok(), expected, "{date}");
+        }
+    }
+}
+
+#[cfg(test)]
+mod byte_field_tests {
+    use super::*;
+    fn response(games: &str, hashes: &str) -> Vec<u8> {
+        format!(r#"{{"data":{{"id":1,"modId":1,"fileName":"fixture.jar","releaseType":1,"hashes":{hashes},"fileDate":"","fileLength":1,"gameVersions":{games}}}}}"#).into_bytes()
+    }
+    const SHA: &str = "1111111111111111111111111111111111111111";
+    #[test]
+    fn opaque_game_tags_and_ignored_hashes_are_typed_bytes() {
+        let hashes = format!(r#"[{{"value":"{SHA}","algo":1}},{{"value":[255,0],"algo":2}}]"#);
+        let got = file(&response("[[255,0]]", &hashes)).unwrap();
+        assert_eq!(got.sha1, SHA);
+        assert_eq!(got.name, "fixture.jar");
+        for games in ["[]", "[[]]", &format!("[{:?}]", vec![65; 65])] {
+            assert_eq!(
+                file(&response(games, &hashes)).err().unwrap().to_string(),
+                "InvalidCurseforgeGameVersions"
+            );
+        }
+        let hashes = format!(r#"[{{"value":{:?},"algo":1}}]"#, vec![49; 40]);
+        assert_eq!(file(&response("[[255]]", &hashes)).unwrap().sha1, SHA);
+        for hash in ["[255]", "[]"] {
+            let hashes = format!(r#"[{{"value":{hash},"algo":1}}]"#);
+            assert_eq!(
+                file(&response("[[255]]", &hashes))
+                    .err()
+                    .unwrap()
+                    .to_string(),
+                "InvalidCurseforgeHash"
+            );
+        }
+        assert_eq!(
+            file(&response("[[255]]", r#"[{"value":[255],"algo":2}]"#))
+                .err()
+                .unwrap()
+                .to_string(),
+            "MissingCurseforgeSha1"
+        );
+    }
+    #[test]
+    fn later_sha1_and_typed_byte_errors_are_not_ignored() {
+        for value in ["[255]", "[]", "[256]", "[65.5]", "null", "{}"] {
+            let hashes = format!(r#"[{{"value":"{SHA}","algo":1}},{{"value":{value},"algo":1}}]"#);
+            assert!(file(&response(r#"["1.20.1"]"#, &hashes)).is_err());
+        }
+        let hashes = format!(r#"[{{"value":"{SHA}","algo":1}},{{"value":[256],"algo":2}}]"#);
+        assert!(file(&response(r#"["1.20.1"]"#, &hashes)).is_err());
+        let hashes = format!(r#"[{{"value":"{SHA}","algo":1}}]"#);
+        for games in ["[[256]]", "[[65.5]]", "[null]", "[{}]"] {
+            assert!(file(&response(games, &hashes)).is_err());
+        }
+        assert!(file(&response(&format!("[{:?}]", vec![255; 64]), &hashes)).is_ok());
+        assert!(
+            file(&response(
+                &format!("[{}]", vec!["[255]"; 128].join(",")),
+                &hashes
+            ))
+            .is_ok()
+        );
+        assert_eq!(
+            file(&response(
+                &format!("[{}]", vec!["[255]"; 129].join(",")),
+                &hashes
+            ))
+            .err()
+            .unwrap()
+            .to_string(),
+            "InvalidCurseforgeGameVersions"
+        );
+    }
+}
+
+#[cfg(test)]
+mod slug_byte_tests {
+    use super::*;
+    #[test]
+    fn project_slug_typed_bytes_validate_before_lossless_conversion() {
+        for slug in [
+            r#""a-Z_9.""#,
+            "[97,45,90,95,57,46]",
+            r#"["97",45.0,90,95,57,46]"#,
+        ] {
+            let raw = format!(r#"{{"data":{{"id":1,"slug":{slug},"name":"","classId":6}}}}"#);
+            assert_eq!(project(raw.as_bytes()).unwrap().slug, "a-Z_9.");
+        }
+        for slug in [
+            "[]",
+            "[255]",
+            "[0]",
+            "[47]",
+            &format!("{:?}", vec![97; 129]),
+        ] {
+            let raw = format!(r#"{{"data":{{"id":1,"slug":{slug},"name":"","classId":6}}}}"#);
+            assert_eq!(
+                project(raw.as_bytes()).err().unwrap().to_string(),
+                "InvalidCurseforgeSlug"
+            );
+        }
+        let raw = br#"{"data":{"id":0,"slug":[255],"name":"","classId":6}}"#;
+        assert_eq!(
+            project(raw).err().unwrap().to_string(),
+            "InvalidCurseforgeId"
+        );
     }
 }

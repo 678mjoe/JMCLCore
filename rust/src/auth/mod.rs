@@ -346,7 +346,10 @@ fn https(s: &str) -> bool {
         return false;
     }
     let host = if let Some((host, port)) = authority.rsplit_once(':') {
-        if port.parse::<u16>().is_err() {
+        if crate::cli_number::unsigned(port)
+            .and_then(|n| u16::try_from(n).ok())
+            .is_none()
+        {
             return false;
         }
         host
@@ -368,6 +371,10 @@ fn https(s: &str) -> bool {
         }
         decoded.push(bytes[i]);
         i += 1;
+    }
+    // Zig Uri.Component.toRaw uses a 255-byte buffer only for percent decoding.
+    if host.contains('%') && decoded.len() > 255 {
+        return false;
     }
     let host = decoded.strip_suffix(b".").unwrap_or(&decoded);
     if host.is_empty() || host.len() > 255 {
@@ -960,3 +967,44 @@ mod request_param_tests;
 #[cfg(test)]
 #[path = "../../tests/support/auth_preflight.rs"]
 mod preflight_tests;
+
+#[cfg(test)]
+mod port_syntax_tests {
+    #[test]
+    fn verification_uri_port_matches_zig_decimal_syntax() {
+        for port in ["443", "4_43", "4__43", "+443", "-0", "0", "65535"] {
+            assert!(
+                super::https(&format!("https://example.com:{port}/link")),
+                "{port}"
+            );
+        }
+        for port in ["_443", "443_", "+_443", "-1", "65536", "", "0x1", "1.0"] {
+            assert!(
+                !super::https(&format!("https://example.com:{port}/link")),
+                "{port}"
+            );
+        }
+        for uri in [
+            "http://example.com:4_43/link",
+            "https://user@example.com:4_43/link",
+            "https://bad host:4_43/link",
+            "https://:4_43/link",
+        ] {
+            assert!(!super::https(uri), "{uri}");
+        }
+    }
+}
+
+#[cfg(test)]
+mod host_decode_bound_tests {
+    #[test]
+    fn percent_decoding_retains_original_fixed_buffer_bound() {
+        let raw = vec!["a".repeat(63); 4].join(".");
+        assert_eq!(raw.len(), 255);
+        assert!(super::https(&format!("https://{raw}/")));
+        assert!(super::https(&format!("https://{raw}./")));
+        let encoded = format!("%61{}", &raw[1..]);
+        assert!(super::https(&format!("https://{encoded}/")));
+        assert!(!super::https(&format!("https://{encoded}./")));
+    }
+}

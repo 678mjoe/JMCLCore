@@ -163,6 +163,10 @@ impl Root {
         m.validate().map_err(invalid)?;
         self.create_with(&m.id, || m.encode().map_err(invalid))
     }
+    pub(crate) fn create_read(&self, m: &ReadManifest) -> io::Result<()> {
+        m.validate().map_err(invalid)?;
+        self.create_with(&m.id, || m.encode().map_err(invalid))
+    }
     // Callers validate the manifest/ID before entering this anchored writer.
     // Encoding remains after directory creation, preserving cleanup on failure.
     pub(super) fn create_with(

@@ -1,10 +1,10 @@
 {
   "schema_version": 1,
-  "reviewed_commit": "acc1b543dee584567c15a9b29a258fc4f96cd0af",
+  "reviewed_commit": "40066553938f51f478ef16582b74889c86c225e2",
   "oracle_commit": "5a4310debbcee26b3d2391bab2339f79cd6ec52e",
   "source_digest_encoding": "utf8_crlf_to_lf",
   "source_sha256": {
-    "rust/src/auth/mod.rs": "ebdfe18fd74fe31dc3a5572adb2937994513dddc473a48c19911774a1e888eab",
+    "rust/src/auth/mod.rs": "08f9bb997c6a9ffe7f91c1328f243efd8e75f1fc430e6a30594a5e1b31bebd99",
     "rust/src/content/rpc.rs": "305ef2ed5f8cadd7ea0aabc0d24696cc261199014024d1a42c25c780c00a0257",
     "rust/src/content/registry.rs": "3aaac2096515b10eced77ee2b0c890cf3d06926ab49f537a8947eca50724a9b9",
     "rust/src/server_content.rs": "08f47b123e4e2147ab3a3564faaccad1f8c0cf03f84487393b262036c5ea762f",
@@ -15,7 +15,7 @@
     "rust/src/version.rs": "4faf9474e84ae7e98f6bab886e50040171ed0630c4003e2df3c171f67057668b",
     "rust/src/java/select.rs": "e8e9c0f07ad7eaad106d998489af240ff089079118ead7a3055a8fd2c43fec6e",
     "rust/src/accounts.rs": "f1efb49ca4cc61a7f5a3fb6859a9d0e91aff6d4d66178dc4fa5795e8f0867117",
-    "rust/src/instances.rs": "3abe78c16ce659b3d5ff04565bb85344b427ab578032d894cfaf86e7d91c4163",
+    "rust/src/instances.rs": "13e88a91b80dcca858ca0906432707a93233fffc2d53a0d0fa20b7fcdbf5446d",
     "rust/src/worlds/rpc.rs": "c2d852a361b99ce13246a8c74b4c11c7943d6a684b4730f13b2bc061d0d86f83",
     "rust/src/worlds/mod.rs": "4ba808be41ea28d5965ed01f5d2e88b60045212ccba0a7fab4ccc372692d7b95",
     "rust/src/content/mod.rs": "b2f4a5ad98e611e016f9cecc4a004543253950142cd3535fe68791476e25ad04",

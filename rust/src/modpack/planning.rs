@@ -2,6 +2,7 @@ use super::{
     Error, Selection,
     schema::{self, Curseforge, Mrpack},
 };
+use crate::content::modrinth::MetadataBytes;
 use crate::{
     content::registry::{Entry, Kind, Provider, Source},
     plan::{File, Plan, Target, Usage},
@@ -36,16 +37,18 @@ impl Pack {
         }
         Err("UnknownModpackFormat".into())
     }
-    pub fn identity(&self) -> Result<(String, String, Option<Selection>), Error> {
+    pub fn identity(&self) -> Result<(MetadataBytes, String, Option<Selection>), Error> {
         match self {
             Self::Modrinth(p) => Ok((
-                display_name(&p.name, p.version.as_deref()),
-                p.dependencies.minecraft.clone(),
+                display_name(&p.name, p.version.as_ref()),
+                String::from_utf8(p.dependencies.minecraft.as_bytes().to_vec())
+                    .map_err(|_| Error::from("InvalidGameVersion"))?,
                 p.dependencies.loader()?,
             )),
             Self::Curseforge(p) => Ok((
-                display_name(&p.name, p.version.as_deref()),
-                p.minecraft.version.clone(),
+                display_name(&p.name, p.version.as_ref()),
+                String::from_utf8(p.minecraft.version.as_bytes().to_vec())
+                    .map_err(|_| Error::from("InvalidGameVersion"))?,
                 p.minecraft.loader()?,
             )),
         }
@@ -57,8 +60,13 @@ impl Pack {
         }
     }
 }
-fn display_name(name: &str, version: Option<&str>) -> String {
-    version.map_or_else(|| name.into(), |v| format!("{name} {v}"))
+fn display_name(name: &MetadataBytes, version: Option<&MetadataBytes>) -> MetadataBytes {
+    let mut bytes = name.as_bytes().to_vec();
+    if let Some(version) = version {
+        bytes.push(b' ');
+        bytes.extend_from_slice(version.as_bytes());
+    }
+    bytes.into()
 }
 fn kind(path: &str) -> Option<Kind> {
     [Kind::Mod, Kind::Resourcepack, Kind::Shaderpack]
@@ -83,6 +91,7 @@ pub struct Downloads {
     pub skipped: usize,
 }
 impl Downloads {
+    /// Input must have completed Mrpack::parse/validate, including hashes and URLs.
     pub fn mrpack(pack: &Mrpack) -> Self {
         let mut result = Self {
             files: vec![],
@@ -94,12 +103,14 @@ impl Downloads {
                 result.skipped += 1;
                 continue;
             }
+            let sha1 =
+                String::from_utf8(f.hashes.sha1.as_bytes().to_vec()).expect("validated ASCII SHA1");
             let k = kind(&f.path);
             result.files.push(File {
                 path: f.path.clone(),
                 url: f.downloads[0].clone(),
                 fallback_url: f.downloads.get(1).cloned(),
-                sha1: f.hashes.sha1.clone(),
+                sha1: sha1.clone(),
                 size: f.size,
                 usage: usage(k),
             });
@@ -108,7 +119,7 @@ impl Downloads {
                 result.entries.push(Entry {
                     kind,
                     file: f.path.clone(),
-                    sha1: f.hashes.sha1.clone(),
+                    sha1: sha1.clone(),
                     size: f.size,
                     source: Source {
                         provider: if ids.is_some() {

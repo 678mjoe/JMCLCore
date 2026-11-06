@@ -7,7 +7,7 @@ use super::{
 };
 use crate::{
     install,
-    instances::{Manifest, Root},
+    instances::{DisplayName, ReadManifest, Root},
     store::{ArtifactRoot, Store},
 };
 use serde::Serialize;
@@ -21,7 +21,7 @@ pub struct LoaderSummary {
 pub struct Summary {
     pub stage: &'static str,
     pub id: String,
-    pub name: String,
+    pub name: crate::content::modrinth::MetadataBytes,
     pub version_id: String,
     pub loader: Option<LoaderSummary>,
     pub files_installed: usize,
@@ -42,6 +42,31 @@ impl From<install::Error> for Error {
     fn from(e: install::Error) -> Self {
         Self(e.0)
     }
+}
+fn pack_manifest(
+    id: &str,
+    name: &crate::content::modrinth::MetadataBytes,
+    version_id: &str,
+    loader: Option<&super::Selection>,
+) -> ReadManifest {
+    let mut manifest = ReadManifest {
+        schema_version: 1,
+        id: id.into(),
+        name: DisplayName(name.clone().into_bytes()),
+        version_id: version_id.into(),
+        fabric_loader: None,
+        neoforge_version: None,
+        forge_version: None,
+        source: "official".into(),
+    };
+    if let Some(s) = loader {
+        match s.loader {
+            Loader::Fabric => manifest.fabric_loader = Some(s.version.clone()),
+            Loader::Forge => manifest.forge_version = Some(s.version.clone()),
+            Loader::Neoforge => manifest.neoforge_version = Some(s.version.clone()),
+        }
+    }
+    manifest
 }
 /// All filesystem roots are opened before reading the pack, matching RPC/CLI.
 /// The provider receives no key here: authentication is owned by the caller.
@@ -73,24 +98,8 @@ pub fn install<T: install::Transport>(
     }
     let pack = Pack::inspect(&bytes, request.api_key.is_some())?;
     let (name, version_id, loader) = pack.identity()?;
-    let mut manifest = Manifest {
-        schema_version: 1,
-        id: request.id.into(),
-        name: name.clone(),
-        version_id: version_id.clone(),
-        fabric_loader: None,
-        neoforge_version: None,
-        forge_version: None,
-        source: "official".into(),
-    };
-    if let Some(s) = &loader {
-        match s.loader {
-            Loader::Fabric => manifest.fabric_loader = Some(s.version.clone()),
-            Loader::Forge => manifest.forge_version = Some(s.version.clone()),
-            Loader::Neoforge => manifest.neoforge_version = Some(s.version.clone()),
-        }
-    }
-    root.create(&manifest).map_err(io)?;
+    let manifest = pack_manifest(request.id, &name, &version_id, loader.as_ref());
+    root.create_read(&manifest).map_err(io)?;
     let result = (|| {
         let game = root.game_root(request.id).map_err(io)?;
         let downloads = match &pack {
@@ -156,5 +165,140 @@ mod native_error_tests {
         assert_eq!(error.name(), "BadPathName");
         let missing = super::io(std::io::Error::from(std::io::ErrorKind::NotFound));
         assert_eq!(missing.name(), "FileNotFound");
+    }
+}
+
+#[cfg(test)]
+mod display_byte_tests {
+    use super::*;
+    #[test]
+    fn display_identity_manifest_and_summary_preserve_bytes() {
+        for (name, version, expected) in [
+            (r#""Plain""#, r#""1.0""#, b"Plain 1.0".as_slice()),
+            ("[65,255]", "[66,254]", b"A\xff B\xfe".as_slice()),
+            ("[65,0]", "null", b"A\0".as_slice()),
+        ] {
+            let mr = format!(
+                r#"{{"formatVersion":1,"game":"minecraft","name":{name},"versionId":{version},"summary":[255],"files":[],"dependencies":{{"minecraft":"1.20.1"}}}}"#
+            );
+            let cf = format!(
+                r#"{{"manifestVersion":1,"manifestType":"minecraftModpack","name":{name},"version":{version},"author":[255],"files":[],"minecraft":{{"version":"1.20.1"}}}}"#
+            );
+            for pack in [
+                Pack::Modrinth(super::super::schema::Mrpack::parse(mr.as_bytes()).unwrap()),
+                Pack::Curseforge(super::super::schema::Curseforge::parse(cf.as_bytes()).unwrap()),
+            ] {
+                let (name, version_id, loader) = pack.identity().unwrap();
+                assert_eq!(name.as_bytes(), expected);
+                let manifest = pack_manifest("demo", &name, &version_id, loader.as_ref());
+                let encoded = manifest.encode().unwrap();
+                if std::str::from_utf8(expected).is_ok() {
+                    assert_eq!(
+                        crate::instances::Manifest::parse(&encoded, "demo")
+                            .unwrap()
+                            .encode()
+                            .unwrap(),
+                        encoded
+                    );
+                }
+                assert_eq!(
+                    ReadManifest::parse(&encoded, "demo").unwrap().name.0,
+                    expected
+                );
+                let summary = Summary {
+                    stage: "modpack.install",
+                    id: "demo".into(),
+                    name,
+                    version_id,
+                    loader: None,
+                    files_installed: 0,
+                    files_skipped: 0,
+                    overrides_written: 0,
+                };
+                let value = serde_json::to_value(summary).unwrap();
+                let expected_json = match std::str::from_utf8(expected) {
+                    Ok(s) => serde_json::json!(s),
+                    Err(_) => serde_json::json!(expected),
+                };
+                assert_eq!(value["name"], expected_json);
+            }
+        }
+    }
+    #[test]
+    fn display_limits_preserve_schema_then_instance_validation() {
+        for (n, v, valid) in [(254, 1, true), (255, 1, false), (256, 0, true)] {
+            let version = if v == 0 {
+                "null".into()
+            } else {
+                format!("\"{}\"", "v".repeat(v))
+            };
+            let raw = format!(
+                r#"{{"formatVersion":1,"game":"minecraft","name":"{}","versionId":{version},"files":[],"dependencies":{{"minecraft":"1.20.1"}}}}"#,
+                "n".repeat(n)
+            );
+            let cf = format!(
+                r#"{{"manifestVersion":1,"manifestType":"minecraftModpack","name":"{}","version":{version},"files":[],"minecraft":{{"version":"1.20.1"}}}}"#,
+                "n".repeat(n)
+            );
+            for pack in [
+                Pack::Modrinth(super::super::schema::Mrpack::parse(raw.as_bytes()).unwrap()),
+                Pack::Curseforge(super::super::schema::Curseforge::parse(cf.as_bytes()).unwrap()),
+            ] {
+                let (name, version_id, loader) = pack.identity().unwrap();
+                let manifest = pack_manifest("demo", &name, &version_id, loader.as_ref());
+                if valid {
+                    assert!(manifest.encode().is_ok());
+                } else {
+                    assert_eq!(manifest.encode(), Err("InvalidInstanceName"));
+                }
+            }
+        }
+        for (name, version, error) in [
+            ("[]", "null", "InvalidModpackName"),
+            ("[65]", "[]", "InvalidModpackVersion"),
+        ] {
+            let raw = format!(
+                r#"{{"formatVersion":1,"game":"minecraft","name":{name},"versionId":{version},"files":[],"dependencies":{{"minecraft":"1.20.1"}}}}"#
+            );
+            let cf = format!(
+                r#"{{"manifestVersion":1,"manifestType":"minecraftModpack","name":{name},"version":{version},"files":[],"minecraft":{{"version":"1.20.1"}}}}"#
+            );
+            assert_eq!(
+                super::super::schema::Curseforge::parse(cf.as_bytes())
+                    .unwrap_err()
+                    .name(),
+                error
+            );
+            assert_eq!(
+                super::super::schema::Mrpack::parse(raw.as_bytes())
+                    .unwrap_err()
+                    .name(),
+                error
+            );
+        }
+    }
+    #[test]
+    fn opaque_manifest_preserves_each_loader_mapping() {
+        for kind in [Loader::Fabric, Loader::Forge, Loader::Neoforge] {
+            let selected = super::super::Selection {
+                loader: kind,
+                version: "v1".into(),
+            };
+            let m = pack_manifest("demo", &vec![255].into(), "1.20.1", Some(&selected));
+            let decoded = ReadManifest::parse(&m.encode().unwrap(), "demo").unwrap();
+            assert_eq!(
+                decoded.fabric_loader.as_deref(),
+                (kind == Loader::Fabric).then_some("v1")
+            );
+            assert_eq!(
+                decoded.forge_version.as_deref(),
+                (kind == Loader::Forge).then_some("v1")
+            );
+            assert_eq!(
+                decoded.neoforge_version.as_deref(),
+                (kind == Loader::Neoforge).then_some("v1")
+            );
+            assert_eq!(decoded.name.0, [255]);
+        }
     }
 }

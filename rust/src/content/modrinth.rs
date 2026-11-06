@@ -344,7 +344,7 @@ impl From<Vec<u8>> for MetadataBytes {
     }
 }
 impl MetadataBytes {
-    pub(super) fn as_bytes(&self) -> &[u8] {
+    pub(crate) fn as_bytes(&self) -> &[u8] {
         &self.0
     }
     pub(crate) fn into_bytes(self) -> Vec<u8> {

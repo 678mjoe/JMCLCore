@@ -1,3 +1,4 @@
+use crate::content::modrinth::MetadataBytes;
 use serde::Deserialize;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -122,18 +123,18 @@ pub fn relative_path_bytes(s: &[u8]) -> Result<()> {
     Ok(())
 }
 
-fn version(s: &str, error: &str) -> Result<()> {
+fn version_bytes(s: &[u8], error: &str) -> Result<()> {
     if s.is_empty()
         || s.len() > 64
-        || s.bytes()
-            .any(|b| !b.is_ascii_alphanumeric() && !b".-_+".contains(&b))
+        || s.iter()
+            .any(|b| !b.is_ascii_alphanumeric() && !b".-_+".contains(b))
     {
         Err(error.into())
     } else {
         Ok(())
     }
 }
-fn name(s: &str, error: &str) -> Result<()> {
+fn name(s: &[u8], error: &str) -> Result<()> {
     if s.is_empty() || s.len() > 256 {
         Err(error.into())
     } else {
@@ -142,13 +143,13 @@ fn name(s: &str, error: &str) -> Result<()> {
 }
 #[derive(Debug, Clone, Deserialize)]
 pub struct Env {
-    pub client: Option<String>,
-    pub server: Option<String>,
+    pub client: Option<MetadataBytes>,
+    pub server: Option<MetadataBytes>,
 }
 #[derive(Debug, Clone, Deserialize)]
 pub struct Hashes {
-    pub sha1: String,
-    pub sha512: Option<String>,
+    pub sha1: MetadataBytes,
+    pub sha512: Option<MetadataBytes>,
 }
 #[derive(Debug, Clone, Deserialize)]
 pub struct File {
@@ -163,13 +164,13 @@ pub struct File {
 }
 #[derive(Debug, Clone, Deserialize)]
 pub struct Dependencies {
-    pub minecraft: String,
+    pub minecraft: MetadataBytes,
     #[serde(rename = "fabric-loader")]
-    pub fabric: Option<String>,
+    pub fabric: Option<MetadataBytes>,
     #[serde(rename = "quilt-loader")]
-    pub quilt: Option<String>,
-    pub forge: Option<String>,
-    pub neoforge: Option<String>,
+    pub quilt: Option<MetadataBytes>,
+    pub forge: Option<MetadataBytes>,
+    pub neoforge: Option<MetadataBytes>,
 }
 impl Dependencies {
     pub fn loader(&self) -> Result<Option<Selection>> {
@@ -186,10 +187,11 @@ impl Dependencies {
                 if selection.is_some() {
                     return Err("ModpackLoaderConflict".into());
                 }
-                version(v, "InvalidModpackLoaderVersion")?;
+                version_bytes(v.as_bytes(), "InvalidModpackLoaderVersion")?;
                 selection = Some(Selection {
                     loader,
-                    version: v.clone(),
+                    version: String::from_utf8(v.as_bytes().to_vec())
+                        .expect("validated ASCII loader version"),
                 });
             }
         }
@@ -200,11 +202,11 @@ impl Dependencies {
 pub struct Mrpack {
     #[serde(rename = "formatVersion", deserialize_with = "u32_number")]
     pub format: u32,
-    pub game: String,
-    pub name: String,
+    pub game: MetadataBytes,
+    pub name: MetadataBytes,
     #[serde(rename = "versionId")]
-    pub version: Option<String>,
-    pub summary: Option<String>,
+    pub version: Option<MetadataBytes>,
+    pub summary: Option<MetadataBytes>,
     #[serde(deserialize_with = "object_vec")]
     pub files: Vec<File>,
     #[serde(deserialize_with = "object")]
@@ -224,15 +226,15 @@ impl Mrpack {
         if self.format != 1 {
             return Err("UnsupportedModpackFormat".into());
         }
-        if self.game != "minecraft" {
+        if self.game.as_bytes() != b"minecraft" {
             return Err("UnsupportedModpackGame".into());
         }
-        name(&self.name, "InvalidModpackName")?;
+        name(self.name.as_bytes(), "InvalidModpackName")?;
         if let Some(v) = &self.version {
-            name(v, "InvalidModpackVersion")?
+            name(v.as_bytes(), "InvalidModpackVersion")?
         }
         self.dependencies.loader()?;
-        version(&self.dependencies.minecraft, "InvalidGameVersion")?;
+        version_bytes(self.dependencies.minecraft.as_bytes(), "InvalidGameVersion")?;
         if self.files.len() > 4096 {
             return Err("TooManyModpackFiles".into());
         }
@@ -247,7 +249,10 @@ impl Mrpack {
 }
 impl File {
     pub fn ships_to_client(&self) -> bool {
-        self.env.as_ref().and_then(|e| e.client.as_deref()) != Some("unsupported")
+        self.env
+            .as_ref()
+            .and_then(|e| e.client.as_ref().map(MetadataBytes::as_bytes))
+            != Some(b"unsupported")
     }
     pub fn validate(&self) -> Result<()> {
         relative_path(&self.path)?;
@@ -257,7 +262,7 @@ impl File {
         for (s, n) in std::iter::once((&self.hashes.sha1, 40))
             .chain(self.hashes.sha512.as_ref().map(|s| (s, 128)))
         {
-            if s.len() != n || !s.bytes().all(|b| b.is_ascii_hexdigit()) {
+            if s.as_bytes().len() != n || !s.as_bytes().iter().all(|b| b.is_ascii_hexdigit()) {
                 return Err("InvalidModrinthHash".into());
             }
         }
@@ -281,7 +286,7 @@ impl File {
         }
         if let Some(e) = &self.env {
             for v in [&e.client, &e.server].into_iter().flatten() {
-                if !["required", "optional", "unsupported"].contains(&v.as_str()) {
+                if ![b"required".as_slice(), b"optional", b"unsupported"].contains(&v.as_bytes()) {
                     return Err("InvalidModpackEnv".into());
                 }
             }
@@ -313,7 +318,7 @@ pub struct ModLoader {
 }
 #[derive(Debug, Clone, Deserialize)]
 pub struct Minecraft {
-    pub version: String,
+    pub version: MetadataBytes,
     #[serde(default, rename = "modLoaders", deserialize_with = "object_vec")]
     pub loaders: Vec<ModLoader>,
 }
@@ -368,12 +373,12 @@ pub struct Curseforge {
     #[serde(deserialize_with = "object")]
     pub minecraft: Minecraft,
     #[serde(rename = "manifestType")]
-    pub kind: String,
+    pub kind: MetadataBytes,
     #[serde(rename = "manifestVersion", deserialize_with = "u32_number")]
     pub format: u32,
-    pub name: String,
-    pub version: Option<String>,
-    pub author: Option<String>,
+    pub name: MetadataBytes,
+    pub version: Option<MetadataBytes>,
+    pub author: Option<MetadataBytes>,
     #[serde(deserialize_with = "object_vec")]
     pub files: Vec<Reference>,
     pub overrides: Option<String>,
@@ -389,14 +394,14 @@ impl Curseforge {
         Ok(v)
     }
     pub fn validate(&self) -> Result<()> {
-        if self.kind != "minecraftModpack" || self.format != 1 {
+        if self.kind.as_bytes() != b"minecraftModpack" || self.format != 1 {
             return Err("UnsupportedModpackFormat".into());
         }
-        name(&self.name, "InvalidModpackName")?;
+        name(self.name.as_bytes(), "InvalidModpackName")?;
         if let Some(v) = &self.version {
-            name(v, "InvalidModpackVersion")?
+            name(v.as_bytes(), "InvalidModpackVersion")?
         }
-        version(&self.minecraft.version, "InvalidGameVersion")?;
+        version_bytes(self.minecraft.version.as_bytes(), "InvalidGameVersion")?;
         if self.minecraft.loaders.len() > 4 {
             return Err("InvalidModpackLoader".into());
         }
@@ -519,5 +524,213 @@ mod numeric_wrapper_tests {
             3
         );
         assert!(parse::<Dynamic>(br#"{"n":"3.0000000000000001"}"#).is_err());
+    }
+}
+
+#[cfg(test)]
+mod env_byte_tests {
+    use super::*;
+    fn fixture(client: &str, server: &str, size: u8) -> Vec<u8> {
+        format!(r#"{{"path":"mods/a.jar","hashes":{{"sha1":"1111111111111111111111111111111111111111"}},"env":{{"client":{client},"server":{server}}},"downloads":["https://example.com/a.jar"],"fileSize":{size}}}"#).into_bytes()
+    }
+    #[test]
+    fn typed_environment_values_keep_validation_and_client_selection() {
+        for (text, ships) in [
+            ("required", true),
+            ("optional", true),
+            ("unsupported", false),
+        ] {
+            let bytes = format!("{:?}", text.as_bytes());
+            let file: File = parse(&fixture(&bytes, &bytes, 1)).unwrap();
+            file.validate().unwrap();
+            assert_eq!(file.ships_to_client(), ships);
+        }
+        let file: File = parse(&fixture("null", "null", 1)).unwrap();
+        file.validate().unwrap();
+        assert!(file.ships_to_client());
+        for value in ["[]", "[255]", "[0]", r#""other""#] {
+            let file: File = parse(&fixture(value, "null", 1)).unwrap();
+            assert_eq!(file.validate().unwrap_err().name(), "InvalidModpackEnv");
+            let file: File = parse(&fixture(value, "null", 0)).unwrap();
+            assert_eq!(
+                file.validate().unwrap_err().name(),
+                "InvalidModpackFileSize"
+            );
+        }
+    }
+    #[test]
+    fn environment_bytes_survive_complete_index_validation() {
+        let entry = String::from_utf8(fixture(
+            "[117,110,115,117,112,112,111,114,116,101,100]",
+            "null",
+            1,
+        ))
+        .unwrap();
+        let raw = format!(
+            r#"{{"formatVersion":1,"game":"minecraft","name":"fixture","dependencies":{{"minecraft":"1.20.1"}},"files":[{entry}]}}"#
+        );
+        let index = Mrpack::parse(raw.as_bytes()).unwrap();
+        assert!(!index.files[0].ships_to_client());
+        for value in ["[256]", "[65.5]", "{}"] {
+            assert!(parse::<File>(&fixture(value, "null", 1)).is_err());
+        }
+    }
+}
+
+#[cfg(test)]
+mod hash_byte_tests {
+    use super::*;
+    fn fixture(sha1: &str, sha512: &str, path: &str, size: u8, env: &str) -> Vec<u8> {
+        format!(r#"{{"formatVersion":1,"game":"minecraft","name":"fixture","dependencies":{{"minecraft":"1.20.1"}},"files":[{{"path":"{path}","hashes":{{"sha1":{sha1},"sha512":{sha512}}},"env":{{"client":"{env}"}},"downloads":["https://cdn.modrinth.com/data/A/versions/B/a.jar"],"fileSize":{size}}}]}}"#).into_bytes()
+    }
+    #[test]
+    fn typed_hashes_reach_both_plan_outputs_without_loss() {
+        let a = format!("{:?}", vec![65; 40]);
+        let b = format!("{:?}", vec![102; 128]);
+        let pack = Mrpack::parse(&fixture(&a, &b, "mods/a.jar", 1, "required")).unwrap();
+        let plan = crate::modpack::planning::Downloads::mrpack(&pack);
+        assert_eq!(plan.files[0].sha1, "A".repeat(40));
+        assert_eq!(plan.entries[0].sha1, "A".repeat(40));
+        let pack = Mrpack::parse(&fixture(&a, &b, "mods/a.jar", 1, "unsupported")).unwrap();
+        let plan = crate::modpack::planning::Downloads::mrpack(&pack);
+        assert_eq!(plan.skipped, 1);
+        assert!(plan.files.is_empty() && plan.entries.is_empty());
+    }
+    #[test]
+    fn hash_validation_keeps_path_hash_size_and_server_only_order() {
+        for sha in ["[]", "[255]", &format!("{:?}", vec![103; 40])] {
+            assert_eq!(
+                Mrpack::parse(&fixture(sha, "null", "mods/a.jar", 0, "unsupported"))
+                    .unwrap_err()
+                    .name(),
+                "InvalidModrinthHash"
+            );
+            assert_eq!(
+                Mrpack::parse(&fixture(sha, "null", "../a.jar", 0, "required"))
+                    .unwrap_err()
+                    .name(),
+                "UnsafePath"
+            );
+        }
+        let valid = format!("{:?}", vec![49; 40]);
+        assert_eq!(
+            Mrpack::parse(&fixture(&valid, "[255]", "mods/a.jar", 0, "required"))
+                .unwrap_err()
+                .name(),
+            "InvalidModrinthHash"
+        );
+        for sha in ["[256]", "[65.5]", "{}"] {
+            assert!(Mrpack::parse(&fixture(sha, "null", "mods/a.jar", 1, "required")).is_err());
+        }
+    }
+}
+
+#[cfg(test)]
+mod dependency_byte_tests {
+    use super::*;
+    fn fixture(deps: &str) -> Vec<u8> {
+        format!(r#"{{"formatVersion":1,"game":"minecraft","name":"fixture","dependencies":{deps},"files":[]}}"#).into_bytes()
+    }
+    #[test]
+    fn typed_dependency_bytes_reach_identity_and_loader() {
+        for field in ["fabric-loader", "forge", "neoforge"] {
+            let deps = format!(r#"{{"minecraft":[49,46,50,48,46,49],"{field}":[49,46,50]}}"#);
+            let pack =
+                crate::modpack::planning::Pack::Modrinth(Mrpack::parse(&fixture(&deps)).unwrap());
+            let (_, game, loader) = pack.identity().unwrap();
+            assert_eq!(game, "1.20.1");
+            assert_eq!(loader.unwrap().version, "1.2");
+        }
+    }
+    #[test]
+    fn dependency_validation_priority_stays_unchanged() {
+        for (deps, error) in [
+            (
+                r#"{"minecraft":[255],"quilt-loader":[255]}"#,
+                "UnsupportedModpackLoader",
+            ),
+            (
+                r#"{"minecraft":[255],"fabric-loader":[255],"forge":"1"}"#,
+                "InvalidModpackLoaderVersion",
+            ),
+            (
+                r#"{"minecraft":[255],"fabric-loader":"1","forge":[255]}"#,
+                "ModpackLoaderConflict",
+            ),
+            (r#"{"minecraft":[255]}"#, "InvalidGameVersion"),
+            (r#"{"minecraft":[]}"#, "InvalidGameVersion"),
+        ] {
+            assert_eq!(Mrpack::parse(&fixture(deps)).unwrap_err().name(), error);
+        }
+        for deps in [
+            r#"{"minecraft":[256]}"#,
+            r#"{"minecraft":"1","fabric-loader":[65.5]}"#,
+        ] {
+            assert!(Mrpack::parse(&fixture(deps)).is_err());
+        }
+    }
+}
+
+#[cfg(test)]
+mod kind_byte_tests {
+    use super::*;
+    #[test]
+    fn typed_pack_discriminators_keep_original_precedence() {
+        let game = format!("{:?}", b"minecraft");
+        let raw = format!(
+            r#"{{"formatVersion":1,"game":{game},"name":"fixture","dependencies":{{"minecraft":"1.20.1"}},"files":[]}}"#
+        );
+        Mrpack::parse(raw.as_bytes()).unwrap();
+        let bad = raw.replace(&game, "[255]");
+        assert_eq!(
+            Mrpack::parse(bad.as_bytes()).unwrap_err().name(),
+            "UnsupportedModpackGame"
+        );
+        let bad = bad.replace(r#""formatVersion":1"#, r#""formatVersion":2"#);
+        assert_eq!(
+            Mrpack::parse(bad.as_bytes()).unwrap_err().name(),
+            "UnsupportedModpackFormat"
+        );
+        let kind = format!("{:?}", b"minecraftModpack");
+        let raw = format!(
+            r#"{{"manifestVersion":1,"manifestType":{kind},"name":"fixture","minecraft":{{"version":"1.20.1"}},"files":[]}}"#
+        );
+        Curseforge::parse(raw.as_bytes()).unwrap();
+        let bad = raw.replace(&kind, "[255]").replace("fixture", "");
+        assert_eq!(
+            Curseforge::parse(bad.as_bytes()).unwrap_err().name(),
+            "UnsupportedModpackFormat"
+        );
+    }
+}
+
+#[cfg(test)]
+mod cf_game_byte_tests {
+    use super::*;
+    fn fixture(version: &str, loaders: &str) -> Vec<u8> {
+        format!(r#"{{"manifestVersion":1,"manifestType":"minecraftModpack","name":"fixture","minecraft":{{"version":{version},"modLoaders":{loaders}}},"files":[]}}"#).into_bytes()
+    }
+    #[test]
+    fn curseforge_game_version_bytes_reach_identity() {
+        let pack = crate::modpack::planning::Pack::Curseforge(
+            Curseforge::parse(&fixture("[49,46,50,48,46,49]", "[]")).unwrap(),
+        );
+        assert_eq!(pack.identity().unwrap().1, "1.20.1");
+        for version in ["[]", "[255]", &format!("{:?}", vec![65; 65])] {
+            for loaders in [
+                r#"[{"id":"invalid"}]"#,
+                r#"[{"id":""},{"id":""},{"id":""},{"id":""},{"id":""}]"#,
+            ] {
+                assert_eq!(
+                    Curseforge::parse(&fixture(version, loaders))
+                        .unwrap_err()
+                        .name(),
+                    "InvalidGameVersion"
+                );
+            }
+        }
+        for version in ["[256]", "[65.5]", "{}"] {
+            assert!(Curseforge::parse(&fixture(version, "[]")).is_err());
+        }
     }
 }

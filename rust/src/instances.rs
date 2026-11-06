@@ -728,6 +728,12 @@ impl Validation<'_> {
 }
 
 impl ReadManifest {
+    pub(crate) fn encode(&self) -> Result<Vec<u8>, &'static str> {
+        self.validate()?;
+        let mut bytes = serde_json::to_vec(self).map_err(|_| "InvalidInstanceManifest")?;
+        bytes.push(b'\n');
+        Ok(bytes)
+    }
     #[allow(dead_code)] // Preserved legacy read-view API.
     pub(crate) fn identity(&self) -> crate::instances::InstallationIdentity<'_> {
         crate::instances::InstallationIdentity {
@@ -1370,5 +1376,42 @@ mod create_params_tests {
         eprintln!(
             "PASS: 44 strict source-equivalent Create UTF-8/object cases; 8 opaque-field gaps and 1 outer-guarded helper-only difference explicitly asserted"
         );
+    }
+}
+
+#[cfg(test)]
+mod pack_display_write_tests {
+    use super::*;
+    #[test]
+    fn owned_temp_manifest_bytes_roundtrip_and_failed_write_cleanup() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = Root::open(temp.path().to_str().unwrap()).unwrap();
+        let mut manifest = ReadManifest {
+            schema_version: 1,
+            id: "demo".into(),
+            name: DisplayName(vec![65, 255, 0]),
+            version_id: "1.20.1".into(),
+            fabric_loader: None,
+            neoforge_version: None,
+            forge_version: None,
+            source: "official".into(),
+        };
+        root.create_read(&manifest).unwrap();
+        let disk = std::fs::read(temp.path().join("demo/instance.json")).unwrap();
+        assert_eq!(disk, manifest.encode().unwrap());
+        assert_eq!(ReadManifest::parse(&disk, "demo").unwrap(), manifest);
+        assert!(temp.path().join("demo/.minecraft").is_dir());
+        root.delete("demo").unwrap();
+        assert!(!temp.path().join("demo").exists());
+        manifest.id = "invalid".into();
+        manifest.name = DisplayName(vec![b'x'; 257]);
+        assert!(root.create_read(&manifest).is_err());
+        assert!(!temp.path().join("invalid").exists());
+        let result = root.create_with("failed", || {
+            Err(std::io::Error::other("owned fixture encode failure"))
+        });
+        assert!(result.is_err());
+        assert!(!temp.path().join("failed").exists());
+        assert_eq!(std::fs::read_dir(temp.path()).unwrap().count(), 0);
     }
 }

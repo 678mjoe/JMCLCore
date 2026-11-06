@@ -114,7 +114,7 @@ pub fn run(args: &[String], out: &mut impl Write, err: &mut impl Write) -> io::R
     )?;
     match result {
         Ok(s) => {
-            writeln!(out, "instance\t{}\t{}", s.id, s.name)?;
+            write_instance_line(out, &s.id, &s.name)?;
             writeln!(out, "minecraft\t{}", s.version_id)?;
             if let Some(l) = s.loader {
                 writeln!(out, "loader\t{}\t{}", l.name, l.version)?
@@ -197,5 +197,28 @@ mod numeric_tests {
         ] {
             assert_eq!(parse_byte_count(text), None, "{text}");
         }
+    }
+}
+
+fn write_instance_line(
+    out: &mut impl std::io::Write,
+    id: &str,
+    name: &crate::content::modrinth::MetadataBytes,
+) -> std::io::Result<()> {
+    write!(out, "instance\t{id}\t")?;
+    out.write_all(name.as_bytes())?;
+    writeln!(out)
+}
+#[cfg(test)]
+mod display_byte_tests {
+    use super::*;
+    #[test]
+    fn instance_line_keeps_opaque_bytes_and_control_characters() {
+        let mut out = Vec::new();
+        write_instance_line(&mut out, "demo", &vec![b'A', 255, 0, b' ', 254].into()).unwrap();
+        assert_eq!(out, b"instance\tdemo\tA\xff\0 \xfe\n");
+        out.clear();
+        write_instance_line(&mut out, "demo", &"Plain Pack".to_string().into()).unwrap();
+        assert_eq!(out, b"instance\tdemo\tPlain Pack\n");
     }
 }
