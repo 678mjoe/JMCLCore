@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "reviewed_commit": "dac32395639d7a1ccbd9bc795bdd3095b8a1f876",
+  "reviewed_commit": "2894afbe7d475df1fcd1ff3b9de52a62a178f777",
   "oracle_commit": "5a4310debbcee26b3d2391bab2339f79cd6ec52e",
   "source_digest_encoding": "utf8_crlf_to_lf",
   "source_sha256": {
@@ -40,7 +40,7 @@
     "rust/src/version_plan_preflight.rs": "975aadf7061663d89aafe765200ff786d6b98b371ad3c8794b0f7ad93189d23d",
     "rust/src/version_plan_native.rs": "659d2597ec3ebd8b21cd776ce5a82b39a22f26ac095e2278d305cda075d1612b",
     "rust/src/main.rs": "11ebb19e35d55452b5a89d539f100621d78d691be0c586efb273badeb03c7dd5",
-    "rust/src/install/vanilla.rs": "0e4609ee51a5ffe218c34c9b5bbe9edcf6cac889ad5678334fe49b7bbfe913b5",
+    "rust/src/install/vanilla.rs": "7a7865bcdac0bac6582a00cad131722352b10c7ff76e7c26e8d4ba3c66340588",
     "rust/src/plan_completion.rs": "eab6476abbba1f7f998b36e96b2532ae63ab408cbc30af65f3ebd4d9986a0bd0",
     "rust/src/native_bytes.rs": "028cdf49e7ca05b490b0861387012558bb1989da63cc9b5f926b34ffb9e22978",
     "rust/src/launch/instance_install.rs": "6a226d03bf8b74ffa815efee139ace99eb00813260aa16e1ee330abcdfbd4525",

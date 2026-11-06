@@ -6,6 +6,10 @@ rust-version = "1.99"
 license = "LGPL-3.0-or-later"
 publish = false
 
+[features]
+# Explicit local-only opt-in; the standard CI suite does not run this fixture.
+local-synthetic-chain-tests = []
+
 [lib]
 name = "jmcl_core_rust"
 

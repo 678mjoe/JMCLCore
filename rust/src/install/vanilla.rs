@@ -356,3 +356,6 @@ pub(crate) mod prepare;
 pub(crate) mod prepare_cli;
 
 pub(crate) mod execute_cli;
+
+#[cfg(all(test, target_os = "linux", feature = "local-synthetic-chain-tests"))]
+mod synthetic_chain_tests;
