@@ -88,11 +88,11 @@ struct Event<'a, T> {
 }
 #[derive(Serialize)]
 struct FilePayload {
-    file: install::FileEvent,
+    file: install::ByteFileEvent,
 }
 #[derive(Serialize)]
 struct RetryPayload {
-    retry: install::RetryEvent,
+    retry: install::ByteRetryEvent,
 }
 #[derive(Serialize)]
 struct ProgressPayload {
@@ -111,8 +111,31 @@ fn line(out: &mut impl Write, v: &impl Serialize) -> io::Result<()> {
     out.flush()
 }
 pub fn write_event(out: &mut impl Write, id: &str, event: install::Event) -> io::Result<()> {
+    let event = match event {
+        install::Event::File(file) => install::ByteEvent::File(install::ByteFileEvent {
+            path: file.path.into(),
+            status: file.status,
+            placement: file.placement,
+            size: file.size,
+            attempts: file.attempts,
+        }),
+        install::Event::Retry(retry) => install::ByteEvent::Retry(install::ByteRetryEvent {
+            path: retry.path.into(),
+            attempt: retry.attempt,
+            max_attempts: retry.max_attempts,
+            error_name: retry.error_name,
+        }),
+        install::Event::Progress(progress) => install::ByteEvent::Progress(progress),
+    };
+    write_byte_event(out, id, event)
+}
+pub(crate) fn write_byte_event(
+    out: &mut impl Write,
+    id: &str,
+    event: install::ByteEvent,
+) -> io::Result<()> {
     match event {
-        install::Event::File(file) => line(
+        install::ByteEvent::File(file) => line(
             out,
             &Event {
                 protocol: 1,
@@ -122,7 +145,7 @@ pub fn write_event(out: &mut impl Write, id: &str, event: install::Event) -> io:
                 payload: FilePayload { file },
             },
         ),
-        install::Event::Retry(retry) => line(
+        install::ByteEvent::Retry(retry) => line(
             out,
             &Event {
                 protocol: 1,
@@ -132,7 +155,7 @@ pub fn write_event(out: &mut impl Write, id: &str, event: install::Event) -> io:
                 payload: RetryPayload { retry },
             },
         ),
-        install::Event::Progress(progress) => line(
+        install::ByteEvent::Progress(progress) => line(
             out,
             &Event {
                 protocol: 1,
@@ -193,7 +216,7 @@ fn inner(params: Option<&RawValue>, id: &str, out: &mut impl Write) -> io::Resul
                 key: p.api_key.as_ref().map_or("", |s| s.0.as_str()),
             };
             let transport = install::HttpTransport::new()?;
-            service::install(
+            service::install_bytes(
                 service::Request {
                     directory: &p.directory,
                     store_directory: &p.store_directory,
@@ -211,7 +234,7 @@ fn inner(params: Option<&RawValue>, id: &str, out: &mut impl Write) -> io::Resul
                 Some(sink),
             )
         },
-        |event| write_event(out, id, event),
+        |event| write_byte_event(out, id, event),
     )?;
     match result {
         Ok(result) => line(
@@ -296,5 +319,84 @@ mod tests {
             |_| Ok(()),
         );
         assert!(result.is_err())
+    }
+}
+
+#[cfg(test)]
+mod byte_event_tests {
+    use super::*;
+
+    #[test]
+    fn file_and_retry_paths_preserve_utf8_or_opaque_bytes() {
+        for path in [
+            b"mods/plain.jar".to_vec(),
+            "mods/世界.jar".as_bytes().to_vec(),
+            vec![b'm', 255, 0, 254],
+        ] {
+            let expected = match std::str::from_utf8(&path) {
+                Ok(text) => serde_json::json!(text),
+                Err(_) => serde_json::json!(path),
+            };
+            let events = [
+                (
+                    "file",
+                    install::ByteEvent::File(install::ByteFileEvent {
+                        path: path.clone().into(),
+                        status: install::FileStatus::Cached,
+                        placement: "hard_link",
+                        size: 9,
+                        attempts: 0,
+                    }),
+                ),
+                (
+                    "retry",
+                    install::ByteEvent::Retry(install::ByteRetryEvent {
+                        path: path.into(),
+                        attempt: 1,
+                        max_attempts: 3,
+                        error_name: "fixture".into(),
+                    }),
+                ),
+            ];
+            for (kind, event) in events {
+                let mut out = Vec::new();
+                write_byte_event(&mut out, "request", event).unwrap();
+                assert_eq!(out.last(), Some(&b'\n'));
+                let value: serde_json::Value = serde_json::from_slice(&out).unwrap();
+                assert_eq!(value["protocol"], 1);
+                assert_eq!(value["id"], "request");
+                assert_eq!(value["event"], kind);
+                assert_eq!(value["source"], "official");
+                assert_eq!(value[kind]["path"], expected);
+                if kind == "retry" {
+                    assert_eq!(value[kind]["error"], "fixture");
+                    assert_eq!(value[kind]["attempt"], 1);
+                    assert_eq!(value[kind]["max_attempts"], 3);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn public_string_writer_retains_wire_shape() {
+        let mut out = Vec::new();
+        write_event(
+            &mut out,
+            "request",
+            install::Event::Retry(install::RetryEvent {
+                path: "mods/世界.jar".into(),
+                attempt: 1,
+                max_attempts: 3,
+                error_name: "fixture".into(),
+            }),
+        )
+        .unwrap();
+        assert_eq!(
+            serde_json::from_slice::<serde_json::Value>(&out).unwrap(),
+            serde_json::json!({
+                "protocol": 1, "id": "request", "event": "retry", "source": "official",
+                "retry": {"path": "mods/世界.jar", "attempt": 1, "max_attempts": 3, "error": "fixture"}
+            })
+        );
     }
 }

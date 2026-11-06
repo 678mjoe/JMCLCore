@@ -172,9 +172,9 @@ pub(crate) enum ByteEvent {
     Retry(ByteRetryEvent),
     Progress(Progress),
 }
-// Only the public String-plan adapter calls this. Its paths originate as &str;
-// conversion is nevertheless checked rather than lossy or unchecked.
-fn string_event(event: ByteEvent) -> Result<Event, Error> {
+// Legacy String-event adapters use checked conversion. Production byte-aware
+// paths must not call this: opaque filenames cannot be represented by Event.
+pub(crate) fn string_event(event: ByteEvent) -> Result<Event, Error> {
     let text =
         |path: BytePath| String::from_utf8(path.0).map_err(|_| Error::named("InvalidUtf8Path"));
     Ok(match event {
@@ -1287,3 +1287,52 @@ mod content_byte_tests;
 pub(crate) mod receipt;
 
 pub(crate) mod vanilla;
+
+#[cfg(test)]
+mod rebuilt_modpack_path_tests {
+    use super::*;
+    #[test]
+    fn byte_and_string_validation_agree_without_execution() {
+        for path in [
+            "",
+            "/a",
+            "a/",
+            "a//b",
+            "a/../b",
+            "a/./b",
+            "a\\b",
+            "a:b",
+            "a.",
+            "a ",
+            "CON.jar",
+            "mods/nUl.jar",
+            "COM1",
+            "LPT9",
+            "COM0",
+            "LPT10",
+            "mods/é",
+            "a\0b",
+            "a\u{7f}b",
+        ] {
+            assert_eq!(
+                ExecutionPath::String(path).validate(),
+                ExecutionPath::Bytes(path.as_bytes()).validate()
+            );
+        }
+        for byte in 0u8..=127 {
+            let path = [b'm', b'/', byte];
+            assert_eq!(
+                ExecutionPath::String(std::str::from_utf8(&path).unwrap()).validate(),
+                ExecutionPath::Bytes(&path).validate()
+            );
+        }
+        assert!(ExecutionPath::Bytes(b"mods/\xff").validate().is_ok());
+        assert_eq!(
+            ExecutionPath::Bytes(b"mods/\xff\0")
+                .validate()
+                .unwrap_err()
+                .name(),
+            "UnsafePath"
+        );
+    }
+}

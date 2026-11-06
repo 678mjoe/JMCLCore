@@ -69,7 +69,7 @@ pub fn run(args: &[String], out: &mut impl Write, err: &mut impl Write) -> io::R
                 transport: api,
                 key: key.unwrap_or(""),
             };
-            service::install(
+            service::install_bytes(
                 service::Request {
                     directory,
                     store_directory: store,
@@ -87,37 +87,14 @@ pub fn run(args: &[String], out: &mut impl Write, err: &mut impl Write) -> io::R
                 Some(sink),
             )
         },
-        |event| {
-            match event {
-                install::Event::Retry(r) => writeln!(
-                    err,
-                    "retry {}/{}: {} ({})",
-                    r.attempt, r.max_attempts, r.path, r.error_name
-                )?,
-                install::Event::Progress(p) => {
-                    if p.files_completed <= last
-                        || (p.files_completed % 100 != 0 && p.files_completed != p.files_total)
-                    {
-                        return Ok(());
-                    }
-                    last = p.files_completed;
-                    writeln!(
-                        err,
-                        "download progress: {}/{} files, {}/{} bytes verified",
-                        p.files_completed, p.files_total, p.bytes_verified, p.bytes_total
-                    )?;
-                }
-                install::Event::File(_) => {}
-            }
-            err.flush()
-        },
+        |event| write_byte_event(err, &mut last, event),
     )?;
     match result {
         Ok(s) => {
             write_instance_line(out, &s.id, &s.name)?;
             writeln!(out, "minecraft\t{}", s.version_id)?;
             if let Some(l) = s.loader {
-                writeln!(out, "loader\t{}\t{}", l.name, l.version)?
+                write_loader_line(out, &l)?
             } else {
                 writeln!(out, "loader\tvanilla")?
             }
@@ -133,6 +110,34 @@ pub fn run(args: &[String], out: &mut impl Write, err: &mut impl Write) -> io::R
             Ok(1)
         }
     }
+}
+fn write_byte_event(
+    err: &mut impl Write,
+    last: &mut usize,
+    event: install::ByteEvent,
+) -> io::Result<()> {
+    match event {
+        install::ByteEvent::Retry(r) => {
+            write!(err, "retry {}/{}: ", r.attempt, r.max_attempts)?;
+            err.write_all(r.path.as_ref())?;
+            writeln!(err, " ({})", r.error_name)?;
+        }
+        install::ByteEvent::Progress(p) => {
+            if p.files_completed <= *last
+                || (p.files_completed % 100 != 0 && p.files_completed != p.files_total)
+            {
+                return Ok(());
+            }
+            *last = p.files_completed;
+            writeln!(
+                err,
+                "download progress: {}/{} files, {}/{} bytes verified",
+                p.files_completed, p.files_total, p.bytes_verified, p.bytes_total
+            )?;
+        }
+        install::ByteEvent::File(_) => {}
+    }
+    err.flush()
 }
 fn write_error(err: &mut impl Write, e: &Error) -> io::Result<()> {
     let message = match e.name() {
@@ -220,5 +225,92 @@ mod display_byte_tests {
         out.clear();
         write_instance_line(&mut out, "demo", &"Plain Pack".to_string().into()).unwrap();
         assert_eq!(out, b"instance\tdemo\tPlain Pack\n");
+    }
+}
+
+#[cfg(test)]
+mod byte_event_tests {
+    use super::*;
+
+    #[test]
+    fn retry_writes_original_path_bytes() {
+        for path in [
+            b"mods/plain.jar".to_vec(),
+            "mods/世界.jar".as_bytes().to_vec(),
+            vec![b'm', 255, 0, 254],
+        ] {
+            let mut expected = b"retry 1/3: ".to_vec();
+            expected.extend_from_slice(&path);
+            expected.extend_from_slice(b" (fixture)\n");
+            let mut out = Vec::new();
+            let mut last = 0;
+            write_byte_event(
+                &mut out,
+                &mut last,
+                install::ByteEvent::Retry(install::ByteRetryEvent {
+                    path: path.into(),
+                    attempt: 1,
+                    max_attempts: 3,
+                    error_name: "fixture".into(),
+                }),
+            )
+            .unwrap();
+            assert_eq!(out, expected);
+            assert_eq!(last, 0);
+        }
+    }
+
+    #[test]
+    fn progress_keeps_throttle_and_completion_behavior() {
+        let mut out = Vec::new();
+        let mut last = 0;
+        for completed in [1, 100, 100, 101] {
+            write_byte_event(
+                &mut out,
+                &mut last,
+                install::ByteEvent::Progress(install::Progress {
+                    files_completed: completed,
+                    files_total: 101,
+                    bytes_verified: 9,
+                    bytes_processed: 10,
+                    bytes_total: 11,
+                    bytes_transferred: 12,
+                }),
+            )
+            .unwrap();
+        }
+        assert_eq!(out, b"download progress: 100/101 files, 9/11 bytes verified\ndownload progress: 101/101 files, 9/11 bytes verified\n");
+        assert_eq!(last, 101);
+    }
+}
+
+fn write_loader_line(out: &mut impl Write, loader: &service::LoaderSummary) -> io::Result<()> {
+    write!(out, "loader\t{}\t", loader.name)?;
+    out.write_all(loader.version.as_bytes())?;
+    writeln!(out)
+}
+#[cfg(test)]
+mod rebuilt_cf_byte_tests {
+    use super::*;
+    #[test]
+    fn loader_line_keeps_raw_bytes_and_write_errors() {
+        let loader = service::LoaderSummary {
+            name: "fabric".into(),
+            version: vec![255, 0, b'-', 254].into(),
+        };
+        let mut out = vec![];
+        write_loader_line(&mut out, &loader).unwrap();
+        assert_eq!(out, b"loader\tfabric\t\xff\0-\xfe\n");
+        assert!(write_loader_line(&mut [0u8; 15].as_mut_slice(), &loader).is_err());
+        out.clear();
+        write_loader_line(
+            &mut out,
+            &service::LoaderSummary {
+                name: "forge".into(),
+                version: "47.2.0".to_string().into(),
+            },
+        )
+        .unwrap();
+        assert_eq!(out, b"loader\tforge\t47.2.0\n");
     }
 }

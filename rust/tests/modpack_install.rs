@@ -242,7 +242,7 @@ impl CurseforgeProvider for Cf {
         Ok(ProviderFile {
             id,
             project,
-            name: format!("{id}.jar"),
+            name: format!("{id}.jar").into(),
             sha1: format!("{:x}", Sha1::digest(b"hello")),
             size: 5,
             url: None,

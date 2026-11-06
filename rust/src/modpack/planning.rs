@@ -4,8 +4,8 @@ use super::{
 };
 use crate::content::modrinth::MetadataBytes;
 use crate::{
-    content::registry::{Entry, Kind, Provider, Source},
-    plan::{File, Plan, Target, Usage},
+    content::registry::{EntryRecord, Kind, Provider, Source},
+    plan::{Target, Usage},
 };
 pub const MAX_PACK_BYTES: usize = 512 * 1024 * 1024;
 #[derive(Debug)]
@@ -53,10 +53,15 @@ impl Pack {
             )),
         }
     }
-    pub fn override_directories(&self) -> Vec<&str> {
+    pub fn override_directories(&self) -> Vec<&[u8]> {
         match self {
-            Self::Modrinth(_) => vec!["overrides", "client-overrides"],
-            Self::Curseforge(p) => vec![p.overrides.as_deref().unwrap_or("overrides")],
+            Self::Modrinth(_) => vec![b"overrides", b"client-overrides"],
+            Self::Curseforge(p) => vec![
+                p.overrides
+                    .as_ref()
+                    .map(MetadataBytes::as_bytes)
+                    .unwrap_or(b"overrides"),
+            ],
         }
     }
 }
@@ -68,12 +73,12 @@ fn display_name(name: &MetadataBytes, version: Option<&MetadataBytes>) -> Metada
     }
     bytes.into()
 }
-fn kind(path: &str) -> Option<Kind> {
+fn kind(path: &[u8]) -> Option<Kind> {
     [Kind::Mod, Kind::Resourcepack, Kind::Shaderpack]
         .into_iter()
         .find(|k| {
-            path.strip_prefix(k.directory())
-                .is_some_and(|s| s.starts_with('/') && s.len() > 1)
+            path.strip_prefix(k.directory().as_bytes())
+                .is_some_and(|s| s.starts_with(b"/") && s.len() > 1)
         })
 }
 fn usage(kind: Option<Kind>) -> Usage {
@@ -84,10 +89,47 @@ fn usage(kind: Option<Kind>) -> Usage {
         ..Usage::default()
     }
 }
+/// Modpack paths preserve the original typed bytes; URL transport remains String.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct File {
+    pub path: MetadataBytes,
+    pub url: String,
+    pub fallback_url: Option<String>,
+    pub sha1: String,
+    pub size: u64,
+    pub usage: Usage,
+}
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct Plan {
+    pub version_id: String,
+    pub source: crate::metadata::Source,
+    pub target: Target,
+    pub files: Vec<File>,
+    pub classpath: Vec<String>,
+    pub native_extractions: Vec<crate::plan::NativeExtraction>,
+    pub asset_projections: Vec<crate::plan::AssetProjection>,
+    pub total_download_size: u64,
+    pub java_major_version: u16,
+    pub loader: String,
+}
+impl Plan {
+    pub(crate) fn execution_files(&self) -> Vec<crate::install::ByteFile> {
+        self.files
+            .iter()
+            .map(|f| crate::install::ByteFile {
+                path: f.path.as_bytes().to_vec().into(),
+                url: f.url.clone(),
+                fallback_url: f.fallback_url.clone(),
+                sha1: f.sha1.clone(),
+                size: f.size,
+            })
+            .collect()
+    }
+}
 #[derive(Debug)]
 pub struct Downloads {
     pub files: Vec<File>,
-    pub entries: Vec<Entry>,
+    pub entries: Vec<EntryRecord<crate::content::ListedPath>>,
     pub skipped: usize,
 }
 impl Downloads {
@@ -105,7 +147,7 @@ impl Downloads {
             }
             let sha1 =
                 String::from_utf8(f.hashes.sha1.as_bytes().to_vec()).expect("validated ASCII SHA1");
-            let k = kind(&f.path);
+            let k = kind(f.path.as_bytes());
             result.files.push(File {
                 path: f.path.clone(),
                 url: f.downloads[0].clone(),
@@ -116,9 +158,9 @@ impl Downloads {
             });
             if let Some(kind) = k {
                 let ids = schema::modrinth_ids(&f.downloads[0]);
-                result.entries.push(Entry {
+                result.entries.push(EntryRecord {
                     kind,
-                    file: f.path.clone(),
+                    file: crate::content::ListedPath(f.path.as_bytes().to_vec()),
                     sha1: sha1.clone(),
                     size: f.size,
                     source: Source {
@@ -170,7 +212,7 @@ pub struct Project {
 pub struct ProviderFile {
     pub id: u32,
     pub project: u32,
-    pub name: String,
+    pub name: MetadataBytes,
     pub sha1: String,
     pub size: u64,
     pub url: Option<String>,
@@ -212,21 +254,23 @@ impl Downloads {
                 None => provider.download_url(r.project, f.id)?,
             }
             .ok_or(Error::from("CurseforgeDownloadUnavailable"))?;
-            let path = format!("{}/{}", kind.directory(), f.name);
+            let mut path = kind.directory().as_bytes().to_vec();
+            path.push(b'/');
+            path.extend_from_slice(f.name.as_bytes());
             if !paths.insert(path.clone()) {
                 return Err("DuplicateModpackFile".into());
             }
             result.files.push(File {
-                path: path.clone(),
+                path: path.clone().into(),
                 url,
                 fallback_url: None,
                 sha1: f.sha1.clone(),
                 size: f.size,
                 usage: usage(Some(*kind)),
             });
-            result.entries.push(Entry {
+            result.entries.push(EntryRecord {
                 kind: *kind,
-                file: path,
+                file: crate::content::ListedPath(path),
                 sha1: f.sha1,
                 size: f.size,
                 source: Source {
@@ -247,23 +291,26 @@ impl Downloads {
 pub fn overrides_bytes(
     bytes: &[u8],
     directory: &str,
+    write: impl FnMut(&[u8], &[u8]) -> Result<(), Error>,
+) -> Result<usize, Error> {
+    overrides_directory_bytes(bytes, directory.as_bytes(), write)
+}
+
+/// Byte-directory core; String-directory entry points preserve their existing contract.
+pub(crate) fn overrides_directory_bytes(
+    bytes: &[u8],
+    directory: &[u8],
     mut write: impl FnMut(&[u8], &[u8]) -> Result<(), Error>,
 ) -> Result<usize, Error> {
-    let prefix = format!("{directory}/");
+    let mut prefix = directory.to_vec();
+    prefix.push(b'/');
     let mut it = super::archive::Entries::new(bytes)?;
     let mut count = 0;
     let mut total = 0u64;
     while let Some(e) = it.next_entry()? {
-        let Some(relative) = e.name.strip_prefix(prefix.as_bytes()) else {
+        let Some(relative) = override_relative(e.name, &prefix)? else {
             continue;
         };
-        if relative.is_empty() {
-            continue;
-        }
-        schema::relative_path_bytes(relative)?;
-        if relative.len() > 512 {
-            return Err("InvalidModpackOverride".into());
-        }
         if count >= 8192 {
             return Err("TooManyModpackOverrides".into());
         }
@@ -291,4 +338,107 @@ pub fn overrides(
             data,
         )
     })
+}
+
+#[cfg(test)]
+mod rebuilt_path_tests {
+    use super::*;
+    #[test]
+    fn parsed_schema_preserves_executor_fields_and_plan_overflow_guard() {
+        let pack=Mrpack::parse(br#"{"formatVersion":1,"game":"minecraft","name":"fixture","files":[{"path":[109,111,100,115,47,255],"hashes":{"sha1":"1111111111111111111111111111111111111111"},"downloads":["https://example.test/a","https://example.test/b"],"fileSize":1}],"dependencies":{"minecraft":"1.21"}}"#).unwrap();
+        let mut d = Downloads::mrpack(&pack);
+        let p = d.plan("1.21").unwrap();
+        let f = p.execution_files();
+        assert_eq!(f[0].path.as_ref(), b"mods/\xff");
+        assert_eq!(f[0].url, p.files[0].url);
+        assert_eq!(f[0].fallback_url, p.files[0].fallback_url);
+        assert_eq!(f[0].sha1, p.files[0].sha1);
+        assert_eq!(f[0].size, p.files[0].size);
+        assert!(p.files[0].usage.mod_file);
+        assert_eq!(p.target, Target::host().unwrap());
+        assert!(p.classpath.is_empty());
+        assert!(p.native_extractions.is_empty());
+        assert!(p.asset_projections.is_empty());
+        // Valid schemas cannot overflow their bounded counts/sizes. Mutate a
+        // fully decoded fixture solely to exercise the retained checked guard.
+        d.files[0].size = u64::MAX;
+        let mut next = d.files[0].clone();
+        next.size = 1;
+        d.files.push(next);
+        assert_eq!(d.plan("1.21").unwrap_err().name(), "DownloadSizeOverflow");
+    }
+}
+
+/// Select first, skip the directory record, then validate path before length/budgets.
+fn override_relative<'a>(name: &'a [u8], prefix: &[u8]) -> Result<Option<&'a [u8]>, Error> {
+    let Some(relative) = name.strip_prefix(prefix) else {
+        return Ok(None);
+    };
+    if relative.is_empty() {
+        return Ok(None);
+    }
+    schema::relative_path_bytes(relative)?;
+    if relative.len() > 512 {
+        return Err("InvalidModpackOverride".into());
+    }
+    Ok(Some(relative))
+}
+
+#[cfg(test)]
+mod rebuilt_override_byte_tests {
+    use super::*;
+    #[test]
+    fn byte_directory_selection_and_relative_validation_are_lossless() {
+        // Only pure path selection/validation, never archive construction or reads.
+        let raw = br#"{"manifestType":"minecraftModpack","manifestVersion":1,"name":"Pack","files":[],"minecraft":{"version":"1.20.1"},"overrides":[255,47,254]}"#;
+        let pack = Pack::Curseforge(Curseforge::parse(raw).unwrap());
+        assert_eq!(pack.override_directories(), vec![b"\xff/\xfe".as_slice()]);
+        let mut prefix = pack.override_directories()[0].to_vec();
+        prefix.push(b'/');
+        assert_eq!(
+            override_relative(b"\xff/\xfe/config/\xfd", &prefix).unwrap(),
+            Some(b"config/\xfd".as_slice())
+        );
+        assert_eq!(override_relative(b"\xff/\xfe/", &prefix).unwrap(), None);
+        assert_eq!(override_relative(b"other/../bad", &prefix).unwrap(), None);
+        assert_eq!(
+            override_relative(b"\xff/\xfe-other/config", &prefix).unwrap(),
+            None
+        );
+        for path in [
+            b"../escape".as_slice(),
+            b"x/../escape",
+            b"x\0",
+            b"x/",
+            b"x\\y",
+            b"x:stream",
+        ] {
+            let name = [prefix.as_slice(), path].concat();
+            assert_eq!(
+                override_relative(&name, &prefix).unwrap_err().name(),
+                "UnsafePath"
+            );
+        }
+        for (len, error) in [(512, None), (513, Some("InvalidModpackOverride"))] {
+            let name = [prefix.as_slice(), &vec![255; len]].concat();
+            assert_eq!(
+                override_relative(&name, &prefix).err().map(|e| e.0),
+                error.map(str::to_owned)
+            );
+        }
+        let invalid_long = [prefix.as_slice(), b"../", &vec![255; 513]].concat();
+        assert_eq!(
+            override_relative(&invalid_long, &prefix)
+                .unwrap_err()
+                .name(),
+            "UnsafePath"
+        );
+        let default = String::from_utf8(raw.to_vec())
+            .unwrap()
+            .replace(",\"overrides\":[255,47,254]", "");
+        assert_eq!(
+            Pack::Curseforge(Curseforge::parse(default.as_bytes()).unwrap()).override_directories(),
+            vec![b"overrides".as_slice()]
+        );
+    }
 }

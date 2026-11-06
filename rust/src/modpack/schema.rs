@@ -38,7 +38,7 @@ impl Loader {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Selection {
     pub loader: Loader,
-    pub version: String,
+    pub version: MetadataBytes,
 }
 fn number<'de, D: serde::Deserializer<'de>, const MAX: u64>(
     d: D,
@@ -153,7 +153,7 @@ pub struct Hashes {
 }
 #[derive(Debug, Clone, Deserialize)]
 pub struct File {
-    pub path: String,
+    pub path: MetadataBytes,
     #[serde(deserialize_with = "object")]
     pub hashes: Hashes,
     #[serde(default, deserialize_with = "optional_object")]
@@ -190,8 +190,7 @@ impl Dependencies {
                 version_bytes(v.as_bytes(), "InvalidModpackLoaderVersion")?;
                 selection = Some(Selection {
                     loader,
-                    version: String::from_utf8(v.as_bytes().to_vec())
-                        .expect("validated ASCII loader version"),
+                    version: v.clone(),
                 });
             }
         }
@@ -255,8 +254,8 @@ impl File {
             != Some(b"unsupported")
     }
     pub fn validate(&self) -> Result<()> {
-        relative_path(&self.path)?;
-        if self.path.len() > 512 {
+        relative_path_bytes(self.path.as_bytes())?;
+        if self.path.as_bytes().len() > 512 {
             return Err("InvalidModpackFile".into());
         }
         for (s, n) in std::iter::once((&self.hashes.sha1, 40))
@@ -312,7 +311,7 @@ pub fn modrinth_ids(url: &str) -> Option<(&str, &str)> {
 }
 #[derive(Debug, Clone, Deserialize)]
 pub struct ModLoader {
-    pub id: String,
+    pub id: MetadataBytes,
     #[serde(default)]
     pub primary: bool,
 }
@@ -326,24 +325,27 @@ impl Minecraft {
     pub fn loader(&self) -> Result<Option<Selection>> {
         let mut selected: Option<Selection> = None;
         for m in &self.loaders {
-            if m.id.is_empty() || m.id.len() > 128 {
+            let id = m.id.as_bytes();
+            if id.is_empty() || id.len() > 128 {
                 return Err("InvalidModpackLoader".into());
             }
-            let (kind, v) =
-                m.id.split_once('-')
-                    .ok_or(Error::from("InvalidModpackLoader"))?;
+            let separator = id
+                .iter()
+                .position(|b| *b == b'-')
+                .ok_or(Error::from("InvalidModpackLoader"))?;
+            let (kind, v) = (&id[..separator], &id[separator + 1..]);
             if v.is_empty() {
                 return Err("InvalidModpackLoader".into());
             }
             let loader = match kind {
-                "fabric" => Loader::Fabric,
-                "forge" => Loader::Forge,
-                "neoforge" => Loader::Neoforge,
+                b"fabric" => Loader::Fabric,
+                b"forge" => Loader::Forge,
+                b"neoforge" => Loader::Neoforge,
                 _ => return Err("UnsupportedModpackLoader".into()),
             };
             let next = Selection {
                 loader,
-                version: v.into(),
+                version: v.to_vec().into(),
             };
             if selected.as_ref().is_some_and(|s| s != &next) {
                 return Err("ModpackLoaderConflict".into());
@@ -381,7 +383,7 @@ pub struct Curseforge {
     pub author: Option<MetadataBytes>,
     #[serde(deserialize_with = "object_vec")]
     pub files: Vec<Reference>,
-    pub overrides: Option<String>,
+    pub overrides: Option<MetadataBytes>,
 }
 impl Curseforge {
     pub const MAX_BYTES: usize = 4 * 1024 * 1024;
@@ -412,7 +414,12 @@ impl Curseforge {
         if self.files.iter().any(|f| f.project == 0 || f.file == 0) {
             return Err("InvalidCurseforgeId".into());
         }
-        relative_path(self.overrides.as_deref().unwrap_or("overrides"))
+        relative_path_bytes(
+            self.overrides
+                .as_ref()
+                .map(MetadataBytes::as_bytes)
+                .unwrap_or(b"overrides"),
+        )
     }
 }
 
@@ -639,7 +646,7 @@ mod dependency_byte_tests {
                 crate::modpack::planning::Pack::Modrinth(Mrpack::parse(&fixture(&deps)).unwrap());
             let (_, game, loader) = pack.identity().unwrap();
             assert_eq!(game, "1.20.1");
-            assert_eq!(loader.unwrap().version, "1.2");
+            assert_eq!(loader.unwrap().version.as_bytes(), b"1.2");
         }
     }
     #[test]
@@ -732,5 +739,141 @@ mod cf_game_byte_tests {
         for version in ["[256]", "[65.5]", "{}"] {
             assert!(Curseforge::parse(&fixture(version, "[]")).is_err());
         }
+    }
+}
+
+#[cfg(test)]
+mod rebuilt_cf_byte_tests {
+    use super::*;
+    fn fixture(loaders: serde_json::Value, overrides: serde_json::Value) -> Vec<u8> {
+        serde_json::to_vec(&serde_json::json!({"manifestType":"minecraftModpack","manifestVersion":1,"name":"Pack","files":[],"minecraft":{"version":"1.20.1","modLoaders":loaders},"overrides":overrides})).unwrap()
+    }
+    #[test]
+    fn typed_loader_suffix_and_override_directory_preserve_bytes() {
+        for prefix in ["fabric", "forge", "neoforge"] {
+            for suffix in [
+                vec![255, 0, b'-', 254],
+                vec![0],
+                "版".as_bytes().to_vec(),
+                vec![b'x'; 128 - prefix.len() - 1],
+            ] {
+                let mut id = format!("{prefix}-").into_bytes();
+                id.extend(&suffix);
+                let p = Curseforge::parse(&fixture(
+                    serde_json::json!([{"id":id,"primary":true},{"id":"quilt-invalid"}]),
+                    serde_json::json!([255, 47, 254]),
+                ))
+                .unwrap();
+                let s = p.minecraft.loader().unwrap().unwrap();
+                assert_eq!(s.loader.name(), prefix);
+                let expected = match std::str::from_utf8(&suffix) {
+                    Ok(v) => serde_json::json!(v),
+                    Err(_) => serde_json::json!(suffix),
+                };
+                assert_eq!(serde_json::to_value(s.version).unwrap(), expected);
+                assert_eq!(
+                    serde_json::to_value(p.overrides).unwrap(),
+                    serde_json::json!([255, 47, 254])
+                );
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod rebuilt_cf_order_tests {
+    use super::*;
+    fn document(loaders: &str, overrides: &str, files: &str) -> Vec<u8> {
+        format!(r#"{{"manifestType":"minecraftModpack","manifestVersion":1,"name":"Pack","files":{files},"minecraft":{{"version":"1.20.1","modLoaders":{loaders}}},"overrides":{overrides}}}"#).into_bytes()
+    }
+    #[test]
+    fn loader_and_override_errors_keep_original_order_and_bounds() {
+        for (loaders, overrides, files, error) in [
+            (
+                r#"[{"id":[102,97,98,114,105,99,45,255]},{"id":"fabric-x","primary":true}]"#,
+                "null",
+                "[]",
+                "ModpackLoaderConflict",
+            ),
+            (
+                r#"[{"id":[102,97,98,114,105,99,45,256]}]"#,
+                "null",
+                "[]",
+                "Overflow",
+            ),
+            (
+                r#"[{"id":[102,97,98,114,105,99,45,65.00000000000000001]}]"#,
+                "null",
+                "[]",
+                "InvalidNumber",
+            ),
+            (
+                r#"[{"id":[255,45,1]}]"#,
+                "null",
+                "[]",
+                "UnsupportedModpackLoader",
+            ),
+            (
+                r#"[{"id":[102,97,98,114,105,99,45]}]"#,
+                "null",
+                "[]",
+                "InvalidModpackLoader",
+            ),
+            ("[]", "[256]", "[]", "Overflow"),
+            ("[]", "[65.00000000000000001]", "[]", "InvalidNumber"),
+            ("[]", "[]", "[]", "UnsafePath"),
+            ("[]", "[255,0]", "[]", "UnsafePath"),
+            ("[]", "[46,46,47,255]", "[]", "UnsafePath"),
+            ("[]", "[255,47,46]", "[]", "UnsafePath"),
+            ("[]", "[255,92,254]", "[]", "UnsafePath"),
+            (
+                "[]",
+                "[]",
+                r#"[{"projectID":0,"fileID":1}]"#,
+                "InvalidCurseforgeId",
+            ),
+            (
+                r#"[{"id":"invalid"}]"#,
+                "[]",
+                r#"[{"projectID":0,"fileID":1}]"#,
+                "InvalidModpackLoader",
+            ),
+        ] {
+            assert_eq!(
+                Curseforge::parse(&document(loaders, overrides, files))
+                    .unwrap_err()
+                    .name(),
+                error
+            );
+        }
+        let same = r#"[{"id":[102,97,98,114,105,99,45,255]},{"id":[102,97,98,114,105,99,45,255],"primary":true},{"id":"quilt-x"}]"#;
+        assert_eq!(
+            Curseforge::parse(&document(same, "null", "[]"))
+                .unwrap()
+                .minecraft
+                .loader()
+                .unwrap()
+                .unwrap()
+                .version
+                .as_bytes(),
+            &[255]
+        );
+        let too_long = serde_json::json!([{"id":format!("fabric-{}","x".repeat(122))}]);
+        assert_eq!(
+            Curseforge::parse(&document(&too_long.to_string(), "null", "[]"))
+                .unwrap_err()
+                .name(),
+            "InvalidModpackLoader"
+        );
+        let too_many = serde_json::json!([{"id":"fabric-x","primary":true},{"id":"fabric-x"},{"id":"fabric-x"},{"id":"fabric-x"},{"id":"fabric-x"}]);
+        assert_eq!(
+            Curseforge::parse(&document(&too_many.to_string(), "null", "[]"))
+                .unwrap_err()
+                .name(),
+            "InvalidModpackLoader"
+        );
+        // No unrequested limit is added to the validated override directory itself.
+        let long_dir = serde_json::to_string(&vec![255; 1024]).unwrap();
+        assert!(Curseforge::parse(&document("[]", &long_dir, "[]")).is_ok());
     }
 }

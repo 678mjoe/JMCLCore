@@ -7,7 +7,7 @@ use super::{
 };
 use crate::{
     install,
-    instances::{DisplayName, ReadManifest, Root},
+    instances::{ByteManifest, DisplayName, Root},
     store::{ArtifactRoot, Store},
 };
 use serde::Serialize;
@@ -15,7 +15,7 @@ use std::io::Read;
 #[derive(Debug, Serialize)]
 pub struct LoaderSummary {
     pub name: String,
-    pub version: String,
+    pub version: crate::content::modrinth::MetadataBytes,
 }
 #[derive(Debug, Serialize)]
 pub struct Summary {
@@ -48,12 +48,12 @@ fn pack_manifest(
     name: &crate::content::modrinth::MetadataBytes,
     version_id: &str,
     loader: Option<&super::Selection>,
-) -> ReadManifest {
-    let mut manifest = ReadManifest {
+) -> ByteManifest {
+    let mut manifest = ByteManifest {
         schema_version: 1,
-        id: id.into(),
+        id: DisplayName(id.as_bytes().to_vec()),
         name: DisplayName(name.clone().into_bytes()),
-        version_id: version_id.into(),
+        version_id: DisplayName(version_id.as_bytes().to_vec()),
         fabric_loader: None,
         neoforge_version: None,
         forge_version: None,
@@ -61,9 +61,15 @@ fn pack_manifest(
     };
     if let Some(s) = loader {
         match s.loader {
-            Loader::Fabric => manifest.fabric_loader = Some(s.version.clone()),
-            Loader::Forge => manifest.forge_version = Some(s.version.clone()),
-            Loader::Neoforge => manifest.neoforge_version = Some(s.version.clone()),
+            Loader::Fabric => {
+                manifest.fabric_loader = Some(DisplayName(s.version.clone().into_bytes()))
+            }
+            Loader::Forge => {
+                manifest.forge_version = Some(DisplayName(s.version.clone().into_bytes()))
+            }
+            Loader::Neoforge => {
+                manifest.neoforge_version = Some(DisplayName(s.version.clone().into_bytes()))
+            }
         }
     }
     manifest
@@ -76,6 +82,17 @@ pub fn install<T: install::Transport>(
     provider: &mut impl CurseforgeProvider,
     transport: &T,
     reporter: Option<&(dyn Fn(install::Event) -> Result<(), install::Error> + Sync)>,
+) -> Result<Summary, Error> {
+    let adapter =
+        |event| reporter.map_or(Ok(()), |reporter| reporter(install::string_event(event)?));
+    install_bytes(request, options, provider, transport, Some(&adapter))
+}
+pub(crate) fn install_bytes<T: install::Transport>(
+    request: Request<'_>,
+    options: install::Options,
+    provider: &mut impl CurseforgeProvider,
+    transport: &T,
+    reporter: Option<&(dyn Fn(install::ByteEvent) -> Result<(), install::Error> + Sync)>,
 ) -> Result<Summary, Error> {
     crate::instances::validate_id(request.id).map_err(Error::from)?;
     let root = Root::open(request.directory)
@@ -99,17 +116,19 @@ pub fn install<T: install::Transport>(
     let pack = Pack::inspect(&bytes, request.api_key.is_some())?;
     let (name, version_id, loader) = pack.identity()?;
     let manifest = pack_manifest(request.id, &name, &version_id, loader.as_ref());
-    root.create_read(&manifest).map_err(io)?;
+    root.create_bytes(&manifest).map_err(io)?;
     let result = (|| {
         let game = root.game_root(request.id).map_err(io)?;
         let downloads = match &pack {
             Pack::Modrinth(p) => Downloads::mrpack(p),
             Pack::Curseforge(p) => Downloads::curseforge(p, provider)?,
         };
-        install::execute(
+        let plan = downloads.plan(&version_id)?;
+        install::execute_bytes(
             &game,
             &store,
-            &downloads.plan(&version_id)?,
+            &plan.execution_files(),
+            plan.total_download_size,
             options,
             transport,
             reporter,
@@ -117,7 +136,7 @@ pub fn install<T: install::Transport>(
         save_registry(&game, &downloads.entries)?;
         let mut overrides_written = 0;
         for dir in pack.override_directories() {
-            overrides_written += planning::overrides_bytes(&bytes, dir, |path, data| {
+            overrides_written += planning::overrides_directory_bytes(&bytes, dir, |path, data| {
                 game.atomic_replace_bytes(path, data).map_err(io)
             })?;
         }
@@ -142,9 +161,9 @@ pub fn install<T: install::Transport>(
 }
 fn save_registry(
     game: &ArtifactRoot,
-    entries: &[crate::content::registry::Entry],
+    entries: &[crate::content::registry::EntryRecord<crate::content::ListedPath>],
 ) -> Result<(), Error> {
-    let registry = crate::content::registry::Registry {
+    let registry = crate::content::registry::RegistryRecord {
         schema_version: 1,
         entries: entries.to_vec(),
     };
@@ -171,6 +190,7 @@ mod native_error_tests {
 #[cfg(test)]
 mod display_byte_tests {
     use super::*;
+    use crate::instances::ReadManifest;
     #[test]
     fn display_identity_manifest_and_summary_preserve_bytes() {
         for (name, version, expected) in [
@@ -282,7 +302,7 @@ mod display_byte_tests {
         for kind in [Loader::Fabric, Loader::Forge, Loader::Neoforge] {
             let selected = super::super::Selection {
                 loader: kind,
-                version: "v1".into(),
+                version: "v1".to_string().into(),
             };
             let m = pack_manifest("demo", &vec![255].into(), "1.20.1", Some(&selected));
             let decoded = ReadManifest::parse(&m.encode().unwrap(), "demo").unwrap();
@@ -300,5 +320,82 @@ mod display_byte_tests {
             );
             assert_eq!(decoded.name.0, [255]);
         }
+    }
+}
+
+#[cfg(test)]
+mod rebuilt_cf_byte_tests {
+    use super::*;
+    #[test]
+    fn loader_manifest_summary_and_owned_writer_preserve_bytes() {
+        // No archive, installer, transport or launcher is invoked.
+        let owner = tempfile::tempdir().unwrap();
+        let root = Root::open(owner.path().to_str().unwrap()).unwrap();
+        for (i, (prefix, field)) in [
+            ("fabric", "fabric_loader"),
+            ("forge", "forge_version"),
+            ("neoforge", "neoforge_version"),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let suffix = vec![255, 0, b'-', 254];
+            let mut loader_id = format!("{prefix}-").into_bytes();
+            loader_id.extend(&suffix);
+            let raw = serde_json::json!({"manifestType":"minecraftModpack","manifestVersion":1,"name":[253],"files":[],"minecraft":{"version":"1.20.1","modLoaders":[{"id":loader_id}]}});
+            let pack = Pack::Curseforge(
+                super::super::schema::Curseforge::parse(raw.to_string().as_bytes()).unwrap(),
+            );
+            let (name, version_id, loader) = pack.identity().unwrap();
+            let id = format!("demo{i}");
+            let manifest = pack_manifest(&id, &name, &version_id, loader.as_ref());
+            let encoded = manifest.encode().unwrap();
+            assert_eq!(
+                ByteManifest::parse(&encoded, &id)
+                    .unwrap()
+                    .encode()
+                    .unwrap(),
+                encoded
+            );
+            assert_eq!(
+                serde_json::from_slice::<serde_json::Value>(&encoded).unwrap()[field],
+                serde_json::json!(suffix)
+            );
+            root.create_bytes(&manifest).unwrap();
+            let path = owner.path().join(&id).join("instance.json");
+            assert_eq!(std::fs::read(&path).unwrap(), encoded);
+            assert!(owner.path().join(&id).join(".minecraft").is_dir());
+            assert!(root.create_bytes(&manifest).is_err());
+            assert_eq!(std::fs::read(&path).unwrap(), encoded);
+            assert!(crate::instances::ReadManifest::parse(&encoded, &id).is_err());
+            let selection = loader.unwrap();
+            let summary = Summary {
+                stage: "modpack.install",
+                id,
+                name,
+                version_id,
+                loader: Some(LoaderSummary {
+                    name: prefix.into(),
+                    version: selection.version,
+                }),
+                files_installed: 0,
+                files_skipped: 0,
+                overrides_written: 0,
+            };
+            assert_eq!(
+                serde_json::to_value(summary).unwrap()["loader"]["version"],
+                serde_json::json!(suffix)
+            );
+        }
+        let mut m = pack_manifest("invalid", &"Name".to_string().into(), "1.20.1", None);
+        m.fabric_loader = Some(DisplayName(vec![]));
+        assert_eq!(m.encode(), Err("InvalidFabricLoaderVersion"));
+        assert!(root.create_bytes(&m).is_err());
+        assert!(!owner.path().join("invalid").exists());
+        m.fabric_loader = Some(DisplayName(vec![255]));
+        m.forge_version = Some(DisplayName(vec![254]));
+        assert_eq!(m.encode(), Err("LoaderConflict"));
+        assert!(root.create_bytes(&m).is_err());
+        assert!(!owner.path().join("invalid").exists());
     }
 }

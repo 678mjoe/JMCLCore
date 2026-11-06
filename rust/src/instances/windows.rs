@@ -86,9 +86,14 @@ impl Root {
         m.validate().map_err(invalid)?;
         self.create_with(&m.id, || m.encode().map_err(invalid))
     }
+    #[allow(dead_code)] // Preserved String-loader API; modpack uses create_bytes.
     pub(crate) fn create_read(&self, m: &ReadManifest) -> io::Result<()> {
         m.validate().map_err(invalid)?;
         self.create_with(&m.id, || m.encode().map_err(invalid))
+    }
+    pub(crate) fn create_bytes(&self, m: &super::ByteManifest) -> io::Result<()> {
+        m.validate().map_err(invalid)?;
+        self.create_with(m.id(), || m.encode().map_err(invalid))
     }
     // Callers validate the manifest/ID before entering this anchored writer.
     // Encoding remains after directory creation, preserving cleanup on failure.

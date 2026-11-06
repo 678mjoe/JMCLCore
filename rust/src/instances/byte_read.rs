@@ -1,4 +1,4 @@
-//! Read-only instance presentation and receipt identity. Operational APIs stay String-based.
+//! Byte-preserving instance codec and presentation. Legacy operational APIs stay String-based.
 use super::manifest_ordered::{Name, number, source};
 use super::{DisplayName, MAX_MANIFEST_BYTES, validate_id};
 use crate::content::modrinth::project_ordered::{Cursor, Token, decode};
@@ -7,15 +7,15 @@ use serde::Serialize;
 use serde_json::{Value, json};
 
 #[derive(Debug, Serialize)]
-pub(super) struct Manifest {
-    pub(super) schema_version: u32,
-    pub(super) id: DisplayName,
-    pub(super) name: DisplayName,
-    pub(super) version_id: DisplayName,
-    pub(super) fabric_loader: Option<DisplayName>,
-    pub(super) neoforge_version: Option<DisplayName>,
-    pub(super) forge_version: Option<DisplayName>,
-    pub(super) source: String,
+pub(crate) struct Manifest {
+    pub(crate) schema_version: u32,
+    pub(crate) id: DisplayName,
+    pub(crate) name: DisplayName,
+    pub(crate) version_id: DisplayName,
+    pub(crate) fabric_loader: Option<DisplayName>,
+    pub(crate) neoforge_version: Option<DisplayName>,
+    pub(crate) forge_version: Option<DisplayName>,
+    pub(crate) source: String,
 }
 struct Receipt {
     schema: u32,
@@ -125,46 +125,63 @@ fn loaders<'a>(
     [fabric, neo, forge]
 }
 impl Manifest {
-    pub(super) fn parse(bytes: &[u8], id: &str) -> std::result::Result<Self, &'static str> {
+    pub(crate) fn parse(bytes: &[u8], id: &str) -> std::result::Result<Self, &'static str> {
         validate_id(id)?;
         if bytes.len() > MAX_MANIFEST_BYTES {
             return Err("InstanceManifestTooLarge");
         }
         let m: Self = super::manifest_ordered::parse(bytes)?;
-        let text = std::str::from_utf8(&m.id.0).map_err(|_| "InvalidInstanceId")?;
-        validate_id(text)?;
-        if m.schema_version != 1 {
-            return Err("UnsupportedInstanceSchema");
-        }
-        if !length(&m.name, 256) {
-            return Err("InvalidInstanceName");
-        }
-        if !length(&m.version_id, 256) {
-            return Err("InvalidVersionId");
-        }
-        for (v, error) in [
-            (m.fabric_loader.as_ref(), "InvalidFabricLoaderVersion"),
-            (m.neoforge_version.as_ref(), "InvalidNeoForgeVersion"),
-            (m.forge_version.as_ref(), "InvalidForgeVersion"),
-        ] {
-            if v.is_some_and(|v| !length(v, 256)) {
-                return Err(error);
-            }
-        }
-        if loaders(&m.fabric_loader, &m.neoforge_version, &m.forge_version)
-            .iter()
-            .filter(|v| v.is_some())
-            .count()
-            > 1
-        {
-            return Err("LoaderConflict");
-        }
+        m.validate()?;
         if m.id.0 != id.as_bytes() {
             return Err("InstanceIdMismatch");
         }
         Ok(m)
     }
-    pub(super) fn id(&self) -> &str {
+    pub(crate) fn validate(&self) -> std::result::Result<(), &'static str> {
+        let text = std::str::from_utf8(&self.id.0).map_err(|_| "InvalidInstanceId")?;
+        validate_id(text)?;
+        if self.schema_version != 1 {
+            return Err("UnsupportedInstanceSchema");
+        }
+        if !length(&self.name, 256) {
+            return Err("InvalidInstanceName");
+        }
+        if !length(&self.version_id, 256) {
+            return Err("InvalidVersionId");
+        }
+        for (v, error) in [
+            (self.fabric_loader.as_ref(), "InvalidFabricLoaderVersion"),
+            (self.neoforge_version.as_ref(), "InvalidNeoForgeVersion"),
+            (self.forge_version.as_ref(), "InvalidForgeVersion"),
+        ] {
+            if v.is_some_and(|v| !length(v, 256)) {
+                return Err(error);
+            }
+        }
+        if loaders(
+            &self.fabric_loader,
+            &self.neoforge_version,
+            &self.forge_version,
+        )
+        .iter()
+        .filter(|v| v.is_some())
+        .count()
+            > 1
+        {
+            return Err("LoaderConflict");
+        }
+        if !matches!(self.source.as_str(), "official" | "bmclapi") {
+            return Err("InvalidEnumTag");
+        }
+        Ok(())
+    }
+    pub(crate) fn encode(&self) -> std::result::Result<Vec<u8>, &'static str> {
+        self.validate()?;
+        let mut bytes = serde_json::to_vec(self).map_err(|_| "InvalidInstanceManifest")?;
+        bytes.push(b'\n');
+        Ok(bytes)
+    }
+    pub(crate) fn id(&self) -> &str {
         std::str::from_utf8(&self.id.0).expect("validated ASCII instance ID")
     }
     pub(super) fn fields(&self, installed: bool) -> Value {
@@ -551,5 +568,26 @@ mod tests {
             }
         }
         assert_eq!(snapshot(owner.path()), before);
+    }
+}
+#[cfg(all(test, any(unix, windows)))]
+mod rebuilt_cf_byte_tests {
+    #[test]
+    fn owned_encoder_failure_uses_original_directory_cleanup_order() {
+        let owner = tempfile::tempdir().unwrap();
+        let root = super::super::Root::open(owner.path().to_str().unwrap()).unwrap();
+        std::fs::write(owner.path().join("sentinel"), b"untouched").unwrap();
+        let error = root
+            .create_with("demo", || {
+                assert!(owner.path().join("demo/.minecraft").is_dir());
+                Err(std::io::Error::other("injected encode failure"))
+            })
+            .unwrap_err();
+        assert_eq!(error.to_string(), "injected encode failure");
+        assert!(!owner.path().join("demo").exists());
+        assert_eq!(
+            std::fs::read(owner.path().join("sentinel")).unwrap(),
+            b"untouched"
+        );
     }
 }

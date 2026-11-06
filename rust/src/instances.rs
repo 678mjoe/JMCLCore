@@ -3,6 +3,7 @@ use crate::protocol::RpcError;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json, value::RawValue};
 mod byte_read;
+pub(crate) use byte_read::Manifest as ByteManifest;
 mod cli;
 #[cfg(any(unix, windows))]
 mod read_cli;

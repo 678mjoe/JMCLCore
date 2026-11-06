@@ -64,7 +64,7 @@ struct File {
     #[serde(default = "yes", rename = "isAvailable")]
     available: bool,
     #[serde(rename = "fileName")]
-    name: String,
+    name: crate::content::modrinth::MetadataBytes,
     #[serde(rename = "releaseType", deserialize_with = "typed_u8_number")]
     release: u8,
     #[serde(deserialize_with = "object_vec")]
@@ -131,7 +131,9 @@ pub fn file(bytes: &[u8]) -> Result<ProviderFile, Error> {
     if f.id == 0 || f.project == 0 {
         return Err("InvalidCurseforgeId".into());
     }
-    if f.name.len() > 256 || f.name.contains('/') || super::schema::relative_path(&f.name).is_err()
+    if f.name.as_bytes().len() > 256
+        || f.name.as_bytes().contains(&b'/')
+        || super::schema::relative_path_bytes(f.name.as_bytes()).is_err()
     {
         return Err("InvalidCurseforgeFilename".into());
     }
@@ -345,7 +347,7 @@ mod byte_field_tests {
         let hashes = format!(r#"[{{"value":"{SHA}","algo":1}},{{"value":[255,0],"algo":2}}]"#);
         let got = file(&response("[[255,0]]", &hashes)).unwrap();
         assert_eq!(got.sha1, SHA);
-        assert_eq!(got.name, "fixture.jar");
+        assert_eq!(got.name.as_bytes(), b"fixture.jar");
         for games in ["[]", "[[]]", &format!("[{:?}]", vec![65; 65])] {
             assert_eq!(
                 file(&response(games, &hashes)).err().unwrap().to_string(),

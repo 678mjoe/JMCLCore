@@ -1,0 +1,107 @@
+[
+  {
+    "name": "mr_opaque",
+    "kind": "mr",
+    "expected": "ok"
+  },
+  {
+    "name": "mr_nul",
+    "kind": "mr",
+    "expected": "UnsafePath"
+  },
+  {
+    "name": "mr_512",
+    "kind": "mr",
+    "expected": "ok"
+  },
+  {
+    "name": "mr_513",
+    "kind": "mr",
+    "expected": "InvalidModpackFile"
+  },
+  {
+    "name": "mr_skip",
+    "kind": "mr",
+    "expected": "ok"
+  },
+  {
+    "name": "mr_duplicate_before_later_hash",
+    "kind": "mr",
+    "expected": "DuplicateModpackFile"
+  },
+  {
+    "name": "mr_skipped_bad_hash",
+    "kind": "mr",
+    "expected": "InvalidModrinthHash"
+  },
+  {
+    "name": "mr_path_before_size",
+    "kind": "mr",
+    "expected": "UnsafePath"
+  },
+  {
+    "name": "mr_numeric",
+    "kind": "mr",
+    "expected": "ok"
+  },
+  {
+    "name": "mr_overflow",
+    "kind": "mr",
+    "expected": "Overflow"
+  },
+  {
+    "name": "mr_fraction",
+    "kind": "mr",
+    "expected": "InvalidNumber"
+  },
+  {
+    "name": "mr_null",
+    "kind": "mr",
+    "expected": "UnexpectedToken"
+  },
+  {
+    "name": "cf_opaque",
+    "kind": "cf",
+    "expected": "ok"
+  },
+  {
+    "name": "cf_nul",
+    "kind": "cf",
+    "expected": "InvalidCurseforgeFilename"
+  },
+  {
+    "name": "cf_256",
+    "kind": "cf",
+    "expected": "ok"
+  },
+  {
+    "name": "cf_257",
+    "kind": "cf",
+    "expected": "InvalidCurseforgeFilename"
+  },
+  {
+    "name": "cf_name_before_release",
+    "kind": "cf",
+    "expected": "InvalidCurseforgeFilename"
+  },
+  {
+    "name": "cf_id_before_name",
+    "kind": "cf",
+    "expected": "InvalidCurseforgeId"
+  },
+  {
+    "name": "cf_empty",
+    "kind": "cf",
+    "expected": "InvalidCurseforgeFilename"
+  },
+  {
+    "name": "cf_numeric",
+    "kind": "cf",
+    "expected": "ok"
+  },
+  {
+    "name": "cf_overflow",
+    "kind": "cf",
+    "expected": "Overflow"
+  }
+]

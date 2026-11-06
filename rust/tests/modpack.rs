@@ -75,7 +75,7 @@ fn primary_loader_short_circuits() {
     let p = Curseforge::parse(&serde_json::to_vec(&v).unwrap()).unwrap();
     assert_eq!(
         p.minecraft.loader().unwrap().unwrap().version,
-        "not a strict version"
+        "not a strict version".to_string().into()
     )
 }
 #[test]
