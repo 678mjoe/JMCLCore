@@ -57,3 +57,5 @@ A checked-in workflow is not evidence that those platform runs have passed.
 A separate local-only ordinary-instance native Session chain is documented in
 [INSTANCE_CHAIN.md](INSTANCE_CHAIN.md). It has its own explicit feature, frontend
 pin and process-level network guard; this runner and its CI do not enable it.
+The separate `--scenario content` lane covers plain-file adoption and local
+content lifecycle; see [CONTENT_LIFECYCLE.md](CONTENT_LIFECYCLE.md).

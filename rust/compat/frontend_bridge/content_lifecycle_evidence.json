@@ -1,0 +1,54 @@
+{
+  "recorded_at_utc": "2026-11-06T07:26:54.997892+00:00",
+  "core_source_base": "ed0c0e37",
+  "core_source_tree": "50e4d12f19593f0d182af87f48323a4b3efa7ae4",
+  "platform": "Linux x86_64 LP64",
+  "subjects": [
+    {
+      "frontend": "c0107f1803c73398a99f8ddd27ed712c0ed2e1b4",
+      "module": "session.rs",
+      "sha256": "2f5bc0e38bba77c7a0feb52c9a46a64f8d3d93d01cd3da2bb4fa87ea938c8f20"
+    },
+    {
+      "frontend": "c0107f1803c73398a99f8ddd27ed712c0ed2e1b4",
+      "module": "transport.rs",
+      "sha256": "e1f75758dab1ed8bf26eef8a9d3aa94d12ec8acf580ab713508a9c791143ca82"
+    },
+    {
+      "frontend": "c0107f1803c73398a99f8ddd27ed712c0ed2e1b4",
+      "module": "modpack_preview.rs",
+      "sha256": "503baae9143619d66ac304a11160dca956b8db490bd9a9ab620bdb9db0f26519"
+    },
+    {
+      "core_sha256": "dad858d76f05cc4fad65814b03790a83e02e9244c5fa1d3155f882b89c1fd1f5"
+    }
+  ],
+  "test": "isolated_native_session_content_lifecycle",
+  "result": {
+    "passed": 1,
+    "failed": 0,
+    "ignored": 0,
+    "filtered_out": 0
+  },
+  "guard": "Unchanged guard; all syscall/architecture/x32/exec/local IPC/inherited FD self-tests passed before Core",
+  "scope": [
+    "mods and resourcepacks plain hello files, not archives",
+    "two owned instances share immutable CAS",
+    "adopt/list/manual set-version rejection/toggle idempotence/remove",
+    "two genuine Core reopen operations",
+    "peer registry byte-identical; shared CAS retained with three links"
+  ],
+  "preparation": "Core and harness built offline --locked; lockfiles unchanged",
+  "static_checks": {
+    "python_compile": "passed",
+    "rustfmt": "passed",
+    "clippy_default": "passed with same five unchanged frontend transport warnings; no new test warning",
+    "diff_check": "passed"
+  },
+  "earlier_attempt": "Runner inventory rejected a scenario-name/module-name variable collision before any Core test. Renamed the scenario variable, retained all guards, reviewed and reran successfully. No permission or isolation denial occurred.",
+  "limits": [
+    "not mounted frontend content UI or Tauri IPC",
+    "not provider acquisition/upgrades",
+    "no Java/archive execution or other-platform evidence"
+  ]
+}

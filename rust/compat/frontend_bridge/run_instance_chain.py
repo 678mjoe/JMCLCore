@@ -23,8 +23,13 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--frontend", required=True, type=Path)
     parser.add_argument("--rust", required=True, type=Path)
+    parser.add_argument("--scenario", choices=("instance", "content"), default="instance")
     parser.add_argument("--build-only", action="store_true", help="Compile offline; do not run guards or Core")
     args = parser.parse_args()
+    target, feature, test_name = {
+        "instance": ("instance_chain", "local-native-instance-chain", "isolated_native_session_cached_instance_chain"),
+        "content": ("content_lifecycle", "local-native-content-lifecycle", "isolated_native_session_content_lifecycle"),
+    }[args.scenario]
     network_guard.platform_check()
     frontend=args.frontend.resolve()
     revision=subprocess.check_output(["git","-C",str(frontend),"rev-parse","HEAD"],text=True).strip()
@@ -47,12 +52,12 @@ def main():
         print(json.dumps({"core_sha256":frozen_digest}),flush=True)
         # Build preparation only. Never execute existing archive/Java bridge tests.
         command=["cargo","test","--offline","--locked","--manifest-path",str(harness/"Cargo.toml"),
-            "--features","local-native-instance-chain","--test","instance_chain","--no-run","--message-format=json"]
+            "--features",feature,"--test",target,"--no-run","--message-format=json"]
         result=subprocess.run(command,check=True,stdout=subprocess.PIPE,text=True,timeout=600,close_fds=True)
         artifacts=[]
         for line in result.stdout.splitlines():
             row=json.loads(line)
-            if row.get("reason")=="compiler-artifact" and row.get("target",{}).get("name")=="instance_chain" and row.get("executable"):
+            if row.get("reason")=="compiler-artifact" and row.get("target",{}).get("name")==target and row.get("executable"):
                 artifacts.append(row["executable"])
         if len(artifacts)!=1:
             raise RuntimeError(f"Expected one owned test executable, got {artifacts}")
@@ -63,11 +68,10 @@ def main():
         network_guard.selftest()
         env=dict(os.environ,JMCL_BRIDGE_BINARY=str(frozen),JMCL_NATIVE_CHAIN_GUARDED="1")
         guarded=[sys.executable,str(base/"network_guard.py"),"--exec",artifacts[0]]
-        name="isolated_native_session_cached_instance_chain"
         listing=subprocess.check_output(guarded+["--list"],cwd=root,env=env,close_fds=True,text=True,timeout=30)
-        if [line for line in listing.splitlines() if line.endswith(": test")] != [name+": test"]:
+        if [line for line in listing.splitlines() if line.endswith(": test")] != [test_name+": test"]:
             raise RuntimeError(f"Expected exactly the intended test; got {listing!r}")
-        result=subprocess.run(guarded+["--exact",name,"--test-threads=1","--nocapture"],
+        result=subprocess.run(guarded+["--exact",test_name,"--test-threads=1","--nocapture"],
             cwd=root,env=env,close_fds=True,timeout=60,text=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT)
         print(result.stdout,flush=True)
         result.check_returncode()

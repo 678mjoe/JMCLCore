@@ -25,7 +25,12 @@ windows-sys = { version = "=0.61.2", features = ["Win32_System_Threading"] }
 [features]
 # Local explicit opt-in only; no existing workflow enables this feature.
 local-native-instance-chain = []
+local-native-content-lifecycle = []
 
 [[test]]
 name = "instance_chain"
 required-features = ["local-native-instance-chain"]
+
+[[test]]
+name = "content_lifecycle"
+required-features = ["local-native-content-lifecycle"]
