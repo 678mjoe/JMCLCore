@@ -23,6 +23,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--frontend", required=True, type=Path)
     parser.add_argument("--rust", required=True, type=Path)
+    parser.add_argument("--trace-dir", type=Path, help="Save instance Session API trace after a successful guarded run; destination must not exist")
     parser.add_argument("--scenario", choices=("instance", "content"), default="instance")
     parser.add_argument("--build-only", action="store_true", help="Compile offline; do not run guards or Core")
     args = parser.parse_args()
@@ -30,6 +31,10 @@ def main():
         "instance": ("instance_chain", "local-native-instance-chain", "isolated_native_session_cached_instance_chain"),
         "content": ("content_lifecycle", "local-native-content-lifecycle", "isolated_native_session_content_lifecycle"),
     }[args.scenario]
+    if args.trace_dir and (args.scenario != "instance" or args.build_only):
+        raise SystemExit("Trace capture requires the executed instance scenario")
+    if args.trace_dir and args.trace_dir.exists():
+        raise SystemExit("Trace output destination already exists; refusing overwrite")
     network_guard.platform_check()
     frontend=args.frontend.resolve()
     revision=subprocess.check_output(["git","-C",str(frontend),"rev-parse","HEAD"],text=True).strip()
@@ -67,6 +72,10 @@ def main():
         # Every denied syscall is actively probed before any Core is started.
         network_guard.selftest()
         env=dict(os.environ,JMCL_BRIDGE_BINARY=str(frozen),JMCL_NATIVE_CHAIN_GUARDED="1")
+        if args.trace_dir:
+            env["JMCL_NATIVE_TRACE"] = str(root/"session-trace.jsonl")
+        else:
+            env.pop("JMCL_NATIVE_TRACE", None)
         guarded=[sys.executable,str(base/"network_guard.py"),"--exec",artifacts[0]]
         listing=subprocess.check_output(guarded+["--list"],cwd=root,env=env,close_fds=True,text=True,timeout=30)
         if [line for line in listing.splitlines() if line.endswith(": test")] != [test_name+": test"]:
@@ -79,6 +88,39 @@ def main():
             raise RuntimeError("Expected exactly one passed, unignored native chain test")
         if digest(frozen)!=frozen_digest or digest(args.rust.resolve())!=frozen_digest:
             raise RuntimeError("Core subject changed during test")
+        if args.trace_dir:
+            raw=root/"session-trace.jsonl"
+            records=[json.loads(line) for line in raw.read_text().splitlines()]
+            fixtures=[r["root"] for r in records if r["type"] == "fixture"]
+            if len(fixtures)!=1:
+                raise RuntimeError("Expected one captured fixture root")
+            fixture_root=fixtures[0]
+            placeholder="${FIXTURE_ROOT}"
+            def normalize(value):
+                if isinstance(value,str): return value.replace(fixture_root,placeholder)
+                if isinstance(value,list): return [normalize(v) for v in value]
+                if isinstance(value,dict): return {k:normalize(v) for k,v in value.items()}
+                return value
+            output=args.trace_dir.resolve()
+            output.mkdir(parents=True,exist_ok=False)
+            shutil.copyfile(raw,output/"raw.jsonl")
+            normalized=output/"normalized.json"
+            normalized.write_text(json.dumps({"schema_version":1,"records":normalize(records)},indent=2)+"\n")
+            provenance={
+                "schema_version":1,"frontend_revision":revision,"core_sha256":frozen_digest,
+                "capture_source_commit":subprocess.check_output(["git","-C",str(base.parents[2]),"rev-parse","HEAD"],text=True).strip(),
+                "capture_source_files":{str(path.relative_to(base)):digest(path) for path in
+                    [base/"run_instance_chain.py",base/"network_guard.py",base/"tests/instance_chain.rs"]},
+                "frontend_modules":{name:digest(frontend/"src-tauri/src"/name) for name in MODULES},
+                "test_binary_sha256":digest(Path(artifacts[0])),"test":test_name,"passed":1,"failed":0,"ignored":0,
+                "guard_selftests":"passed before test execution",
+                "raw_sha256":digest(output/"raw.jsonl"),"normalized_sha256":digest(normalized),
+                "normalization":{"literal_from":fixture_root,"literal_to":placeholder,
+                    "rule":"Recursive literal string replacement only; no request IDs, nonces, event values, outcomes or ordering changed"},
+                "capture_boundary":"Original Session API callback objects and returned Result/SessionError, serialized without edits. Not a byte-for-byte stdout wire capture. Lifecycle and fixture_action records are observations by the test harness.",
+            }
+            (output/"provenance.json").write_text(json.dumps(provenance,indent=2)+"\n")
+            print(json.dumps({"trace_directory":str(output),"raw_sha256":provenance["raw_sha256"],"normalized_sha256":provenance["normalized_sha256"]}),flush=True)
     print("Passed isolated real native Session/production RPC chain; NOT Tauri/UI or real game acceptance.")
 
 if __name__ == "__main__":

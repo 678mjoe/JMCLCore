@@ -1,0 +1,16 @@
+{"frontend": "c0107f1803c73398a99f8ddd27ed712c0ed2e1b4", "module": "session.rs", "sha256": "2f5bc0e38bba77c7a0feb52c9a46a64f8d3d93d01cd3da2bb4fa87ea938c8f20"}
+{"frontend": "c0107f1803c73398a99f8ddd27ed712c0ed2e1b4", "module": "transport.rs", "sha256": "e1f75758dab1ed8bf26eef8a9d3aa94d12ec8acf580ab713508a9c791143ca82"}
+{"frontend": "c0107f1803c73398a99f8ddd27ed712c0ed2e1b4", "module": "modpack_preview.rs", "sha256": "503baae9143619d66ac304a11160dca956b8db490bd9a9ab620bdb9db0f26519"}
+{"core_sha256": "dad858d76f05cc4fad65814b03790a83e02e9244c5fa1d3155f882b89c1fd1f5"}
+   Compiling jmcl-frontend-bridge-check v0.0.0 (/tmp/jmcl-native-instance-chain-2emzizc9/harness)
+    Finished `test` profile [unoptimized] target(s) in 0.57s
+Network guard self-tests passed: 16 blocked syscalls, x32, non-Unix socketpair, architecture, exec inheritance, local IPC, inherited FDs
+
+running 1 test
+test isolated_native_session_cached_instance_chain ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s
+
+
+{"trace_directory": "/workspace/scratch/6fda792bd6ec/JMCLCore-native-trace-20261106/rust/compat/frontend_bridge/traces/instance-recovery", "raw_sha256": "bce0d2f838dba1a71d76d48b6c21847201ff81fd8fbb6e3293bed3690f5943ae", "normalized_sha256": "6aa2fa826d4d857e78d7c4808157599f8e6e80ef40726203406e8aa43b5b04c7"}
+Passed isolated real native Session/production RPC chain; NOT Tauri/UI or real game acceptance.

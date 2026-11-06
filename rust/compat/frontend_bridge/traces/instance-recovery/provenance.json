@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "frontend_revision": "c0107f1803c73398a99f8ddd27ed712c0ed2e1b4",
+  "core_sha256": "dad858d76f05cc4fad65814b03790a83e02e9244c5fa1d3155f882b89c1fd1f5",
+  "capture_source_commit": "a64592885862b7a064f25b8019c350478b83d49d",
+  "capture_source_files": {
+    "run_instance_chain.py": "2ffd130437d62f6a377a5b079a9e8d5042dd9dab7ac5ed068c374a118ad1fbb0",
+    "network_guard.py": "3d316964fa98a1f9644ebd5deb44d4b33efb942ceb5c2c258f6501499a8db20f",
+    "tests/instance_chain.rs": "56b349886ed8e434916252ce5390a56cfee2c60ae9511b522cb87a69314ea38c"
+  },
+  "frontend_modules": {
+    "session.rs": "2f5bc0e38bba77c7a0feb52c9a46a64f8d3d93d01cd3da2bb4fa87ea938c8f20",
+    "transport.rs": "e1f75758dab1ed8bf26eef8a9d3aa94d12ec8acf580ab713508a9c791143ca82",
+    "modpack_preview.rs": "503baae9143619d66ac304a11160dca956b8db490bd9a9ab620bdb9db0f26519"
+  },
+  "test_binary_sha256": "c24cf59e7bfc6dcb0341d60e5a7332a15fe15ee9cdd092f96976560a9d899ebd",
+  "test": "isolated_native_session_cached_instance_chain",
+  "passed": 1,
+  "failed": 0,
+  "ignored": 0,
+  "guard_selftests": "passed before test execution",
+  "raw_sha256": "bce0d2f838dba1a71d76d48b6c21847201ff81fd8fbb6e3293bed3690f5943ae",
+  "normalized_sha256": "6aa2fa826d4d857e78d7c4808157599f8e6e80ef40726203406e8aa43b5b04c7",
+  "normalization": {
+    "literal_from": "/tmp/.tmpFc9sEv",
+    "literal_to": "${FIXTURE_ROOT}",
+    "rule": "Recursive literal string replacement only; no request IDs, nonces, event values, outcomes or ordering changed"
+  },
+  "capture_boundary": "Original Session API callback objects and returned Result/SessionError, serialized without edits. Not a byte-for-byte stdout wire capture. Lifecycle and fixture_action records are observations by the test harness."
+}

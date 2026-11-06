@@ -7,8 +7,10 @@ use jmcl_lib::transport::LocalProcessTransport;
 use serde_json::{json, Value};
 use std::{
     fs,
+    io::Write,
     os::unix::fs::MetadataExt,
     path::Path,
+    sync::atomic::{AtomicU64, Ordering},
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
@@ -49,39 +51,76 @@ fn seed(root: &Path) {
     perms.set_readonly(true);
     fs::set_permissions(blob, perms).unwrap();
 }
+static SESSION_NUMBER: AtomicU64 = AtomicU64::new(0);
+static REQUEST_NUMBER: AtomicU64 = AtomicU64::new(0);
+fn trace(record: Value) {
+    if let Ok(path) = std::env::var("JMCL_NATIVE_TRACE") {
+        let mut file = fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(path)
+            .unwrap();
+        serde_json::to_writer(&mut file, &record).unwrap();
+        file.write_all(b"\n").unwrap();
+        file.flush().unwrap();
+    }
+}
 async fn open(root: &Path) -> Session {
     let binary = std::env::var("JMCL_BRIDGE_BINARY").unwrap();
-    Session::establish(Box::new(
+    let session = Session::establish(Box::new(
         LocalProcessTransport::spawn(Path::new(&binary), &["rpc"], Some(root))
             .await
             .unwrap(),
     ))
     .await
-    .unwrap()
+    .unwrap();
+    let number = SESSION_NUMBER.fetch_add(1, Ordering::SeqCst) + 1;
+    trace(json!({"type":"session_open","session":number,"cwd":root}));
+    session
+}
+async fn close(session: &Session) {
+    session.close().await;
+    trace(json!({"type":"session_close","session":SESSION_NUMBER.load(Ordering::SeqCst)}));
 }
 async fn call(
     session: &Session,
     method: &str,
     params: Value,
 ) -> Result<(Value, Vec<Value>), SessionError> {
+    let sequence = REQUEST_NUMBER.fetch_add(1, Ordering::SeqCst) + 1;
     let mut events = vec![];
+    let mut raw_events = vec![];
     let result = session
-        .request(method, params, |event| match event {
-            SessionEvent::Event(v) => events.push(v),
-            SessionEvent::Diagnostic(s) => eprintln!("Core diagnostic: {s}"),
+        .request(method, params.clone(), |event| {
+            raw_events.push(serde_json::to_value(&event).unwrap());
+            match event {
+                SessionEvent::Event(v) => events.push(v),
+                SessionEvent::Diagnostic(s) => eprintln!("Core diagnostic: {s}"),
+            }
         })
-        .await?;
+        .await;
+    let outcome = match &result {
+        Ok(value) => json!({"kind":"result","data":value}),
+        Err(error) => json!({"kind":"error","data":error}),
+    };
+    trace(
+        json!({"type":"request","session":SESSION_NUMBER.load(Ordering::SeqCst),
+        "sequence":sequence,"method":method,"params":params,"events":raw_events,"outcome":outcome}),
+    );
     assert!(events
         .iter()
         .all(|v| v["event"] != "error" && v["event"] != "result"));
     assert!(events
         .iter()
         .all(|v| v["id"].as_str().is_some_and(|id| id.starts_with("req-"))));
-    Ok((result, events))
+    result.map(|value| (value, events))
+}
+fn prepare_params(root: &Path, id: &str) -> Value {
+    json!({"id":"synthetic","directory":root.join("instances").join(id).join(".minecraft"),"source":"official"})
 }
 fn params(root: &Path, id: &str) -> Value {
     json!({"id":"synthetic","directory":root.join("instances").join(id).join(".minecraft"),
-        "store_directory":root.join("store"),"workers":1,"retries":0,"java_policy":"local"})
+        "store_directory":root.join("store"),"workers":1,"retries":0,"java_policy":"local","source":"official"})
 }
 async fn status(session: &Session, root: &Path, id: &str) -> bool {
     call(
@@ -133,6 +172,7 @@ async fn isolated_native_session_cached_instance_chain() {
         let owner = tempfile::tempdir().unwrap();
         let root = owner.path();
         seed(root);
+        trace(json!({"type":"fixture","root":root}));
         let session = open(root).await;
         for id in ["one", "two", "blocked"] {
             call(
@@ -148,7 +188,7 @@ async fn isolated_native_session_cached_instance_chain() {
             if id == "blocked" {
                 continue;
             }
-            let (prepared, events) = call(&session, "install.prepare", params(root, id))
+            let (prepared, events) = call(&session, "install.prepare", prepare_params(root, id))
                 .await
                 .unwrap();
             assert!(events.is_empty());
@@ -180,16 +220,19 @@ async fn isolated_native_session_cached_instance_chain() {
         let before = fs::read(receipt("blocked")).unwrap();
         let canary = root.join("instances/blocked/.minecraft/.jmcl/runtime");
         fs::write(&canary, b"owned canary").unwrap();
+        trace(
+            json!({"type":"fixture_action","action":"create_owned_prepare_canary","path":canary}),
+        );
         assert!(
-            matches!(call(&session,"install.prepare",params(root,"blocked")).await,
+            matches!(call(&session,"install.prepare",prepare_params(root,"blocked")).await,
             Err(SessionError::Rpc { code, .. }) if code == "PREPARE_FAILED")
         );
         assert_eq!(fs::read(&canary).unwrap(), b"owned canary");
         assert_eq!(fs::read(receipt("blocked")).unwrap(), before);
         assert!(status(&session, root, "blocked").await); // receipt records download completion only
-        session.close().await;
-        session.close().await;
-        assert!(matches!(session.request("ping",json!({}),|_|{}).await,
+        close(&session).await;
+        close(&session).await;
+        assert!(matches!(call(&session,"ping",json!({})).await,
             Err(SessionError::Transport { code, .. }) if code == "SESSION_CLOSED"));
         drop(session);
         let reopened = open(root).await; // New real Core child, not merely a recreated Service.
@@ -210,10 +253,41 @@ async fn isolated_native_session_cached_instance_chain() {
             .unwrap()
             .iter()
             .all(|v| v["installed"] == true));
+        // Real recovery, not replay: remove only the owned blocking canary,
+        // then retry execute + prepare through the new real Core child.
+        fs::remove_file(&canary).unwrap();
+        trace(
+            json!({"type":"fixture_action","action":"remove_owned_prepare_canary","path":canary}),
+        );
+        execute(&reopened, root, "blocked").await;
+        let (recovered, _) = call(
+            &reopened,
+            "install.prepare",
+            prepare_params(root, "blocked"),
+        )
+        .await
+        .unwrap();
+        assert_eq!(recovered["stage"], "prepare");
+        assert_eq!(recovered["native_files"], 0);
+        assert!(status(&reopened, root, "blocked").await);
         execute(&reopened, root, "two").await;
         fs::remove_file(receipt("one")).unwrap();
+        trace(
+            json!({"type":"fixture_action","action":"remove_owned_receipt","path":receipt("one")}),
+        );
         assert!(!status(&reopened, root, "one").await);
         assert!(status(&reopened, root, "two").await);
+        let (final_list, _) = call(
+            &reopened,
+            "instance.list",
+            json!({"directory":root.join("instances")}),
+        )
+        .await
+        .unwrap();
+        for entry in final_list["instances"].as_array().unwrap() {
+            assert_eq!(entry["installed"], entry["id"] != "one");
+        }
+
         assert_eq!(
             fs::read(root.join("store/objects/sha1/aa").join(OBJECT_HASH)).unwrap(),
             b"hello"
@@ -222,7 +296,7 @@ async fn isolated_native_session_cached_instance_chain() {
             call(&reopened, "ping", json!({})).await.unwrap().0["pong"],
             true
         );
-        reopened.close().await;
+        close(&reopened).await;
     })
     .await
     .expect("bounded isolated native Session chain");

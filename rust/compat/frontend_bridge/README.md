@@ -59,3 +59,5 @@ A separate local-only ordinary-instance native Session chain is documented in
 pin and process-level network guard; this runner and its CI do not enable it.
 The separate `--scenario content` lane covers plain-file adoption and local
 content lifecycle; see [CONTENT_LIFECYCLE.md](CONTENT_LIFECYCLE.md).
+For captured real native Session events used by frontend trace-replay tests,
+see [TRACE_CAPTURE.md](TRACE_CAPTURE.md); replay is not a live UI/Tauri check.
