@@ -74,5 +74,9 @@ JMCL_ZIG_COMPILER=<zig-0.16.0> cargo test --locked --test url_construction_contr
 ```
 
 Native execution of this new corpus is a separate CI gate. This accepted deviation
-does not close Version/CurseForge malformed-JSON diagnostic debt, arbitrary provider
-live acceptance, or other documented replacement conditions.
+does not waive malformed-JSON diagnostics. The previously demonstrated Version
+and CurseForge cases were addressed by separate ordered parsers, not by this
+URL decision; the [current diagnostic audit](metadata-diagnostic-audit-20261107.md)
+records their bounded evidence. Exhaustive malformed-input equivalence, arbitrary
+provider live acceptance and other documented replacement conditions remain
+unproven.

@@ -1,0 +1,84 @@
+{
+  "tested_local_commit": "031098063d01bbdc0a72e8aecff10982dd2eefc7",
+  "tested_tree": "faa9d6ad38435135287fad02bfdf8b28704afb7d",
+  "baseline_remote_commit": "2727ce6428042c1b1bd2952419c6b13f576f7f8b",
+  "baseline_tree": "5e61790fde937ab927b2b79d1a59d3323f2dbaa3",
+  "production_sources_dependencies_workflows_unchanged": true,
+  "toolchain": "Rust/Cargo 1.99.1, Linux x86_64 GNU",
+  "test_source_sha256": "159f53a8b69a1a77ff56ceac43a4952117776fb6397aaaae6b709826f83555d3",
+  "build_commands": [
+    "cargo test --manifest-path rust/Cargo.toml --offline --locked --test server_lifecycle --no-run",
+    "cargo clippy --manifest-path rust/Cargo.toml --offline --locked --all-targets -- -D warnings"
+  ],
+  "compile_binding": "Targeted no-run built the exact reviewed test source before committing. Commit added only that source and its isolation documentation; no source changed between compile and execution.",
+  "execution_header": {
+    "binary": "/workspace/scratch/6fda792bd6ec/jmcl-tools/acceptance-matrix-target-20261107/debug/deps/server_lifecycle-bb2ee2f25e6f3a99",
+    "binary_sha256": "e9d8b92e5f576d831ddccad2a6698d7914e0180eda99106ef527e94429053b93",
+    "commit": "031098063d01bbdc0a72e8aecff10982dd2eefc7",
+    "core_sha256": "dad858d76f05cc4fad65814b03790a83e02e9244c5fa1d3155f882b89c1fd1f5",
+    "env": {
+      "JMCL_TEST_SERVER_FIXTURE_MAJOR": "99",
+      "LANG": "C",
+      "LC_ALL": "C",
+      "PATH": "/usr/local/sbin",
+      "TMPDIR": "/workspace/scratch/6fda792bd6ec/jmcl-tools/server-lifecycle-owned-20261107",
+      "TZ": "UTC"
+    },
+    "release_sha256": "9ea31b3dc0252da52ff041118beb6f39aa27a45ed94464abe8589f21817bb3d0",
+    "scope": "Installed JVM property/version probes are executed. Server processes are owned shell fixtures only. No download/install/archive or real Minecraft server.",
+    "system_candidates": [
+      {
+        "path": "/usr/lib/jvm/default-java/bin/java",
+        "resolved": "/usr/lib/jvm/java-21-openjdk-amd64/bin/java",
+        "sha256": "1a7e0b17c39003c75b457d686775ccb032e56fa9c8afe3c492d8eb3715e8951a"
+      },
+      {
+        "path": "/usr/lib/jvm/java-1.21.0-openjdk-amd64/bin/java",
+        "resolved": "/usr/lib/jvm/java-21-openjdk-amd64/bin/java",
+        "sha256": "1a7e0b17c39003c75b457d686775ccb032e56fa9c8afe3c492d8eb3715e8951a"
+      },
+      {
+        "path": "/usr/lib/jvm/java-21-openjdk-amd64/bin/java",
+        "resolved": "/usr/lib/jvm/java-21-openjdk-amd64/bin/java",
+        "sha256": "1a7e0b17c39003c75b457d686775ccb032e56fa9c8afe3c492d8eb3715e8951a"
+      }
+    ],
+    "tree": "faa9d6ad38435135287fad02bfdf8b28704afb7d"
+  },
+  "results": [
+    {
+      "exact_test": "detached_start_command_status_restart_stop",
+      "passed": 1,
+      "failed": 0,
+      "ignored": 0,
+      "filtered_out": 7,
+      "owned_fixture_executions": 2
+    },
+    {
+      "exact_test": "stop_escalates_only_verified_synthetic_children",
+      "passed": 1,
+      "failed": 0,
+      "ignored": 0,
+      "filtered_out": 7,
+      "owned_fixture_executions": 2
+    }
+  ],
+  "cleanup": "After each test, no live command line matching an observed owned child/supervisor root and empty owned TMPDIR. No manual kill or timeout was used.",
+  "executed_installed_jvm_probes": true,
+  "executed_real_minecraft_server": false,
+  "not_executed": [
+    "Java runtime acquisition/install/archive",
+    "real Minecraft server",
+    "RCON/Query sockets",
+    "real accounts/providers",
+    "Tauri",
+    "other-platform native execution",
+    "whole test suite"
+  ],
+  "files": {
+    "compile.log": "3789b37bd5af901f2cc3e369512af869b3a1d0922db8004d8eb4fa6b26c00ed7",
+    "clippy.log": "ce26fe9131ad5722db841e8cb525e7a787d0c653b77665838b033e91d3de0f4f",
+    "lifecycle.log": "e336a36510220c210864954557d10ba6c662a7a9d521d7ffc3b037afdaa5ebf9",
+    "runner.py": "5fbe416568be78e42427ea5cceb43387a9d1b3097ca3e6be5aa5b9b0637db21f"
+  }
+}

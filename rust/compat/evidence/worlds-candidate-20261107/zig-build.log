@@ -1,0 +1,3 @@
+COMMAND ["/workspace/scratch/6fda792bd6ec/jmcl-tools/zig-x86_64-linux-0.16.0/zig", "build", "--build-file", "/workspace/scratch/6fda792bd6ec/JMCLCore-oracle/build.zig", "--prefix", "/workspace/scratch/6fda792bd6ec/jmcl-tools/worlds-candidate-20261107/zig-out", "--cache-dir", "/workspace/scratch/6fda792bd6ec/jmcl-tools/worlds-candidate-20261107/zig-local-cache", "--global-cache-dir", "/workspace/scratch/6fda792bd6ec/jmcl-tools/worlds-candidate-20261107/zig-global-cache"]
+
+RETURN_CODE 0

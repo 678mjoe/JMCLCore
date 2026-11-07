@@ -9,6 +9,14 @@ Subsequent Linux compile/Clippy and scoped executable results are recorded
 separately in [the follow-up](candidate-followup-20261107.md). The historical
 scope and checks below describe the original documentation audit.
 
+A later, separately scoped [server lifecycle execution record](candidate-server-followup-20261107.md)
+adds installed-JVM property probes and owned synthetic server execution. It does
+not change the no-real-Java scope of the earlier results described here.
+
+The separately reviewed [client-world follow-up](worlds-candidate-20261107.md)
+adds owned synthetic NBT/region/world-ZIP workflows and pinned CLI comparisons.
+It does not claim Java runtime archive installation or real game generation.
+
 ## 1. Exact subject and distribution boundary
 
 | Subject | Identity and meaning |

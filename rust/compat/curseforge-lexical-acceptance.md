@@ -34,7 +34,13 @@ cargo test --manifest-path rust/Cargo.toml --lib lexical_acceptance_tests -- --i
 Configure `JMCL_ZIG_SOURCE` and Zig 0.16.0. The ignored test builds the unchanged
 source's pure parser adapter in an owned temporary directory.
 
-## Deliberately remaining limits
+## Historical limits of this increment
+
+The limits below describe the completed-parse-only implementation at this
+milestone. File, Page, Project and download-URL metadata now use separate ordered
+parsers. Their [current diagnostic audit](metadata-diagnostic-audit-20261107.md)
+records the demonstrated gaps addressed and the remaining verification limits;
+this historical list is not a list of current reproducible failures.
 
 - Literal invalid UTF-8 inside `data` can fail the RawValue envelope stage before
   inner typed parsing; its existing `UnexpectedToken` versus source `SyntaxError`

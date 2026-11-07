@@ -1,5 +1,5 @@
 #![cfg(target_os = "linux")]
-use jmcl_core_rust::servers::lifecycle;
+use jmcl_core_rust::{java::detect, servers::lifecycle};
 use serde_json::{Value, json};
 use std::{
     fs::{self, File},
@@ -60,20 +60,122 @@ impl Fixture {
         let dir = File::open(dirpath).unwrap();
         Self { tmp, dir }
     }
+    /// Opt-in acceptance mode uses an otherwise-unavailable major so a failed
+    /// fixture probe cannot select the installed JVM. Production selection is
+    /// unchanged. Historical/default fixture behavior remains Java 21.
+    fn for_lifecycle() -> Self {
+        let f = Self::new();
+        match std::env::var("JMCL_TEST_SERVER_FIXTURE_MAJOR") {
+            Err(std::env::VarError::NotPresent) => return f,
+            Ok(value) if value == "99" => {}
+            other => panic!("unsupported fixture isolation mode: {other:?}"),
+        }
+        assert_eq!(jmcl_core_rust::java::managed::host_arch(), Some("x86_64"));
+        let java = f.tmp.path().join("java-fixture");
+        let script = fs::read_to_string(&java).unwrap();
+        fs::write(
+            &java,
+            script
+                .replace(
+                    "java.specification.version = 21",
+                    "java.specification.version = 99",
+                )
+                .replace("java.version = 21.0.1", "java.version = 99.0.1"),
+        )
+        .unwrap();
+        let receipt = f.tmp.path().join("test/.jmcl/install.json");
+        let mut value: Value = serde_json::from_slice(&fs::read(&receipt).unwrap()).unwrap();
+        value["java_major_version"] = 99.into();
+        fs::write(receipt, serde_json::to_vec(&value).unwrap()).unwrap();
+
+        // These are real, bounded version/property probes, including installed
+        // system JVMs. No directory is hidden and no acquisition is performed.
+        let env = std::env::vars_os().collect();
+        let path = java.to_str().unwrap().to_owned();
+        let candidates = detect::discover(&env, std::slice::from_ref(&path)).unwrap();
+        assert_eq!(
+            candidates.first(),
+            Some(&(path.clone(), detect::CandidateSource::Explicit))
+        );
+        let mut runtimes = Vec::new();
+        for (executable, source) in candidates {
+            let runtime = detect::probe(&executable, source, &env).unwrap();
+            let expected_major = if executable == path { 99 } else { 21 };
+            assert_eq!(runtime.major_version, expected_major, "{runtime:?}");
+            eprintln!("fixture-selection probe: {executable} major={expected_major}");
+            runtimes.push(runtime);
+        }
+        let mut detection = detect::Detection {
+            runtimes,
+            failures: vec![],
+        };
+        let selected = detect::select_compatible(&detection, 99, "x86_64").unwrap();
+        assert_eq!(selected.executable, path);
+        assert_eq!(selected.source, detect::CandidateSource::Explicit);
+        detection
+            .runtimes
+            .retain(|runtime| runtime.executable != path);
+        assert_eq!(
+            detect::select_compatible(&detection, 99, "x86_64"),
+            Err("NoCompatibleJava")
+        );
+        eprintln!("owned fixture root: {}", f.tmp.path().display());
+        f
+    }
+    fn assert_started_fixture(&self, response: &Value) {
+        assert_eq!(response["result"]["running"], true, "{response}");
+        let expected = fs::canonicalize(self.tmp.path().join("java-fixture")).unwrap();
+        assert_eq!(response["result"]["java_path"].as_str(), expected.to_str());
+        let state: lifecycle::State = serde_json::from_slice(
+            &fs::read(self.tmp.path().join("test/.jmcl/server.pid")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(state.java_path, expected.to_str().unwrap());
+        assert_eq!(
+            response["result"]["pid"].as_u64(),
+            Some(u64::from(state.pid))
+        );
+        assert!(lifecycle::process_matches(&state).unwrap());
+        let command = fs::read(format!("/proc/{}/cmdline", state.pid)).unwrap();
+        assert!(
+            command
+                .split(|b| *b == 0)
+                .any(|arg| arg == state.java_path.as_bytes())
+        );
+        eprintln!(
+            "owned fixture running: pid={} supervisor={} executable={}",
+            state.pid, state.supervisor_pid, state.java_path
+        );
+    }
+    fn assert_stopped_fixture(&self) {
+        assert!(!lifecycle::status(&self.dir).unwrap().running);
+        assert!(!self.tmp.path().join("test/.jmcl/server.pid").exists());
+    }
     fn params(&self) -> Value {
         json!({"directory":self.tmp.path(),"id":"test"})
     }
 }
 impl Drop for Fixture {
     fn drop(&mut self) {
-        let _ = lifecycle::stop(&self.dir, 100);
+        let cleanup = lifecycle::stop(&self.dir, 100);
+        let stopped = lifecycle::status(&self.dir).is_ok_and(|status| !status.running);
+        if cleanup.is_err() || !stopped {
+            self.tmp.disable_cleanup(true);
+            eprintln!(
+                "fixture cleanup failed; retained {}: {cleanup:?}, stopped={stopped}",
+                self.tmp.path().display()
+            );
+            if !std::thread::panicking() {
+                panic!("owned fixture cleanup failed");
+            }
+        }
     }
 }
 #[test]
 fn detached_start_command_status_restart_stop() {
-    let f = Fixture::new();
+    let f = Fixture::for_lifecycle();
     let start = rpc("server.start", f.params());
-    assert_eq!(start["result"]["running"], true, "{start}");
+    f.assert_started_fixture(&start);
     let pid = start["result"]["pid"].as_u64().unwrap();
     // The RPC process is already gone: this status observes a detached child.
     let status = rpc("server.status", f.params());
@@ -110,12 +212,12 @@ fn detached_start_command_status_restart_stop() {
         std::thread::sleep(Duration::from_millis(20));
     }
     let restart = rpc("server.restart", f.params());
-    assert_eq!(restart["result"]["running"], true, "{restart}");
+    f.assert_started_fixture(&restart);
     assert_ne!(restart["result"]["pid"], pid);
     let stop = rpc("server.stop", f.params());
     assert_eq!(stop["result"]["termination"], "graceful", "{stop}");
     assert_eq!(rpc("server.status", f.params())["result"]["running"], false);
-    assert!(!f.tmp.path().join("test/.jmcl/server.pid").exists());
+    f.assert_stopped_fixture();
 }
 #[test]
 fn offline_properties_and_unknown_parameters() {
@@ -137,7 +239,7 @@ fn offline_properties_and_unknown_parameters() {
 #[test]
 fn stop_escalates_only_verified_synthetic_children() {
     for (ignore_term, expected) in [(false, "terminated"), (true, "killed")] {
-        let f = Fixture::new();
+        let f = Fixture::for_lifecycle();
         let java = f.tmp.path().join("java-fixture");
         let script = fs::read_to_string(&java)
             .unwrap()
@@ -149,7 +251,7 @@ fn stop_escalates_only_verified_synthetic_children() {
         };
         fs::write(java, script).unwrap();
         let start = rpc("server.start", f.params());
-        assert_eq!(start["result"]["running"], true, "{start}");
+        f.assert_started_fixture(&start);
         // The production acknowledgement means "spawned", not "application
         // initialized". Wait for this fixture's marker after installing its
         // TERM trap before asserting which escalation stage must be required.
@@ -173,7 +275,7 @@ fn stop_escalates_only_verified_synthetic_children() {
         stop["grace_ms"] = 0.into();
         let result = rpc("server.stop", stop);
         assert_eq!(result["result"]["termination"], expected, "{result}");
-        assert!(!lifecycle::status(&f.dir).unwrap().running);
+        f.assert_stopped_fixture();
     }
 }
 

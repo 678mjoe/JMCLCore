@@ -1,0 +1,36 @@
+{"binary": "/workspace/scratch/6fda792bd6ec/jmcl-tools/acceptance-matrix-target-20261107/debug/deps/server_lifecycle-bb2ee2f25e6f3a99", "binary_sha256": "e9d8b92e5f576d831ddccad2a6698d7914e0180eda99106ef527e94429053b93", "commit": "031098063d01bbdc0a72e8aecff10982dd2eefc7", "core_sha256": "dad858d76f05cc4fad65814b03790a83e02e9244c5fa1d3155f882b89c1fd1f5", "env": {"JMCL_TEST_SERVER_FIXTURE_MAJOR": "99", "LANG": "C", "LC_ALL": "C", "PATH": "/usr/local/sbin", "TMPDIR": "/workspace/scratch/6fda792bd6ec/jmcl-tools/server-lifecycle-owned-20261107", "TZ": "UTC"}, "release_sha256": "9ea31b3dc0252da52ff041118beb6f39aa27a45ed94464abe8589f21817bb3d0", "scope": "Installed JVM property/version probes are executed. Server processes are owned shell fixtures only. No download/install/archive or real Minecraft server.", "system_candidates": [{"path": "/usr/lib/jvm/default-java/bin/java", "resolved": "/usr/lib/jvm/java-21-openjdk-amd64/bin/java", "sha256": "1a7e0b17c39003c75b457d686775ccb032e56fa9c8afe3c492d8eb3715e8951a"}, {"path": "/usr/lib/jvm/java-1.21.0-openjdk-amd64/bin/java", "resolved": "/usr/lib/jvm/java-21-openjdk-amd64/bin/java", "sha256": "1a7e0b17c39003c75b457d686775ccb032e56fa9c8afe3c492d8eb3715e8951a"}, {"path": "/usr/lib/jvm/java-21-openjdk-amd64/bin/java", "resolved": "/usr/lib/jvm/java-21-openjdk-amd64/bin/java", "sha256": "1a7e0b17c39003c75b457d686775ccb032e56fa9c8afe3c492d8eb3715e8951a"}], "tree": "faa9d6ad38435135287fad02bfdf8b28704afb7d"}
+{"command": ["/workspace/scratch/6fda792bd6ec/jmcl-tools/acceptance-matrix-target-20261107/debug/deps/server_lifecycle-bb2ee2f25e6f3a99", "detached_start_command_status_restart_stop", "--exact", "--nocapture", "--test-threads=1"]}
+
+running 1 test
+test detached_start_command_status_restart_stop ... fixture-selection probe: /workspace/scratch/6fda792bd6ec/jmcl-tools/server-lifecycle-owned-20261107/.tmpgLzC7H/java-fixture major=99
+fixture-selection probe: /usr/lib/jvm/default-java/bin/java major=21
+fixture-selection probe: /usr/lib/jvm/java-1.21.0-openjdk-amd64/bin/java major=21
+fixture-selection probe: /usr/lib/jvm/java-21-openjdk-amd64/bin/java major=21
+owned fixture root: /workspace/scratch/6fda792bd6ec/jmcl-tools/server-lifecycle-owned-20261107/.tmpgLzC7H
+owned fixture running: pid=118 supervisor=117 executable=/workspace/scratch/6fda792bd6ec/jmcl-tools/server-lifecycle-owned-20261107/.tmpgLzC7H/java-fixture
+owned fixture running: pid=179 supervisor=178 executable=/workspace/scratch/6fda792bd6ec/jmcl-tools/server-lifecycle-owned-20261107/.tmpgLzC7H/java-fixture
+ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 7 filtered out; finished in 0.63s
+
+{"verified": "detached_start_command_status_restart_stop", "passed": 1, "failed": 0, "ignored": 0, "owned_children": 2, "live_owned_processes_after": 0, "owned_tmp_entries_after": 0}
+{"command": ["/workspace/scratch/6fda792bd6ec/jmcl-tools/acceptance-matrix-target-20261107/debug/deps/server_lifecycle-bb2ee2f25e6f3a99", "stop_escalates_only_verified_synthetic_children", "--exact", "--nocapture", "--test-threads=1"]}
+
+running 1 test
+test stop_escalates_only_verified_synthetic_children ... fixture-selection probe: /workspace/scratch/6fda792bd6ec/jmcl-tools/server-lifecycle-owned-20261107/.tmpwBezuw/java-fixture major=99
+fixture-selection probe: /usr/lib/jvm/default-java/bin/java major=21
+fixture-selection probe: /usr/lib/jvm/java-1.21.0-openjdk-amd64/bin/java major=21
+fixture-selection probe: /usr/lib/jvm/java-21-openjdk-amd64/bin/java major=21
+owned fixture root: /workspace/scratch/6fda792bd6ec/jmcl-tools/server-lifecycle-owned-20261107/.tmpwBezuw
+owned fixture running: pid=291 supervisor=290 executable=/workspace/scratch/6fda792bd6ec/jmcl-tools/server-lifecycle-owned-20261107/.tmpwBezuw/java-fixture
+fixture-selection probe: /workspace/scratch/6fda792bd6ec/jmcl-tools/server-lifecycle-owned-20261107/.tmpm0Oaeq/java-fixture major=99
+fixture-selection probe: /usr/lib/jvm/default-java/bin/java major=21
+fixture-selection probe: /usr/lib/jvm/java-1.21.0-openjdk-amd64/bin/java major=21
+fixture-selection probe: /usr/lib/jvm/java-21-openjdk-amd64/bin/java major=21
+owned fixture root: /workspace/scratch/6fda792bd6ec/jmcl-tools/server-lifecycle-owned-20261107/.tmpm0Oaeq
+owned fixture running: pid=401 supervisor=400 executable=/workspace/scratch/6fda792bd6ec/jmcl-tools/server-lifecycle-owned-20261107/.tmpm0Oaeq/java-fixture
+ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 7 filtered out; finished in 5.67s
+
+{"verified": "stop_escalates_only_verified_synthetic_children", "passed": 1, "failed": 0, "ignored": 0, "owned_children": 2, "live_owned_processes_after": 0, "owned_tmp_entries_after": 0}

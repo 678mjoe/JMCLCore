@@ -1,0 +1,11 @@
+COMMAND ["cargo", "test", "--manifest-path", "/workspace/scratch/6fda792bd6ec/JMCLCore-worlds-candidate-20261107/rust/Cargo.toml", "--offline", "--locked", "--lib", "worlds::tests::zig_rust_metadata_and_archive_interoperability", "--", "--exact", "--nocapture", "--ignored"]
+    Finished `test` profile [unoptimized] target(s) in 0.07s
+     Running unittests src/lib.rs (/workspace/scratch/6fda792bd6ec/jmcl-tools/worlds-candidate-target-20261107/debug/deps/jmcl_core_rust-5412f86d728c9aa8)
+
+running 1 test
+test worlds::tests::zig_rust_metadata_and_archive_interoperability ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 479 filtered out; finished in 0.12s
+
+
+RETURN_CODE 0

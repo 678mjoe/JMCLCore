@@ -1,0 +1,5 @@
+COMMAND ["cargo", "build", "--manifest-path", "/workspace/scratch/6fda792bd6ec/JMCLCore-worlds-candidate-20261107/rust/Cargo.toml", "--offline", "--locked", "--bin", "jmcl-core-rust"]
+   Compiling jmcl-core-rust v0.1.0-dev (/workspace/scratch/6fda792bd6ec/JMCLCore-worlds-candidate-20261107/rust)
+    Finished `dev` profile [unoptimized] target(s) in 9.34s
+
+RETURN_CODE 0

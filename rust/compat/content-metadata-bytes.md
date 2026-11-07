@@ -54,10 +54,12 @@ This evidence establishes **metadata acceptance and representation**, not direct
 RPC wire coverage or real provider/service acceptance. No HTTP, installation,
 adoption, archive, Java, account, game/server or mutation operation is executed.
 
-A distinct pre-existing lexer-diagnostic difference remains: a raw invalid UTF-8
-byte inside a quoted JSON literal produces Zig `SyntaxError` versus Rust
-`UnexpectedToken`. That malformed-JSON issue is not normalized or counted as
-fixed by byte-array support and should receive its own bounded parser audit.
+A distinct pre-existing lexer-diagnostic difference remained at this byte-array
+milestone: a raw invalid UTF-8 byte inside a quoted JSON literal produced Zig
+`SyntaxError` versus Rust `UnexpectedToken`. Byte-array support did not fix or
+normalize that issue; it required its own bounded parser audit.
+The later ordered Project/Version and CurseForge parsers address those demonstrated
+cases separately; see the [current diagnostic audit](metadata-diagnostic-audit-20261107.md).
 
 ```sh
 JMCL_CONTENT_METADATA_ORACLE=/path/to/content-metadata-oracle \

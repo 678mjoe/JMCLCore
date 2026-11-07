@@ -1,0 +1,4 @@
+COMMAND ["python3", "/workspace/scratch/6fda792bd6ec/JMCLCore-worlds-candidate-20261107/rust/compat/world_cli_archives.py", "--zig", "/workspace/scratch/6fda792bd6ec/jmcl-tools/worlds-candidate-20261107/zig-out/bin/jmcl-core", "--zig-sha256", "bf624b6a77bc83c2811748659efb9311e34ee036490ea50831d940bed710f39e", "--rust", "/workspace/scratch/6fda792bd6ec/jmcl-tools/worlds-candidate-target-20261107/debug/jmcl-core-rust", "--rust-sha256", "dad858d76f05cc4fad65814b03790a83e02e9244c5fa1d3155f882b89c1fd1f5"]
+world CLI archive corpus: 9 paired scenarios passed; 48 command results checked
+
+RETURN_CODE 0
