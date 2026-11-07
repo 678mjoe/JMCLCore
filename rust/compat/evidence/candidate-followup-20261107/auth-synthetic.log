@@ -1,0 +1,40 @@
+COMMAND ["cargo", "test", "--manifest-path", "rust/Cargo.toml", "--offline", "--locked", "--lib", "auth::tests::full_exchange", "--", "--exact", "--nocapture"]
+    Finished `test` profile [unoptimized] target(s) in 0.07s
+     Running unittests src/lib.rs (/workspace/scratch/6fda792bd6ec/jmcl-tools/acceptance-matrix-target-20261107/debug/deps/jmcl_core_rust-5412f86d728c9aa8)
+
+running 1 test
+test auth::tests::full_exchange ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 479 filtered out; finished in 0.00s
+
+
+COMMAND ["cargo", "test", "--manifest-path", "rust/Cargo.toml", "--offline", "--locked", "--lib", "auth::tests::successful_refresh_exchange", "--", "--exact", "--nocapture"]
+    Finished `test` profile [unoptimized] target(s) in 0.07s
+     Running unittests src/lib.rs (/workspace/scratch/6fda792bd6ec/jmcl-tools/acceptance-matrix-target-20261107/debug/deps/jmcl_core_rust-5412f86d728c9aa8)
+
+running 1 test
+test auth::tests::successful_refresh_exchange ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 479 filtered out; finished in 0.00s
+
+
+COMMAND ["cargo", "test", "--manifest-path", "rust/Cargo.toml", "--offline", "--locked", "--lib", "auth::tests::refresh_rotation_failure_is_a_result", "--", "--exact", "--nocapture"]
+    Finished `test` profile [unoptimized] target(s) in 0.06s
+     Running unittests src/lib.rs (/workspace/scratch/6fda792bd6ec/jmcl-tools/acceptance-matrix-target-20261107/debug/deps/jmcl_core_rust-5412f86d728c9aa8)
+
+running 1 test
+test auth::tests::refresh_rotation_failure_is_a_result ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 479 filtered out; finished in 0.00s
+
+
+COMMAND ["cargo", "test", "--manifest-path", "rust/Cargo.toml", "--offline", "--locked", "--lib", "auth::tests::device_begin_and_poll", "--", "--exact", "--nocapture"]
+    Finished `test` profile [unoptimized] target(s) in 0.06s
+     Running unittests src/lib.rs (/workspace/scratch/6fda792bd6ec/jmcl-tools/acceptance-matrix-target-20261107/debug/deps/jmcl_core_rust-5412f86d728c9aa8)
+
+running 1 test
+test auth::tests::device_begin_and_poll ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 479 filtered out; finished in 0.00s
+
+

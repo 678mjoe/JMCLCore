@@ -1,0 +1,40 @@
+COMMAND ["cargo", "test", "--manifest-path", "rust/Cargo.toml", "--offline", "--locked", "--test", "launch_executor", "native_launch_and_cleanup_on_all_owned_error_paths", "--", "--exact", "--nocapture"]
+    Finished `test` profile [unoptimized] target(s) in 0.08s
+     Running tests/launch_executor.rs (/workspace/scratch/6fda792bd6ec/jmcl-tools/acceptance-matrix-target-20261107/debug/deps/launch_executor-2a5ddfe008d5bbb1)
+
+running 1 test
+test native_launch_and_cleanup_on_all_owned_error_paths ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.11s
+
+
+COMMAND ["cargo", "test", "--manifest-path", "rust/Cargo.toml", "--offline", "--locked", "--test", "launch_process", "native_child_streams_literal_args_and_environment", "--", "--exact", "--nocapture"]
+    Finished `test` profile [unoptimized] target(s) in 0.07s
+     Running tests/launch_process.rs (/workspace/scratch/6fda792bd6ec/jmcl-tools/acceptance-matrix-target-20261107/debug/deps/launch_process-e662242082d963a4)
+
+running 1 test
+test native_child_streams_literal_args_and_environment ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.11s
+
+
+COMMAND ["cargo", "test", "--manifest-path", "rust/Cargo.toml", "--offline", "--locked", "--test", "server_lifecycle", "offline_properties_and_unknown_parameters", "--", "--exact", "--nocapture"]
+    Finished `test` profile [unoptimized] target(s) in 0.07s
+     Running tests/server_lifecycle.rs (/workspace/scratch/6fda792bd6ec/jmcl-tools/acceptance-matrix-target-20261107/debug/deps/server_lifecycle-bb2ee2f25e6f3a99)
+
+running 1 test
+test offline_properties_and_unknown_parameters ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 7 filtered out; finished in 0.01s
+
+
+COMMAND ["cargo", "test", "--manifest-path", "rust/Cargo.toml", "--offline", "--locked", "--test", "server_lifecycle", "server_worlds_keep_base_dimensions_and_properties_coupled", "--", "--exact", "--nocapture"]
+    Finished `test` profile [unoptimized] target(s) in 0.06s
+     Running tests/server_lifecycle.rs (/workspace/scratch/6fda792bd6ec/jmcl-tools/acceptance-matrix-target-20261107/debug/deps/server_lifecycle-bb2ee2f25e6f3a99)
+
+running 1 test
+test server_worlds_keep_base_dimensions_and_properties_coupled ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 7 filtered out; finished in 0.01s
+
+

@@ -1,0 +1,9 @@
+    Finished `test` profile [unoptimized] target(s) in 0.10s
+     Running tests/url_construction_contract.rs (/workspace/scratch/6fda792bd6ec/jmcl-tools/acceptance-matrix-target-20261107/debug/deps/url_construction_contract-6642d659cc3046be)
+
+running 1 test
+32 exact Rust URL construction cases; COMPAT-URL-001: 6 named deviations, 8 strict target controls; no HTTP client/network
+test accepted_url_deviation_has_exact_named_construction_results ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+

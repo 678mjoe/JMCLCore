@@ -1,0 +1,388 @@
+{
+  "schema_version": 1,
+  "observed_at_utc": "2026-11-07T14:49:57.195757+00:00",
+  "tested_remote_commit": "d8bb78d3eca19cd068adaff07920522ae1c2e593",
+  "tested_local_commit": "25f910409581e42c7bc5792a3b943d8e086e5924",
+  "tested_tree": "177db65cdf81ded3cb8202f3c6dc686ba81eaf84",
+  "rustc": "rustc 1.99.1 (58cf8f9c3 2026-10-13)\nbinary: rustc\ncommit-hash: 58cf8f9c35b355199727627d07ae34a4e2846d67\ncommit-date: 2026-10-13\nhost: x86_64-unknown-linux-gnu\nrelease: 1.99.1\nLLVM version: 23.1.1\n",
+  "zig_pure_fixture_version": "0.16.0",
+  "core_sha256": "dad858d76f05cc4fad65814b03790a83e02e9244c5fa1d3155f882b89c1fd1f5",
+  "all_targets_compile_no_run": true,
+  "all_targets_clippy_deny_warnings": true,
+  "default_features_only": true,
+  "offline_locked": true,
+  "exact_test_groups": {
+    "local-state": [
+      {
+        "selector": [
+          "--lib"
+        ],
+        "name": "accounts::tests::save_load_list_delete_public_metadata",
+        "command": [
+          "cargo",
+          "test",
+          "--manifest-path",
+          "rust/Cargo.toml",
+          "--offline",
+          "--locked",
+          "--lib",
+          "accounts::tests::save_load_list_delete_public_metadata",
+          "--",
+          "--exact",
+          "--nocapture"
+        ],
+        "exit_code": 0,
+        "exactly_one_passed": true
+      },
+      {
+        "selector": [
+          "--lib"
+        ],
+        "name": "instances::unix::tests::lifecycle_preserves_layout",
+        "command": [
+          "cargo",
+          "test",
+          "--manifest-path",
+          "rust/Cargo.toml",
+          "--offline",
+          "--locked",
+          "--lib",
+          "instances::unix::tests::lifecycle_preserves_layout",
+          "--",
+          "--exact",
+          "--nocapture"
+        ],
+        "exit_code": 0,
+        "exactly_one_passed": true
+      },
+      {
+        "selector": [
+          "--test",
+          "content_adopt"
+        ],
+        "name": "adoption_reuses_real_file_identity_and_manual_registry",
+        "command": [
+          "cargo",
+          "test",
+          "--manifest-path",
+          "rust/Cargo.toml",
+          "--offline",
+          "--locked",
+          "--test",
+          "content_adopt",
+          "adoption_reuses_real_file_identity_and_manual_registry",
+          "--",
+          "--exact",
+          "--nocapture"
+        ],
+        "exit_code": 0,
+        "exactly_one_passed": true
+      },
+      {
+        "selector": [
+          "--lib"
+        ],
+        "name": "content::tests::toggle_remove_preserve_shared_inode",
+        "command": [
+          "cargo",
+          "test",
+          "--manifest-path",
+          "rust/Cargo.toml",
+          "--offline",
+          "--locked",
+          "--lib",
+          "content::tests::toggle_remove_preserve_shared_inode",
+          "--",
+          "--exact",
+          "--nocapture"
+        ],
+        "exit_code": 0,
+        "exactly_one_passed": true
+      },
+      {
+        "selector": [
+          "--lib"
+        ],
+        "name": "content::tests::missing_files_and_partial_toggles_are_recoverable",
+        "command": [
+          "cargo",
+          "test",
+          "--manifest-path",
+          "rust/Cargo.toml",
+          "--offline",
+          "--locked",
+          "--lib",
+          "content::tests::missing_files_and_partial_toggles_are_recoverable",
+          "--",
+          "--exact",
+          "--nocapture"
+        ],
+        "exit_code": 0,
+        "exactly_one_passed": true
+      },
+      {
+        "selector": [
+          "--test",
+          "store_root_errors"
+        ],
+        "name": "existing_and_missing_owned_root_creation_stays_exact",
+        "command": [
+          "cargo",
+          "test",
+          "--manifest-path",
+          "rust/Cargo.toml",
+          "--offline",
+          "--locked",
+          "--test",
+          "store_root_errors",
+          "existing_and_missing_owned_root_creation_stays_exact",
+          "--",
+          "--exact",
+          "--nocapture"
+        ],
+        "exit_code": 0,
+        "exactly_one_passed": true
+      }
+    ],
+    "native-workflows": [
+      {
+        "selector": [
+          "--test",
+          "launch_executor"
+        ],
+        "name": "native_launch_and_cleanup_on_all_owned_error_paths",
+        "command": [
+          "cargo",
+          "test",
+          "--manifest-path",
+          "rust/Cargo.toml",
+          "--offline",
+          "--locked",
+          "--test",
+          "launch_executor",
+          "native_launch_and_cleanup_on_all_owned_error_paths",
+          "--",
+          "--exact",
+          "--nocapture"
+        ],
+        "exit_code": 0,
+        "exactly_one_passed": true
+      },
+      {
+        "selector": [
+          "--test",
+          "launch_process"
+        ],
+        "name": "native_child_streams_literal_args_and_environment",
+        "command": [
+          "cargo",
+          "test",
+          "--manifest-path",
+          "rust/Cargo.toml",
+          "--offline",
+          "--locked",
+          "--test",
+          "launch_process",
+          "native_child_streams_literal_args_and_environment",
+          "--",
+          "--exact",
+          "--nocapture"
+        ],
+        "exit_code": 0,
+        "exactly_one_passed": true
+      },
+      {
+        "selector": [
+          "--test",
+          "server_lifecycle"
+        ],
+        "name": "offline_properties_and_unknown_parameters",
+        "command": [
+          "cargo",
+          "test",
+          "--manifest-path",
+          "rust/Cargo.toml",
+          "--offline",
+          "--locked",
+          "--test",
+          "server_lifecycle",
+          "offline_properties_and_unknown_parameters",
+          "--",
+          "--exact",
+          "--nocapture"
+        ],
+        "exit_code": 0,
+        "exactly_one_passed": true
+      },
+      {
+        "selector": [
+          "--test",
+          "server_lifecycle"
+        ],
+        "name": "server_worlds_keep_base_dimensions_and_properties_coupled",
+        "command": [
+          "cargo",
+          "test",
+          "--manifest-path",
+          "rust/Cargo.toml",
+          "--offline",
+          "--locked",
+          "--test",
+          "server_lifecycle",
+          "server_worlds_keep_base_dimensions_and_properties_coupled",
+          "--",
+          "--exact",
+          "--nocapture"
+        ],
+        "exit_code": 0,
+        "exactly_one_passed": true
+      }
+    ],
+    "auth-synthetic": [
+      {
+        "selector": [
+          "--lib"
+        ],
+        "name": "auth::tests::full_exchange",
+        "command": [
+          "cargo",
+          "test",
+          "--manifest-path",
+          "rust/Cargo.toml",
+          "--offline",
+          "--locked",
+          "--lib",
+          "auth::tests::full_exchange",
+          "--",
+          "--exact",
+          "--nocapture"
+        ],
+        "exit_code": 0,
+        "exactly_one_passed": true
+      },
+      {
+        "selector": [
+          "--lib"
+        ],
+        "name": "auth::tests::successful_refresh_exchange",
+        "command": [
+          "cargo",
+          "test",
+          "--manifest-path",
+          "rust/Cargo.toml",
+          "--offline",
+          "--locked",
+          "--lib",
+          "auth::tests::successful_refresh_exchange",
+          "--",
+          "--exact",
+          "--nocapture"
+        ],
+        "exit_code": 0,
+        "exactly_one_passed": true
+      },
+      {
+        "selector": [
+          "--lib"
+        ],
+        "name": "auth::tests::refresh_rotation_failure_is_a_result",
+        "command": [
+          "cargo",
+          "test",
+          "--manifest-path",
+          "rust/Cargo.toml",
+          "--offline",
+          "--locked",
+          "--lib",
+          "auth::tests::refresh_rotation_failure_is_a_result",
+          "--",
+          "--exact",
+          "--nocapture"
+        ],
+        "exit_code": 0,
+        "exactly_one_passed": true
+      },
+      {
+        "selector": [
+          "--lib"
+        ],
+        "name": "auth::tests::device_begin_and_poll",
+        "command": [
+          "cargo",
+          "test",
+          "--manifest-path",
+          "rust/Cargo.toml",
+          "--offline",
+          "--locked",
+          "--lib",
+          "auth::tests::device_begin_and_poll",
+          "--",
+          "--exact",
+          "--nocapture"
+        ],
+        "exit_code": 0,
+        "exactly_one_passed": true
+      }
+    ]
+  },
+  "gui_launch_plan": {
+    "passed": 8,
+    "failed": 0,
+    "ignored": 0
+  },
+  "url_construction": {
+    "rust_test_passed": 1,
+    "paired_test_passed": 1,
+    "same_fixture_rows": 32,
+    "accepted_differences": 6,
+    "strict_controls": 8,
+    "construction_diagnostics": 18,
+    "wire_parity": false
+  },
+  "logs": {
+    "compile": {
+      "path": "rust/compat/evidence/candidate-followup-20261107/compile.log",
+      "sha256": "4ccc29fcceeca751ea084c82ea45df21a0859705dff63de79fe9ff39d0b952b8"
+    },
+    "clippy": {
+      "path": "rust/compat/evidence/candidate-followup-20261107/clippy.log",
+      "sha256": "91299f49e4daabf5031d21e8a4072c563e1fedb3466075e1624eebf6e0500d2d"
+    },
+    "url-rust": {
+      "path": "rust/compat/evidence/candidate-followup-20261107/url-rust.log",
+      "sha256": "14f5f991833b5714f9afaedd4459ee2e64a9666f20f3daa07ebb9590f5493645"
+    },
+    "url-paired": {
+      "path": "rust/compat/evidence/candidate-followup-20261107/url-paired.log",
+      "sha256": "96da935fac2bc301b66c32619b94fc326f501a6ce3b6c50ac4b5ca4c11706202"
+    },
+    "local-state": {
+      "path": "rust/compat/evidence/candidate-followup-20261107/local-state.log",
+      "sha256": "1b9b24a2b0999a8f91c02d4c30895cd76441712dc79806d658f0de94f9bd9ebb"
+    },
+    "native-workflows": {
+      "path": "rust/compat/evidence/candidate-followup-20261107/native-workflows.log",
+      "sha256": "21bd3bab50333c83a828ea6d03d93fc7625db09a1d1b22150c9bffb8dabdcefb"
+    },
+    "auth-synthetic": {
+      "path": "rust/compat/evidence/candidate-followup-20261107/auth-synthetic.log",
+      "sha256": "7f6e1218889f3c66e8f2b21f060fced776407bb4b9cc00c423432be552f56aef"
+    },
+    "gui-plan": {
+      "path": "rust/compat/evidence/candidate-followup-20261107/gui-plan.log",
+      "sha256": "1d297ef7aa378575920038d9d1d8d74a2a9a039fe9afb8fca9bf1212727e123d"
+    }
+  },
+  "not_run": [
+    "full test suite",
+    "full server start/restart lifecycle",
+    "live Java probes or JVM/game",
+    "Java acquisition",
+    "archive processing",
+    "network providers",
+    "Tauri/UI",
+    "other-platform native execution"
+  ],
+  "denials": [],
+  "replacement_allowed": false
+}

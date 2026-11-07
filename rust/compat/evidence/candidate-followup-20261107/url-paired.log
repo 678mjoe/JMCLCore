@@ -1,0 +1,9 @@
+    Finished `test` profile [unoptimized] target(s) in 0.06s
+     Running tests/url_construction_contract.rs (/workspace/scratch/6fda792bd6ec/jmcl-tools/acceptance-matrix-target-20261107/debug/deps/url_construction_contract-6642d659cc3046be)
+
+running 1 test
+32 exact pinned std.Uri/Rust construction pairs; COMPAT-URL-001 explicitly not wire parity; input files unchanged
+test pinned_source_url_construction_matches_exact_bytes ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 18.20s
+

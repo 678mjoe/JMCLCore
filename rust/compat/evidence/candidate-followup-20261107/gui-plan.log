@@ -1,0 +1,15 @@
+    Finished `test` profile [unoptimized] target(s) in 0.07s
+     Running tests/gui_launch_plan.rs (/workspace/scratch/6fda792bd6ec/jmcl-tools/acceptance-matrix-target-20261107/debug/deps/gui_launch_plan-b59e443f2dace322)
+
+running 8 tests
+test gui_event_output_failure_is_sticky_without_retrying_or_spawning ... ok
+test gui_features_and_last_matching_rules_control_only_selected_arguments ... ok
+test manual_runtime_checks_and_forced_override_do_not_probe_java ... ok
+test legacy_gui_arguments_keep_quoted_values_and_planned_virtual_assets ... ok
+test disabling_default_jvm_and_target_classpath_delimiters_do_not_shift_secrets ... ok
+test invalid_auth_placeholders_and_legacy_syntax_fail_during_construction ... ok
+test modern_vanilla_gui_options_preserve_full_order_and_redaction ... ok
+test overlapping_equal_missing_and_empty_sessions_redact_whole_arguments_once ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

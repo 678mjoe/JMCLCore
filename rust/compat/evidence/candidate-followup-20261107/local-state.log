@@ -1,0 +1,60 @@
+COMMAND ["cargo", "test", "--manifest-path", "rust/Cargo.toml", "--offline", "--locked", "--lib", "accounts::tests::save_load_list_delete_public_metadata", "--", "--exact", "--nocapture"]
+    Finished `test` profile [unoptimized] target(s) in 0.06s
+     Running unittests src/lib.rs (/workspace/scratch/6fda792bd6ec/jmcl-tools/acceptance-matrix-target-20261107/debug/deps/jmcl_core_rust-5412f86d728c9aa8)
+
+running 1 test
+test accounts::tests::save_load_list_delete_public_metadata ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 479 filtered out; finished in 0.00s
+
+
+COMMAND ["cargo", "test", "--manifest-path", "rust/Cargo.toml", "--offline", "--locked", "--lib", "instances::unix::tests::lifecycle_preserves_layout", "--", "--exact", "--nocapture"]
+    Finished `test` profile [unoptimized] target(s) in 0.06s
+     Running unittests src/lib.rs (/workspace/scratch/6fda792bd6ec/jmcl-tools/acceptance-matrix-target-20261107/debug/deps/jmcl_core_rust-5412f86d728c9aa8)
+
+running 1 test
+test instances::unix::tests::lifecycle_preserves_layout ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 479 filtered out; finished in 0.00s
+
+
+COMMAND ["cargo", "test", "--manifest-path", "rust/Cargo.toml", "--offline", "--locked", "--test", "content_adopt", "adoption_reuses_real_file_identity_and_manual_registry", "--", "--exact", "--nocapture"]
+    Finished `test` profile [unoptimized] target(s) in 0.07s
+     Running tests/content_adopt.rs (/workspace/scratch/6fda792bd6ec/jmcl-tools/acceptance-matrix-target-20261107/debug/deps/content_adopt-48916f12ec340f30)
+
+running 1 test
+test adoption_reuses_real_file_identity_and_manual_registry ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.00s
+
+
+COMMAND ["cargo", "test", "--manifest-path", "rust/Cargo.toml", "--offline", "--locked", "--lib", "content::tests::toggle_remove_preserve_shared_inode", "--", "--exact", "--nocapture"]
+    Finished `test` profile [unoptimized] target(s) in 0.06s
+     Running unittests src/lib.rs (/workspace/scratch/6fda792bd6ec/jmcl-tools/acceptance-matrix-target-20261107/debug/deps/jmcl_core_rust-5412f86d728c9aa8)
+
+running 1 test
+test content::tests::toggle_remove_preserve_shared_inode ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 479 filtered out; finished in 0.00s
+
+
+COMMAND ["cargo", "test", "--manifest-path", "rust/Cargo.toml", "--offline", "--locked", "--lib", "content::tests::missing_files_and_partial_toggles_are_recoverable", "--", "--exact", "--nocapture"]
+    Finished `test` profile [unoptimized] target(s) in 0.07s
+     Running unittests src/lib.rs (/workspace/scratch/6fda792bd6ec/jmcl-tools/acceptance-matrix-target-20261107/debug/deps/jmcl_core_rust-5412f86d728c9aa8)
+
+running 1 test
+test content::tests::missing_files_and_partial_toggles_are_recoverable ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 479 filtered out; finished in 0.00s
+
+
+COMMAND ["cargo", "test", "--manifest-path", "rust/Cargo.toml", "--offline", "--locked", "--test", "store_root_errors", "existing_and_missing_owned_root_creation_stays_exact", "--", "--exact", "--nocapture"]
+    Finished `test` profile [unoptimized] target(s) in 0.06s
+     Running tests/store_root_errors.rs (/workspace/scratch/6fda792bd6ec/jmcl-tools/acceptance-matrix-target-20261107/debug/deps/store_root_errors-5a804594c00227d3)
+
+running 1 test
+test existing_and_missing_owned_root_creation_stays_exact ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.00s
+
+

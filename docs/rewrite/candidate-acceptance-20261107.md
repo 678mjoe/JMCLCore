@@ -5,6 +5,10 @@ before interpreting the historical milestone sections or a green test count.
 The Rust candidate is **not approved to replace the Zig Core**.
 `full_compatibility` and `replacement_allowed` remain false.
 
+Subsequent Linux compile/Clippy and scoped executable results are recorded
+separately in [the follow-up](candidate-followup-20261107.md). The historical
+scope and checks below describe the original documentation audit.
+
 ## 1. Exact subject and distribution boundary
 
 | Subject | Identity and meaning |
