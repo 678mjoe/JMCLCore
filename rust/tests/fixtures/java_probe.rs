@@ -17,7 +17,14 @@ fn main() {
                     std::process::exit(3)
                 }
             }
-            eprintln!("java.specification.version = 17\nos.arch = amd64\nsun.arch.data.model = 64\njava.vendor = Fixture\njava.home = /fixture/java");
+            let arch = match std::env::consts::ARCH {
+                "x86_64" => "amd64",
+                arch => arch,
+            };
+            eprintln!(
+                "java.specification.version = 17\nos.arch = {arch}\nsun.arch.data.model = {}\njava.vendor = Fixture\njava.home = /fixture/java",
+                usize::BITS
+            );
         }
     }
 }

@@ -1,0 +1,3 @@
+*.log -text whitespace=-blank-at-eof
+manifest.json text eol=lf
+record_integration.py text eol=lf

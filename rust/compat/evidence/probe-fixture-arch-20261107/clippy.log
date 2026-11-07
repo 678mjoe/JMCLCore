@@ -1,0 +1,4 @@
+{"command": ["cargo", "clippy", "--manifest-path", "rust/Cargo.toml", "--offline", "--locked", "--all-targets", "--", "-D", "warnings"]}
+    Checking jmcl-core-rust v0.1.0-dev (/workspace/scratch/6fda792bd6ec/JMCLCore-acceptance-20261107/rust)
+    Finished `dev` profile [unoptimized] target(s) in 0.22s
+{"returncode": 0}

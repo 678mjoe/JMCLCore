@@ -1,0 +1,7 @@
+Actual execution host: Linux-6.18.57-x86_64-with-glibc2.41
+java.specification.version = 17
+os.arch = amd64
+sun.arch.data.model = 64
+java.vendor = Fixture
+java.home = /fixture/java
+Native owned fixture assertions passed.

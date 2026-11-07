@@ -35,6 +35,11 @@ checks against their whole-repository tree.
   production-service tests with owned mrpack ZIPs, injected bytes, CAS sharing,
   private overrides and retry. No Java, provider or actual Core RPC.
 
+- [Host-accurate probe fixture](probe-fixture-arch-20261107.md): test-only
+  architecture/bit-width reporting and assertions, with Linux x86_64 native
+  verification. This is not new ARM64/macOS/Windows execution or a production
+  managed-runtime selection change.
+
 These counts describe different evidence layers and must not be summed into a
 completion fraction. COMPAT-URL-001 remains the six named accepted construction
 and representation differences. A new byte-preserving transport is **not** a

@@ -1,0 +1,10 @@
+{"command": ["cargo", "test", "--manifest-path", "rust/Cargo.toml", "--offline", "--locked", "--test", "java_process", "native_probe_deadline_and_option_sanitization", "--", "--exact", "--nocapture"]}
+    Finished `test` profile [unoptimized] target(s) in 0.11s
+     Running tests/java_process.rs (/workspace/scratch/6fda792bd6ec/jmcl-tools/acceptance-matrix-target-20261107/debug/deps/java_process-ff93e745fff4d412)
+
+running 1 test
+test native_probe_deadline_and_option_sanitization ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.34s
+
+{"returncode": 0}

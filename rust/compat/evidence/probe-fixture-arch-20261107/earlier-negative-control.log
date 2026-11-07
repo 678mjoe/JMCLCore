@@ -1,0 +1,21 @@
+Intentional wrong-architecture fixture injection on native Linux x86_64. Not ARM64 execution.
+
+running 1 test
+test native_probe_deadline_and_option_sanitization ... FAILED
+
+failures:
+
+failures:
+    native_probe_deadline_and_option_sanitization
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.13s
+
+    Finished `test` profile [unoptimized] target(s) in 0.08s
+     Running tests/java_process.rs (/workspace/scratch/6fda792bd6ec/jmcl-tools/acceptance-matrix-target-20261107/debug/deps/java_process-ff93e745fff4d412)
+
+thread 'native_probe_deadline_and_option_sanitization' (46) panicked at tests/java_process.rs:33:5:
+assertion `left == right` failed
+  left: Some("arm64")
+ right: Some("x86_64")
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+error: test failed, to rerun pass `--test java_process`

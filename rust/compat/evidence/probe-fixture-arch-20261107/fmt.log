@@ -1,0 +1,2 @@
+{"command": ["cargo", "fmt", "--manifest-path", "rust/Cargo.toml", "--all", "--", "--check"]}
+{"returncode": 0}

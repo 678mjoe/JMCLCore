@@ -29,6 +29,12 @@ fn native_probe_deadline_and_option_sanitization() {
     let runtime = detect::probe(path, CandidateSource::Explicit, &env).unwrap();
     assert_eq!(runtime.major_version, 17);
     assert_eq!(runtime.vendor.as_deref(), Some("Fixture"));
+    assert_eq!(runtime.executable, path);
+    assert_eq!(
+        runtime.architecture.as_deref(),
+        jmcl_core_rust::java::managed::host_arch()
+    );
+    assert_eq!(runtime.data_model, Some(usize::BITS as u8));
     for mode in ["hang", "hold"] {
         env.insert("JMCL_TEST_JAVA_MODE".into(), mode.into());
         let start = Instant::now();
@@ -96,6 +102,9 @@ fn managed_receipt_preference_and_download_error_policy() {
     })
     .unwrap();
     assert_eq!(result.source, Source::Managed);
+    assert_eq!(result.runtime.major_version, 17);
+    assert_eq!(result.runtime.executable, java.to_str().unwrap());
+    assert_eq!(result.runtime.architecture.as_deref(), managed::host_arch());
     // An uninstalled major forces the injected downloader; no runtime is downloaded.
     request.required_major = 999;
     for (input, expected) in [

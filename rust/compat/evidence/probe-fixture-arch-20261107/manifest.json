@@ -1,0 +1,130 @@
+{
+  "tested_commit": "a924fe6c7572ab8b0fe0a24975c7860cdb966e03",
+  "tested_tree": "8005b88fa3c92a705c48bf2c23ca072eb575f2d4",
+  "platform": "Linux x86_64 GNU",
+  "toolchain": "Rust/Cargo 1.99.1",
+  "source_fingerprints": {
+    "rust/tests/fixtures/java_probe.rs": "045488790e1570d6abbc9624dc5110b4e0e30a590486b1944bba55797eb3bfab",
+    "rust/tests/java_process.rs": "b385675c3c674e3648ae1e41626e9f4ab9e976f0c581ca5af57c31f9abcc70f1",
+    "rust/src/java/detect.rs": "43a25b5795c903e2eb0c1aade0980b23bf986e36602dcbde434a85419f0741cf",
+    "rust/src/java/managed.rs": "55532349b3bb8aa74e226b4a6956753802f9e76bb9428ab577274f0a31ab56b2",
+    "rust/Cargo.lock": "3b103f285c5e822c65b8eab624b93600f8a256251ba9adb0d76e5ff1f7c80758"
+  },
+  "checks": [
+    {
+      "name": "fmt",
+      "command": [
+        "cargo",
+        "fmt",
+        "--manifest-path",
+        "rust/Cargo.toml",
+        "--all",
+        "--",
+        "--check"
+      ],
+      "returncode": 0,
+      "log": "fmt.log",
+      "sha256": "fc5be5ad8e6973720bc13de690ee5e05a32c0548750aad2ebd3fbd04f4ad6044"
+    },
+    {
+      "name": "fixture-fmt",
+      "command": [
+        "rustfmt",
+        "--edition",
+        "2024",
+        "--check",
+        "rust/tests/fixtures/java_probe.rs"
+      ],
+      "returncode": 0,
+      "log": "fixture-fmt.log",
+      "sha256": "1fe5e1965792c6e19f7d6ed635d8c035e99342fd2ee1706ee11a5fc7c851ea41"
+    },
+    {
+      "name": "compile",
+      "command": [
+        "cargo",
+        "test",
+        "--manifest-path",
+        "rust/Cargo.toml",
+        "--offline",
+        "--locked",
+        "--all-targets",
+        "--no-run"
+      ],
+      "returncode": 0,
+      "log": "compile.log",
+      "sha256": "2ceab4922279113004394640c4fbce985d8b7f9d1feea8bfe4bd17f741a9a31e"
+    },
+    {
+      "name": "clippy",
+      "command": [
+        "cargo",
+        "clippy",
+        "--manifest-path",
+        "rust/Cargo.toml",
+        "--offline",
+        "--locked",
+        "--all-targets",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "returncode": 0,
+      "log": "clippy.log",
+      "sha256": "97591606515ba66773a34856a03442b50137f9eb5e6db29240d8ffe376d54067"
+    },
+    {
+      "name": "native-probe",
+      "command": [
+        "cargo",
+        "test",
+        "--manifest-path",
+        "rust/Cargo.toml",
+        "--offline",
+        "--locked",
+        "--test",
+        "java_process",
+        "native_probe_deadline_and_option_sanitization",
+        "--",
+        "--exact",
+        "--nocapture"
+      ],
+      "returncode": 0,
+      "log": "native-probe.log",
+      "sha256": "29b73364fdd93ceb9254391636f59ff841db65584b08b63639a9cce5dcbca8f5"
+    }
+  ],
+  "clean_tree_before_and_after": true,
+  "exact_test": {
+    "passed": 1,
+    "failed": 0,
+    "ignored": 0,
+    "filtered_out": 1
+  },
+  "owned_tmp_empty": true,
+  "owned_argv_matches_after_natural_exit_wait": 0,
+  "natural_exit_wait_seconds": 3,
+  "managed_test_executed": false,
+  "system_java_discovery": false,
+  "real_jvm_executed": false,
+  "production_dependencies_workflows_unchanged": true,
+  "test_binary_sha256": "96adce3978161ee8b3215e70ba9211b9e2a52ec7d3ee33a2d27b2ebd5afae3b2",
+  "record_integration_sha256": "788883849d98af9d540788b577b7b9d26c5fe9eb8481fef9812b352e96daffb1",
+  "earlier_isolated_worktree": {
+    "commit": "b616ec38d4c7ce7951862c12616bdd30afe6a4c5",
+    "tree": "8963bbaf7c0866465c9bb169bed4bc6bea5d52c3",
+    "base": "13c7044c0d095f17b904d0113e0b29d6a8a50ef9",
+    "logs": {
+      "earlier-checks.log": "29d64a795a6b087197c6b5999c5b17186b8ae363d3b714f84c2060dc8e0ab447",
+      "earlier-final-checks.log": "efb3102a4b9233a2a6f2db09419977d7e81db3c93ee434d33615200ca893536a",
+      "earlier-standalone.log": "e770aef3fb8901688c6d6f8bfdb9a36e91faf22dfa30d1fa524be19524e8943b",
+      "earlier-negative-control.log": "4fb94cf462e3ab72f46b095476b2f6530070d74cc8ba6d1d6684cef26afa14dc",
+      "earlier-restored-green.log": "917a786125f2f06d83a8299d4a112f98f3d15ad9c11864f6d0a16b4ba9b497d1"
+    },
+    "negative_control": "On Linux x86_64, temporarily report aarch64 instead of amd64; the new native test assertion fails (exit 101). Restore fixture and exact test passes. Not native ARM64 execution or a red/green demonstration of original fixed-amd64 behavior on ARM."
+  },
+  "production_src_tree": "99bfa7577af7597ab8069aecd278bb4e9a352296",
+  "zig_src_tree": "2c182bdb99c9c11b8bb203948c0f9b0ce160ed32",
+  "final_test_source_tree": "9cb743c494a1a1049d72770548a389204eff39c8",
+  "final_retention_change": "Only documentation/evidence added after integrated checks; no further implementation, test, fixture, dependency or workflow change."
+}

@@ -1,0 +1,21 @@
+rustc 1.99.1 (58cf8f9c3 2026-10-13)
+binary: rustc
+commit-hash: 58cf8f9c35b355199727627d07ae34a4e2846d67
+commit-date: 2026-10-13
+host: x86_64-unknown-linux-gnu
+release: 1.99.1
+LLVM version: 23.1.1
+cargo 1.99.1 (5f94df478 2026-08-27)
+    Checking jmcl-core-rust v0.1.0-dev (/workspace/scratch/6fda792bd6ec/JMCLCore-probe-arch-20261107/rust)
+    Finished `dev` profile [unoptimized] target(s) in 9.08s
+    Checking jmcl-core-rust v0.1.0-dev (/workspace/scratch/6fda792bd6ec/JMCLCore-probe-arch-20261107/rust)
+    Finished `dev` profile [unoptimized] target(s) in 10.13s
+   Compiling jmcl-core-rust v0.1.0-dev (/workspace/scratch/6fda792bd6ec/JMCLCore-probe-arch-20261107/rust)
+    Finished `test` profile [unoptimized] target(s) in 10.22s
+     Running tests/java_process.rs (/workspace/scratch/6fda792bd6ec/jmcl-tools/acceptance-matrix-target-20261107/debug/deps/java_process-ff93e745fff4d412)
+
+running 1 test
+test native_probe_deadline_and_option_sanitization ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.36s
+
