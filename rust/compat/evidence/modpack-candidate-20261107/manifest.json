@@ -1,0 +1,75 @@
+{
+  "tested_commit": "13c7044c0d095f17b904d0113e0b29d6a8a50ef9",
+  "tested_tree": "e3479126c4665ec2975af43a7f0f7f2da85c2df3",
+  "corresponding_remote_commit": "b98f0b13bbd677f8034d9d8b4d8e3c4ddb90b30c",
+  "platform": "Linux x86_64 GNU",
+  "toolchain": "Rust/Cargo 1.99.1",
+  "source_fingerprints": {
+    "rust/tests/modpack_install.rs": "24f1cfc55f6b19169ae9ef648f6c3b699cc1e2e8bbf10def8b88c16fb6be01a9",
+    "rust/src/modpack/service.rs": "9a6f7375f1e0aa6cd36b51935ef7dc1aad2310e5962f499de78b81e2af4c083c",
+    "rust/src/modpack/planning.rs": "048fb5e2f9ad38bbfb931ab7175d6901c71471fda389505c05dc059ef37b428c",
+    "rust/src/modpack/schema.rs": "8b5cb882c2d21f941f34e49032c89777c87254d825cdd03dd5ebd09d372bc861",
+    "rust/src/install/mod.rs": "745b30fdc11b6969f18b32e99ed7717eeabd15121f3c8d030d54758daabc034e",
+    "rust/Cargo.toml": "11dd1042ced4940a4906a27adb5bd28391b2b93e8229c0babdc78606f530fb10",
+    "rust/Cargo.lock": "3b103f285c5e822c65b8eab624b93600f8a256251ba9adb0d76e5ff1f7c80758"
+  },
+  "cargo_offline_locked": true,
+  "tmpdir": "/workspace/scratch/6fda792bd6ec/jmcl-tools/modpack-candidate-owned-20261107",
+  "results": [
+    {
+      "name": "hardlink_content_private_overrides_and_cache_reuse",
+      "command": [
+        "cargo",
+        "test",
+        "--manifest-path",
+        "rust/Cargo.toml",
+        "--offline",
+        "--locked",
+        "--test",
+        "modpack_install",
+        "hardlink_content_private_overrides_and_cache_reuse",
+        "--",
+        "--exact",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "passed": 1,
+      "failed": 0,
+      "ignored": 0,
+      "filtered_out": 5,
+      "log": "test-01.log",
+      "sha256": "4de7b77faff22cadb7adbfa7e377e8004d857041d4dd9d0c42a1095bdd302041",
+      "owned_tmp_empty": true
+    },
+    {
+      "name": "rollback_preserves_verified_cache_and_retry_has_no_new_format",
+      "command": [
+        "cargo",
+        "test",
+        "--manifest-path",
+        "rust/Cargo.toml",
+        "--offline",
+        "--locked",
+        "--test",
+        "modpack_install",
+        "rollback_preserves_verified_cache_and_retry_has_no_new_format",
+        "--",
+        "--exact",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "passed": 1,
+      "failed": 0,
+      "ignored": 0,
+      "filtered_out": 5,
+      "log": "test-02.log",
+      "sha256": "1fd4b737fcab3c9476119203142c448c7b6af0e25a51a30410012b4c069ade74",
+      "owned_tmp_empty": true
+    }
+  ],
+  "scope": "Owned generated mrpack ZIP only; ordinary hello/private bytes; injected Fake transport; no HTTP client, external request, Java, processor or game.",
+  "production_test_fixtures_dependencies_workflows_unchanged": true,
+  "clean_tree_before_and_after": true,
+  "test_binary_sha256": "06513080ef1a8c0aed47dcb45410ae179312e9c9e35b77f4a2391a43639efa52",
+  "record_run_sha256": "f24bc5e556dcfb60fa541cdac455858ea51fe3fe07d953973a1b49cd0301237c"
+}

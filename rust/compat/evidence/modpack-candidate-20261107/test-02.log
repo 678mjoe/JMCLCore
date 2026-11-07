@@ -1,0 +1,10 @@
+{"command": ["cargo", "test", "--manifest-path", "rust/Cargo.toml", "--offline", "--locked", "--test", "modpack_install", "rollback_preserves_verified_cache_and_retry_has_no_new_format", "--", "--exact", "--nocapture", "--test-threads=1"]}
+    Finished `test` profile [unoptimized] target(s) in 0.06s
+     Running tests/modpack_install.rs (/workspace/scratch/6fda792bd6ec/jmcl-tools/acceptance-matrix-target-20261107/debug/deps/modpack_install-099eb49f1803088e)
+
+running 1 test
+test rollback_preserves_verified_cache_and_retry_has_no_new_format ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 5 filtered out; finished in 0.01s
+
+{"returncode": 0}

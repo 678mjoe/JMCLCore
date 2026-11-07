@@ -1,0 +1,10 @@
+{"command": ["cargo", "test", "--manifest-path", "rust/Cargo.toml", "--offline", "--locked", "--test", "modpack_install", "hardlink_content_private_overrides_and_cache_reuse", "--", "--exact", "--nocapture", "--test-threads=1"]}
+    Finished `test` profile [unoptimized] target(s) in 0.11s
+     Running tests/modpack_install.rs (/workspace/scratch/6fda792bd6ec/jmcl-tools/acceptance-matrix-target-20261107/debug/deps/modpack_install-099eb49f1803088e)
+
+running 1 test
+test hardlink_content_private_overrides_and_cache_reuse ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 5 filtered out; finished in 0.01s
+
+{"returncode": 0}

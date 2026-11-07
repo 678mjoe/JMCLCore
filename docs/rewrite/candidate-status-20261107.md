@@ -31,6 +31,9 @@ checks against their whole-repository tree.
   lifecycle and local transports around owned shell fixtures, verified selection,
   failure cleanup, RCON and basic Query. Installed JVM property/version probes
   actually execute in these later slices; the JVM is not the server process.
+- [Modpack install/cache/rollback](modpack-candidate-20261107.md): two exact
+  production-service tests with owned mrpack ZIPs, injected bytes, CAS sharing,
+  private overrides and retry. No Java, provider or actual Core RPC.
 
 These counts describe different evidence layers and must not be summed into a
 completion fraction. COMPAT-URL-001 remains the six named accepted construction
@@ -47,7 +50,7 @@ HTTP/TLS/redirect or parser requirements.
 | Live accounts, provider metadata/artifacts and service transport | Synthetic transport and pinned parser/construction evidence only. | Identify an authorized real account/provider, endpoint and data scope; separately verify live errors, HTTPS/TLS, redirect and authentication behavior. |
 | Real installed-JVM game launch and loader processors | Not run; benign native children and shell fixtures are not Minecraft or loader execution. | Reviewed actual runtime/game/assets/loader inputs and a bounded owned install/launch plan, separate from prohibited automatic runtime acquisition. |
 | Actual Tauri frontend with Rust sidecar | Not run; frontend CI and preview packaging use pinned Zig. | A separately scoped Rust-sidecar integration on an authorized GUI/native executor, then the real account/instance/content/launch UI flows. No production switch follows from this report. |
-| Remaining family acceptance | Finite reviewed cases, not full suite or universal compatibility. | Prioritize an actual unverified normal flow or a reproducible contract defect. A possible next local slice is synthetic modpack install/cache/rollback with owned modpack data and injected transport, after reviewing its source for Java/processor/network calls. Do not assume every archive is a prohibited Java runtime archive. |
+| Remaining family acceptance | Finite reviewed cases, not full suite or universal compatibility. | Prioritize an actual unverified normal flow or a reproducible contract defect. The reviewed synthetic modpack install/cache/rollback slice is now recorded above; it does not cover real provider acquisition, launcher installation or loader processors. Do not assume every archive is a prohibited Java runtime archive. |
 
 No tool action was denied during the documented slices. The missing runtime
 acquisition capability, a deliberately excluded operation, an unavailable native
