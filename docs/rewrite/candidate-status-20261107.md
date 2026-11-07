@@ -104,6 +104,59 @@ harness commits.
   filesystem cases or different-volume fallback.
   [Results at 1e0dfc7](https://github.com/678mjoe/JMCLCore/blob/1e0dfc763bf9bce00e8b15b8fc2f4bb203e047ba/rust/compat/windows_adopt/README.md).
 
+## Later Tauri acceptance: three separate Linux test trees
+
+These three Linux x86_64 runs each executed exactly one selected test: 1 passed,
+0 failed, 0 ignored, 83 filtered. They retain frontend baseline `9c0fd81` and
+Core `bdd6cb3e` with the full hashes above. Production function bodies, original
+capabilities and dependency versions remain unchanged. The frontend test
+additions are **three different overlays**, not one integrated tested tree;
+none extends the earlier four-platform result to Tauri runtime acceptance.
+
+- **Original command/invoke lifecycle through MockRuntime:**
+  [run 42396085950](https://github.com/678mjoe/JMCL-frontend/actions/runs/42396085950),
+  execution `cec7a6f816946beb76d4f0fa82e999bf730967d5`, tree
+  `995c08090a9a3fdab6af028faa537cada35343d1`.
+  Original generated `core_open`/`core_request`/`core_close` wrappers opened two
+  real RustCore sessions; ping, unknown-method recovery, isolated/idempotent
+  close and empty-pool cleanup passed. Requests use the actual mock window URL;
+  the original incorrect remote HTTP origin remains a required ACL rejection.
+  [Results at 3fa0f4e](https://github.com/678mjoe/JMCL-frontend/blob/3fa0f4ea750330c8b1fc301d4c9ccfee5f3ff490/TAURI_RUST_CORE_CONTRACT.md).
+  This executes generated Invoke dispatch, not just direct Rust function calls,
+  but uses a dummy context and no real WebView.
+- **Production development context with the same bounded lifecycle:**
+  [run 42398397584](https://github.com/678mjoe/JMCL-frontend/actions/runs/42398397584),
+  execution `fec042a709774b4d3558f3609f853c53ce75158b`, tree
+  `29da13cbd401c43c660d89b1736433e54176b2e8`.
+  Original `generate_context!()` reads production config/capabilities; the actual
+  window URL equals unchanged `http://localhost:1420/`. The remote-origin
+  negative control and both real Core sessions pass without expanding ACLs.
+  [Results at cbff5e1](https://github.com/678mjoe/JMCL-frontend/blob/cbff5e1c2f79ddb6a964f72af4458fe9c81b694d/TAURI_PRODUCTION_CONTEXT_CONTRACT.md).
+  This is **development**, not release/custom-protocol context. The build-only
+  `externalBin=[]` override excludes Zig sidecar staging; complete production
+  plugin/setup execution and an unmodified packaging environment are not tested.
+- **Network-denied Rust Channel serialization outlet:**
+  [run 42399164806 / job 128482992387](https://github.com/678mjoe/JMCL-frontend/actions/runs/42399164806/job/128482992387),
+  execution `bcf7efbfac0843c3f5ae3e0aed4c859f32857bdc`, tree
+  `f1367e2c0bb1f7b548610e343fbc3f934e062ead`.
+  The unchanged pinned guard (SHA256
+  `2790712aaf757536329cc1ac87c73931f04bf1a1f6dc3f375f782db08423e719`)
+  passed its complete selftest and both original native spawn gates. The entire
+  Tauri inventory and exact test executable then ran under that guard; build
+  preparation is outside it. With one owned mrpack and 35-byte prefilled CAS,
+  the actual command/Session/Core path reached official Channel decoding,
+  serialization and its Rust interceptor: callback 731, indices 0/1, request
+  `req-1`, cached file with attempts 0, then progress 1/1 and transfer bytes 0.
+  Terminal result, CAS and installed bytes matched. All 13 phases completed
+  without timeout and with empty owned groups; that is not a per-child PID ledger.
+  The test log is 2,441 bytes, SHA256
+  `e8107473a39060647aadf21d6d3bba286054f40c89d34fb9db35edcde0c0ce47`.
+  [Results and raw evidence at 12a4125](https://github.com/678mjoe/JMCL-frontend/blob/12a4125e3fc3369d9b93015238be54cfbde2fb32/docs/acceptance/tauri-channel-egress-20261107/RESULTS.md)
+  are a later docs-only commit whose sole parent is the execution commit.
+  This uses `mock_context`, **not** the preceding production-context overlay.
+  It proves neither JS delivery nor Channel end/unregister, real cache-miss
+  integration, real WebView/UI, complete setup or a shipping package.
+
 These counts describe different evidence layers and must not be summed into a
 completion fraction. COMPAT-URL-001 remains the six named accepted construction
 and representation differences. A new byte-preserving transport is **not** a
@@ -115,73 +168,65 @@ HTTP/TLS/redirect or parser requirements.
 | Area | Current classification | Concrete prerequisite / next decision |
 |---|---|---|
 | Managed Java acquisition (`java.runtime.install`) | Confirmed unimplemented; automatic acquisition/runtime-archive installation remains outside the currently permitted scope. | This is a genuine missing capability plus a scope restriction, not a newly observed test failure. Do not retry/download/extract through another route. Ordinary installed-JVM probes and owned non-Java ZIP fixtures are separate and have already run. |
-| Tauri command and UI boundary | The actual frontend crate check and Zig-backed debug packaging already passed. Actual Tauri command/invoke execution with the Rust sidecar, WebView/JS event delivery and mounted UI remain unrun. | A bounded actual-command/MockRuntime contract is source-supported on existing public runners, as detailed below. Its missing test-only harness is not a permission blocker. Real WebView and mounted-UI acceptance needs a separately selected native Tauri runtime/display setup; no such Rust-sidecar run is claimed. |
+| Real Tauri runtime and UI | Actual generated command dispatch, production development context and Rust Channel outlet each passed their separate Linux MockRuntime slice. Real WebView/JS delivery, mounted UI, complete plugin/setup and release/custom-protocol context remain unrun. | Review one real WebView/JS-to-Core-to-Channel flow with owned synthetic data, a suitable native runtime/display and bounded cleanup. Its harness/executor have not been selected; this is not a new permission denial. Do not repeat the now-passed command-only plan or combine the three overlays without exact-tree validation. |
 | Actual release package | Release-profile resolver probe passed; actual bundled Rust sidecar placement, installer behavior, signing/updater and release-profile Core package did not run. Existing frontend packaging still pins Zig. | First select one owned unsigned Rust-sidecar package and native install/launch path for review. No production pin switch, signing or release follows from adjacent-file discovery. |
 | Live authentication and credential lifecycle | Synthetic account metadata/auth transport is not a real login, refresh-token, keychain or credential-injection result. | Needs an explicitly authorized test account/service and secure credential flow, plus a bounded login/refresh/logout plan. This is an unmet test prerequisite, not evidence that the implementation failed. |
 | Real provider, install and loader/game flow | Synthetic cached install, modpack/world archives, parser and URL construction checks do not prove live artifact acquisition, TLS/redirect/origin behavior, authentic game assets, loader processors or gameplay. | First review an owned install/prepare flow with pinned benign or verified fixtures; use an explicitly selected existing runtime where a JVM is needed. Identify the provider endpoints/assets and bounded processor inputs; account operations need the authorized account. Automatic Java acquisition stays excluded; ordinary archive fixtures are not automatically prohibited. |
 | Remaining native business/file contracts | Four-platform coverage is specific to the two wrapper/six Session and discovery lanes; Windows original-file identity is one exact test on its own tree. | Review an actual unverified normal flow or concrete defect before adding a new slice. Windows cross-volume fallback, arbitrary filesystem behavior, broader install/launch and live server/SSH are not inferred from these results. If a combined candidate is proposed, explicitly integrate the selected test/harness changes and validate that exact tree; equal production subtrees alone do not do so. |
 
-### Next executable main contract: actual Tauri command boundary
+### Next main-flow preparation, not another mock acceptance claim
 
-This is a proposed next slice, not an executed result or CI authorization.
-Read-only review of the pinned frontend's
-[`lib.rs`](https://github.com/678mjoe/JMCL-frontend/blob/9c0fd81ce8109c1e35229560fee31308ca114ef5/src-tauri/src/lib.rs)
-and `pool.rs` finds a bounded actual-command test possible without starting the
-application's `run()` function, plugins, a real WebView, or any real service:
+The previous proposed command-only harness is now implemented and passed in the
+three bounded layers above. The next useful frontend boundary is an actual
+WebView JavaScript invoke and Channel receiver around owned synthetic data,
+followed by a mounted account/content UI flow. Its scope must identify the real
+Tauri/WebView runtime, display/automation, exact frontend/Core overlay, expected
+JS messages and terminal result, and bounded child/window cleanup. Compilation
+and MockRuntime do not establish those runtime behaviors. No such new harness
+or run is authorized or executed by this documentation update.
 
-1. Add one opt-in test-only entry within the real `src-tauri` crate so it calls
-   existing private `core_open`, `core_request` and `core_close`, not copied
-   wrappers. Use an owned temporary root for `SessionPool` and diagnostics,
-   the explicit frozen Rust Core binary path, and default activation state.
-2. Exercise open/handshake, a ping, error survival and close through those
-   commands; assert closed-session behavior and cleanup of the owned child.
-   Keep a reviewed RPC allowlist, `curseforge=false`, and no credential,
-   provider, install, Java, launch, updater or SSH operations.
-3. The lockfile pins Tauri 2.12.5. Its official
-   [test utilities](https://github.com/tauri-apps/tauri/blob/tauri-v2.12.5/crates/tauri/src/test/mod.rs)
-   expose `mock_builder`, `mock_context` and `get_ipc_response`; `tauri/test`
-   enables that module. A test-only feature can provide state through
-   `MockRuntime`, and `Channel::new` provides an in-memory callback. Direct
-   function calls accept only the actual-command layer. An additional generated
-   `generate_handler!`/Invoke-JSON path can test argument decoding and dispatch;
-   a registered subset must be checked against the production registration and
-   must not be called an executed full application registration table.
-4. Before execution, review the exact harness, pin both repositories, add an
-   external bounded deadline and owned-child cleanup on failure. Tauri's
-   `get_ipc_response` itself waits without a timeout. Compile/link dependencies
-   still apply: the existing Linux job installs WebKitGTK and related native
-   libraries, and `features=[]` does not disable Tauri's default Wry dependency.
-   Existing public native runners have built this crate; this proposed test
-   harness has not yet been built or run there.
+The local worker lacks native GTK/WebKit development packages; this is a local
+build prerequisite, not a claim that standard runners cannot host a future
+reviewed slice. Those runners have built the real crate, but no real
+WebView/display/automation arrangement has yet been verified for this candidate.
+The earlier local Chromium permission error is not retried or worked around.
+A future native WebView proposal requires its own review, not an inference of
+permission from successful mock tests.
 
-This advances the missing application command boundary instead of repeating
-standalone Session tests. MockRuntime does not establish JS/WebView IPC transport,
-JS Channel delivery, mounted account/content/launch UI, window lifecycle or
-installed-package behavior. Those later checks require a real Tauri/WebView
-runtime and suitable native display/automation setup. No Chromium attempt or
-workaround for its earlier local permission error is part of this plan.
+An unsigned Rust-sidecar package is another concrete unrun main flow: first
+select the intended Core build profile/target and owned package layout, then
+review staging, inspection and bounded native launch. Existing Zig packages and
+the release resolver probe do not satisfy it. A production pin switch, user
+machine installation, signing, publishing or updater rollout is outside these
+acceptance results and must not happen implicitly.
 
-### What is actually blocked or missing
+### Actual restrictions versus unmet prerequisites
 
-Missing automatic Java acquisition is a confirmed implementation gap whose
-acquisition/runtime-archive execution remains outside the permitted scope.
-Real authentication needs an authorized account/service and secure credential
-flow. A real game/provider/loader acceptance run still needs selected artifacts,
-endpoints and bounded execution inputs; this is not evidence of a failed
-implementation or a blanket prohibition on synthetic archives/installed JVMs.
-The proposed Tauri command harness and remaining finite native business flows
-are **not yet implemented/executed**, not permission-denied. No new tool denial
-was observed while checking these completed runs. This documentation review did
-not run tests, start CI, merge separate experiment trees, or change a production
-pin.
+- Managed Java acquisition is genuinely unimplemented, and its automatic
+  acquisition/runtime-archive execution remains restricted. Do not fetch or
+  extract a runtime through another route. Installed-JVM probes and owned
+  non-Java archives remain distinct permitted activities.
+- Real authentication/refresh/keychain acceptance needs an authorized account,
+  service and secure credential flow; synthetic identities do not supply them.
+  Do not obtain or persist credentials merely to fill the matrix.
+- Real provider, loader and game acceptance needs selected endpoints/artifacts,
+  bounded processor/game inputs and an appropriate existing runtime. This is an
+  unmet acceptance plan/input prerequisite, not a blanket ban on preparing
+  owned fixtures or evidence of a failed implementation.
+
+Real WebView/UI, complete setup, Rust packaging and remaining finite native
+business flows are **unrun or not yet designed**, not automatically permission-
+blocked. Existing access restrictions still apply to any proposed action.
+The retained source reports distinguish original rejected attempts from later
+successful bounded runs. This documentation review itself did not execute
+Tauri/Core/tests, start CI, merge experiment trees, or change a production pin.
 
 COMPAT-URL-001 does not add a raw-byte transport blocker. Protocol-v1 live task
 cancellation remains a separate post-baseline feature, not an unfulfilled
 existing cancel-method contract. Neither is a reason to reopen already accepted
 scope or manufacture another compatibility count.
 
-No tool action was denied during the documented slices. The missing runtime
-acquisition capability, a deliberately excluded operation, a required GUI/test
-account prerequisite and an unrun acceptance case are different states; none
-should be misreported as a tool denial or a permanent ban. The synthetic tests do not
-remove the listed prerequisites or authorize merging/releasing the candidate.
+The missing runtime acquisition capability, an excluded operation, an unmet
+runtime/account prerequisite and an unrun acceptance case are different states.
+The synthetic tests do not remove these prerequisites or authorize merging or
+releasing the candidate.

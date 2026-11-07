@@ -19,9 +19,10 @@ It does not claim Java runtime archive installation or real game generation.
 
 See the [current scoped status matrix](candidate-status-20261107.md) for later
 handshake/loopback, four-platform wrapper/Session and release-discovery results,
-and the separate Windows adoption identity result. The matrix distinguishes
-frozen Core, executed harness/test trees and later results-document commits; it
-does not claim one combined tested tree or full Tauri/game acceptance.
+the separate Windows adoption identity result, and three Linux Tauri layers
+(command dispatch, development context and Rust Channel outlet). The matrix
+distinguishes frozen Core, executed harness/test trees and later results-document
+commits; it does not claim one combined tested tree or full Tauri/game acceptance.
 
 ## 1. Exact subject and distribution boundary
 
@@ -168,11 +169,14 @@ Do not extend the decision into a blanket mismatch or security-policy waiver.
 2. **Real native frontend integration.** The later four-platform wrapper/Session
    and release-mode adjacent discovery slices have passed on their explicit
    subjects. The frontend baseline's actual Tauri crate check and Zig-backed
-   debug package checks also passed, as linked in the current matrix. Actual
-   Rust-sidecar packages, full Tauri IPC/event delivery, mounted
-   task/content/launch UI, native credential injection and keychain behavior
-   remain unaccepted. A standalone Session/resolver probe validates its own
-   layer only; it is not a full Tauri application or installed bundle.
+   debug package checks also passed, as linked in the current matrix. Later
+   Linux MockRuntime slices passed original generated commands, production
+   development context, and the Rust Channel serialization outlet on three
+   separate test trees. Real WebView/JS event delivery, complete plugin/setup,
+   release context, actual Rust-sidecar packages, mounted task/content/launch UI,
+   native credential injection and keychain behavior remain unaccepted. Neither
+   these separate layers nor standalone Session/resolver probes establish a
+   full Tauri application, installed bundle or one combined tested tree.
 3. **Real service and game flows.** Authentication and token rotation, provider
    HTTP/TLS/redirect/error behavior, actual Java/game and loader processing,
    archive compatibility, and live server/SSH behavior require their own scoped
