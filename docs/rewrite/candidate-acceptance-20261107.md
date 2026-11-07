@@ -18,7 +18,10 @@ adds owned synthetic NBT/region/world-ZIP workflows and pinned CLI comparisons.
 It does not claim Java runtime archive installation or real game generation.
 
 See the [current scoped status matrix](candidate-status-20261107.md) for later
-handshake/loopback evidence and the important remaining acceptance prerequisites.
+handshake/loopback, four-platform wrapper/Session and release-discovery results,
+and the separate Windows adoption identity result. The matrix distinguishes
+frozen Core, executed harness/test trees and later results-document commits; it
+does not claim one combined tested tree or full Tauri/game acceptance.
 
 ## 1. Exact subject and distribution boundary
 
@@ -115,6 +118,12 @@ new native-chain pin. A workflow definition is not an executed result.
 
 ## 4. Platform support versus acceptance
 
+The table below describes only the three retained November 6 native-chain
+lanes, not all later native execution. The [current matrix](candidate-status-20261107.md#later-native-evidence-separate-experimental-trees)
+records subsequently passed four-platform wrapper/Session and release-resolver
+contracts plus one Windows file-identity test, each on its stated subject.
+Those narrower results do not rerun these three lanes on every platform.
+
 | Target | Source/workflow scope | This candidate's new native-chain evidence |
 |---|---|---|
 | Linux x86_64 | Desktop implementation plus Linux server RPC. Native CI target is Ubuntu 24.04. | Retained synthetic instance, content and benign-child launch runs passed. Full real GUI/game acceptance is still open. |
@@ -156,20 +165,26 @@ Do not extend the decision into a blanket mismatch or security-policy waiver.
    there is not a successful runtime installer or downloader parity. Existing
    runtime receipts/local selection do not close this. Java automatic acquisition
    and archive-install operations were not attempted by this audit.
-2. **Real native frontend integration.** Sidecar discovery/packaging with Rust,
-   actual Tauri IPC/event delivery, mounted task/content/launch UI, native
-   credential injection and keychain behavior remain unaccepted. A direct
-   Session chain or frontend trace replay can validate its own layer only.
+2. **Real native frontend integration.** The later four-platform wrapper/Session
+   and release-mode adjacent discovery slices have passed on their explicit
+   subjects. The frontend baseline's actual Tauri crate check and Zig-backed
+   debug package checks also passed, as linked in the current matrix. Actual
+   Rust-sidecar packages, full Tauri IPC/event delivery, mounted
+   task/content/launch UI, native credential injection and keychain behavior
+   remain unaccepted. A standalone Session/resolver probe validates its own
+   layer only; it is not a full Tauri application or installed bundle.
 3. **Real service and game flows.** Authentication and token rotation, provider
    HTTP/TLS/redirect/error behavior, actual Java/game and loader processing,
    archive compatibility, and live server/SSH behavior require their own scoped
    prerequisites and acceptance. No live accounts or game/server deployments
    were used here.
-4. **Current-source native matrix and full regression.** Execute the exact
-   intended candidate with explicit oracle prerequisites on all four targets,
-   account for all ignored/skipped cases, approved deviations, links/locks/copy
-   fallback and disk takeover. The restored tree's broad Rust/Clippy/native
-   suite was not rerun in this documentation audit.
+4. **Remaining current-source native acceptance.** Later finite cross-platform
+   results are in the current matrix; "no Windows/macOS run" is no longer an
+   accurate overall summary. They do not cover all business flows, oracle
+   prerequisites, ignored cases, links/locks/copy fallback or disk takeover.
+   Windows original-file adoption has its own tested tree and does not establish
+   cross-volume behavior. The broad suite was not rerun by this documentation
+   audit, and no combined test tree is implied by the separate results.
 5. **Separate post-baseline feature: cancellation.** Protocol v1 intentionally
    remains serial with no caller-facing cancel operation. Cooperative task
    cancellation is a separate post-baseline feature described in the
