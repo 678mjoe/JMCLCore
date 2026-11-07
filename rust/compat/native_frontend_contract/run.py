@@ -11,6 +11,7 @@ import re
 import shutil
 import struct
 import subprocess
+import sys
 import tempfile
 
 CORE_COMMIT = "bdd6cb3e55d69cb9e0e02037d251635e289207a8"
@@ -163,6 +164,14 @@ def prepare(frontend):
     return harness
 
 
+def display_output(raw):
+    # Windows hosted Python may expose a cp1252 console. Display escapes must
+    # never prevent the raw log being retained or its strict validator running.
+    encoding = getattr(sys.stdout, "encoding", None) or "utf-8"
+    text = raw.decode("utf-8", errors="backslashreplace")
+    print(text.encode(encoding, errors="backslashreplace").decode(encoding), end="", flush=True)
+
+
 class Recorder:
     def __init__(self, root):
         self.root = root
@@ -182,12 +191,12 @@ class Recorder:
             raw = exc.output or b""
             log.write_bytes(raw)
             record.update(timed_out=True, returncode=None, log_sha256=digest(log), log_bytes=len(raw))
-            print(raw.decode("utf-8", errors="replace"), end="", flush=True)
+            display_output(raw)
             raise
         raw = result.stdout
         log.write_bytes(raw)
         record.update(returncode=result.returncode, log_sha256=digest(log), log_bytes=len(raw))
-        print(raw.decode("utf-8", errors="replace"), end="", flush=True)
+        display_output(raw)
         require(result.returncode == 0, f"{label} exited {result.returncode}; see {log}")
         # Preserve raw bytes above; validation receives strict UTF-8 and explicit
         # CRLF normalization, independent of the display's replacement decoder.

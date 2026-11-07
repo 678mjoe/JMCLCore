@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Pure guard regressions. No compiler, Core, Java, network, or external process."""
 import os
+import io
+from contextlib import redirect_stdout
 from pathlib import Path
 import struct
 import tempfile
@@ -153,6 +155,25 @@ class Guards(unittest.TestCase):
             self.assertEqual((root / "02-timeout.log").read_bytes(), raw)
             self.assertTrue(recorder.records[1]["timed_out"])
             self.assertIsNone(recorder.records[1]["returncode"])
+
+    def test_cp1252_display_cannot_hide_raw_or_timeout_validation(self):
+        with tempfile.TemporaryDirectory() as root:
+            root = Path(root); recorder = run.Recorder(root)
+            raw = b"raw\r\n\xff\x00" + "中文".encode("utf-8")
+            stream_bytes = io.BytesIO()
+            stream = io.TextIOWrapper(stream_bytes, encoding="cp1252", errors="strict")
+            fake = type("Result", (), {"stdout": raw, "returncode": 0})()
+            with redirect_stdout(stream), patch.object(run.subprocess, "run", return_value=fake), self.assertRaises(UnicodeDecodeError):
+                recorder.run("cp1252", ["never-executed"], root, {"TMPDIR": str(root)})
+            self.assertEqual((root / "01-cp1252.log").read_bytes(), raw)
+            timeout = run.subprocess.TimeoutExpired(["never-executed"], 1, output=raw)
+            with redirect_stdout(stream), patch.object(run.subprocess, "run", side_effect=timeout), self.assertRaises(run.subprocess.TimeoutExpired):
+                recorder.run("cp1252-timeout", ["never-executed"], root, {"TMPDIR": str(root)}, timeout=1)
+            self.assertEqual((root / "02-cp1252-timeout.log").read_bytes(), raw)
+            self.assertTrue(recorder.records[1]["timed_out"])
+            stream.flush()
+            self.assertIn(b"\\xff", stream_bytes.getvalue())
+            self.assertIn(b"\\u4e2d\\u6587", stream_bytes.getvalue())
 
 
 if __name__ == "__main__":
