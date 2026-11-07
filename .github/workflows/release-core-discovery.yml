@@ -1,0 +1,68 @@
+name: Frozen release Core discovery
+on:
+  push:
+    branches: [rust-release-discovery-ci-20261107]
+    paths:
+      - '.github/workflows/release-core-discovery.yml'
+      - 'rust/compat/release_discovery/**'
+permissions:
+  contents: read
+concurrency:
+  group: release-core-discovery-${{ github.ref }}
+  cancel-in-progress: false
+env:
+  RUST_VERSION: 1.99.1
+  CARGO_INCREMENTAL: '0'
+  CARGO_PROFILE_DEV_DEBUG: '0'
+  CARGO_PROFILE_TEST_DEBUG: '0'
+jobs:
+  native:
+    if: github.event.repository.visibility == 'public' && github.ref == 'refs/heads/rust-release-discovery-ci-20261107'
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        os: [ubuntu-24.04, macos-15, macos-15-intel, windows-2025]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Preserve exact checkout bytes on every native runner
+        run: git config --global core.autocrlf false
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          path: harness
+          persist-credentials: false
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          repository: 678mjoe/JMCLCore
+          ref: bdd6cb3e55d69cb9e0e02037d251635e289207a8
+          path: source
+          persist-credentials: false
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          repository: 678mjoe/JMCL-frontend
+          ref: 9c0fd81ce8109c1e35229560fee31308ca114ef5
+          path: frontend
+          persist-credentials: false
+      - name: Install official pinned Rust
+        run: |
+          rustup toolchain install "$RUST_VERSION" --profile minimal
+          rustup default "$RUST_VERSION"
+      - name: Pure fail-closed and raw-byte controls
+        run: |
+          python harness/rust/compat/release_discovery/test_run.py
+          python -O harness/rust/compat/release_discovery/test_run.py
+      - name: Fetch only locked official dependencies before offline builds
+        run: |
+          cargo fetch --locked --manifest-path source/rust/Cargo.toml
+          cargo fetch --locked --manifest-path harness/rust/compat/release_discovery/Cargo.toml
+      - name: Exactly two release discovery scenarios
+        run: |
+          python harness/rust/compat/release_discovery/run.py \
+            --core source --frontend frontend --runner '${{ matrix.os }}' \
+            --work "$RUNNER_TEMP/jmcl-release-discovery"
+      # No original workflows, Java, real accounts/services, UI/Tauri, package,
+      # release/installation, artifact uploads or production sidecar pins touched.
