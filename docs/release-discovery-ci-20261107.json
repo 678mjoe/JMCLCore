@@ -1,0 +1,176 @@
+{
+  "run_url": "https://github.com/678mjoe/JMCLCore/actions/runs/42390179188",
+  "run_id": 42390179188,
+  "status": "success",
+  "executed_commit": "d596f19a408a8daf4e003998f8116882c7fdc399",
+  "executed_tree": "9cf5b2283d6a4c439e715737d84d4cb36baa19b1",
+  "source_files_verified_per_platform": {
+    "core": 818,
+    "frontend": 292
+  },
+  "scenarios_per_platform": [
+    "present",
+    "absent"
+  ],
+  "job_count": 4,
+  "original_pipe_stream_count": 16,
+  "binary_artifacts_uploaded": false,
+  "scope": "release resolver/native Session only; Core native debug build, probe release build; not Tauri/UI/actual package",
+  "reviewed_source_sha256": {
+    ".github/workflows/release-core-discovery.yml": "adaff4ea65800e9799b368da13ae9418b031c2a79c7a386c61ceda3a65c9588f",
+    "rust/compat/release_discovery/README.md": "6b8c5724c96f860a670dde300b0edf5d6989b697b0c2865539d7ca78c88a8934",
+    "rust/compat/release_discovery/run.py": "528f785cb9e80802d96b7e1409156c424f8969d8144a19ab7688e8b2ecd13d6c",
+    "rust/compat/release_discovery/Cargo.lock": "8e1aac90ef42ee8e66fd3ee6e7439687b86f25527024fbe6677b93418b7de8ab",
+    "rust/compat/release_discovery/Cargo.toml": "8854982af249a120b5aadadea14e737949082b4fbcb8b6f921cc5553d8d76164",
+    "rust/compat/release_discovery/test_run.py": "39fc777fb42740eaf1fccbf9327a2315b1d89d3cff91c68263032b6c1d9be545",
+    "rust/compat/release_discovery/src/transport.rs": "e1f75758dab1ed8bf26eef8a9d3aa94d12ec8acf580ab713508a9c791143ca82",
+    "rust/compat/release_discovery/src/session.rs": "2f5bc0e38bba77c7a0feb52c9a46a64f8d3d93d01cd3da2bb4fa87ea938c8f20",
+    "rust/compat/release_discovery/src/main.rs": "ad926c42b77f43667a2b348604d07544606fb7885a33577d5b112addbcabf1ed"
+  },
+  "jobs": [
+    {
+      "runner": "macos-15",
+      "target": "aarch64-apple-darwin",
+      "scenario_count": 2,
+      "verified_raw_streams": 4,
+      "report_sha256": "fb7c572a5c835c7465f5d453414ea88335eedc1cf0f79c601fd5e940169a7d4b",
+      "core_sha256": "59d2ad342d0c66ac5b7c1fa7a5fd328604a349da365e569c5b9f57e6694ae582",
+      "probe_sha256": "e99ab8982d933d496a3a06aabf80f1d008dc397bbccf6afb2031da3f882b3afc",
+      "job_id": 128455912820,
+      "streams": [
+        {
+          "label": "core-build",
+          "returncode": 0,
+          "raw_sha256": "345d01e2ec1f55e1c961d43de05181d3e8a27cd20a90a0d05d702f9a3eca65dd",
+          "raw_bytes": 4087
+        },
+        {
+          "label": "probe-build",
+          "returncode": 0,
+          "raw_sha256": "907e97e8c6cbf5e87a3df82d6a6b076576d87c41ff6bb6985d7c254540972cbc",
+          "raw_bytes": 794
+        },
+        {
+          "label": "present",
+          "returncode": 0,
+          "raw_sha256": "d346538bc8120a950272c21f17a76c65963ab8c11e3d7447017ac0b4afd43ab9",
+          "raw_bytes": 301
+        },
+        {
+          "label": "absent",
+          "returncode": 0,
+          "raw_sha256": "293e271e7ee64a270507ce5590436d1c1663f61338ddb40ab69cd84bd398eb00",
+          "raw_bytes": 173
+        }
+      ]
+    },
+    {
+      "runner": "ubuntu-24.04",
+      "target": "x86_64-unknown-linux-gnu",
+      "scenario_count": 2,
+      "verified_raw_streams": 4,
+      "report_sha256": "f7f4896da325d1c50238b53f9b40a5dc7db38e162d92db0c9171475deff43317",
+      "core_sha256": "2fd1612ba515063647b33007d6b23113fb5526e5f42ef8c8abd8657930108714",
+      "probe_sha256": "022cf80216d042910bae0f797cab696116ba4ae45a0ed752454dd8028c245ca6",
+      "job_id": 128455912868,
+      "streams": [
+        {
+          "label": "core-build",
+          "returncode": 0,
+          "raw_sha256": "1d35aa7bd40386d6eca3ecf112431f217e0a62fac362bce0dea6f66a557bf6f8",
+          "raw_bytes": 4008
+        },
+        {
+          "label": "probe-build",
+          "returncode": 0,
+          "raw_sha256": "f9cf3d186d518b8245e96dfcf768f55f72397f51abc3d93660dbd6bfa2e708b8",
+          "raw_bytes": 793
+        },
+        {
+          "label": "present",
+          "returncode": 0,
+          "raw_sha256": "0f29ccd24dd301e27dea84b3fe9ce7afed9dccd0c85e80ae2310114f78a97932",
+          "raw_bytes": 274
+        },
+        {
+          "label": "absent",
+          "returncode": 0,
+          "raw_sha256": "c0e4fbed859ec7a916178e81317174fde166d257ef26f08a22e0e7251b34cc4f",
+          "raw_bytes": 172
+        }
+      ]
+    },
+    {
+      "runner": "windows-2025",
+      "target": "x86_64-pc-windows-msvc",
+      "scenario_count": 2,
+      "verified_raw_streams": 4,
+      "report_sha256": "32fa76e74f6525bf54fd1a6b059ff5e9f3e940323995c754d9c1dabf18af167f",
+      "core_sha256": "9002847d63745b6be495f3e7190681358c2b5d3dc2784637a93f4dd83ff5c018",
+      "probe_sha256": "b7d36fca28ea885a6f10dd50c7141262ffa44641e77c256d750fe666b3bb6051",
+      "job_id": 128455912876,
+      "streams": [
+        {
+          "label": "core-build",
+          "returncode": 0,
+          "raw_sha256": "afc87f7e5cdc3272928670e06d53b87b33caa23c4df835098c6ee4dc5aa6eb79",
+          "raw_bytes": 3893
+        },
+        {
+          "label": "probe-build",
+          "returncode": 0,
+          "raw_sha256": "e7f196c0afea4b2a0b34315dcaaf2215ebde8d5f3439cd03db143cd45f8112bf",
+          "raw_bytes": 751
+        },
+        {
+          "label": "present",
+          "returncode": 0,
+          "raw_sha256": "638fbf4fa57fa705cf860a37e5128b33607840911b425cee6e4546198f285dac",
+          "raw_bytes": 280
+        },
+        {
+          "label": "absent",
+          "returncode": 0,
+          "raw_sha256": "daf18669ad570eaea251241281b3efe955ff393e920c487ed0ce3f61580014e6",
+          "raw_bytes": 176
+        }
+      ]
+    },
+    {
+      "runner": "macos-15-intel",
+      "target": "x86_64-apple-darwin",
+      "scenario_count": 2,
+      "verified_raw_streams": 4,
+      "report_sha256": "994122ac29c9cbdd6897944653662217ee74d6ec83dae1d98f0ef445ee2e535c",
+      "core_sha256": "579593e7e07fbaa4a3637183871d6b4bfe6d95be8b46bd0903bb617505bb0b04",
+      "probe_sha256": "8e87c12d0f2dc5ddcb37e8f5a5920fa3bd6c50e4ce118950160e73874ae67534",
+      "job_id": 128455912971,
+      "streams": [
+        {
+          "label": "core-build",
+          "returncode": 0,
+          "raw_sha256": "7c841580aaa6708eea9752f78da6e2b0a6a4e4e73d4f69ec09e57e27369f5ed5",
+          "raw_bytes": 4087
+        },
+        {
+          "label": "probe-build",
+          "returncode": 0,
+          "raw_sha256": "2f4109b199aa51040763a8bfebea439624b08cd2cbacd35a538c89a7fdaea45e",
+          "raw_bytes": 794
+        },
+        {
+          "label": "present",
+          "returncode": 0,
+          "raw_sha256": "2d520144121826279e4e07296241561bbdfa0013a4a2c0bca09b291297fe8a50",
+          "raw_bytes": 300
+        },
+        {
+          "label": "absent",
+          "returncode": 0,
+          "raw_sha256": "c0e4fbed859ec7a916178e81317174fde166d257ef26f08a22e0e7251b34cc4f",
+          "raw_bytes": 172
+        }
+      ]
+    }
+  ]
+}
