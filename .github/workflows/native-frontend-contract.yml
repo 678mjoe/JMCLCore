@@ -1,0 +1,77 @@
+name: Frozen native frontend contracts
+on:
+  push:
+    branches: [rust-frontend-contract-ci-20261107]
+    paths:
+      - '.github/workflows/native-frontend-contract.yml'
+      - 'rust/compat/native_frontend_contract/**'
+permissions:
+  contents: read
+concurrency:
+  group: native-frontend-contract-${{ github.ref }}
+  cancel-in-progress: false
+env:
+  RUST_VERSION: 1.99.1
+  BUN_VERSION: 1.4.4
+  CARGO_INCREMENTAL: '0'
+  CARGO_PROFILE_DEV_DEBUG: '0'
+  CARGO_PROFILE_TEST_DEBUG: '0'
+jobs:
+  native:
+    if: github.event.repository.visibility == 'public' && github.ref == 'refs/heads/rust-frontend-contract-ci-20261107'
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        os: [ubuntu-24.04, macos-15, macos-15-intel, windows-2025]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Preserve exact checkout bytes on every native runner
+        run: git config --global core.autocrlf false
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          path: harness
+          persist-credentials: false
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          repository: 678mjoe/JMCLCore
+          ref: bdd6cb3e55d69cb9e0e02037d251635e289207a8
+          path: source
+          persist-credentials: false
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          repository: 678mjoe/JMCL-frontend
+          ref: 9c0fd81ce8109c1e35229560fee31308ca114ef5
+          path: frontend
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+      - name: Install official pinned Rust
+        run: |
+          rustup toolchain install "$RUST_VERSION" --profile minimal
+          rustup default "$RUST_VERSION"
+      - name: Pure fail-closed guard tests, including optimized Python
+        run: |
+          python harness/rust/compat/native_frontend_contract/test_run.py
+          python -O harness/rust/compat/native_frontend_contract/test_run.py
+      - name: Verify pins and prepare byte-identical native Session harness
+        run: python harness/rust/compat/native_frontend_contract/run.py --core source --frontend frontend --runner '${{ matrix.os }}' --prepare
+      - name: Fetch only locked official registry dependencies before offline execution
+        run: |
+          cargo fetch --locked --manifest-path source/rust/Cargo.toml
+          cargo fetch --locked --manifest-path frontend/.native-contract-harness/Cargo.toml
+          (cd frontend && bun install --frozen-lockfile --ignore-scripts)
+      - name: Two typed wrappers and six exact native Session contracts
+        run: |
+          python harness/rust/compat/native_frontend_contract/run.py \
+            --core source --frontend frontend --runner '${{ matrix.os }}' \
+            --work "$RUNNER_TEMP/jmcl-native-frontend-contract"
+      # Source/host/architecture/command/count/binary and raw log hashes go to logs.
+      # No whole integration suites, Java discovery/probe/execution/acquisition,
+      # real accounts/services, Tauri build/GUI, package, release, artifact upload,
+      # installation, production sidecar pins, or original bounded CI changes.
