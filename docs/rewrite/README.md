@@ -1,6 +1,8 @@
 # Rust rewrite: compatibility before replacement
 
 Status: implementation in progress, **not a drop-in replacement yet**.
+Current candidate and GUI acceptance:
+[2026-11-07 evidence map](candidate-acceptance-20261107.md).
 Reference implementation: Zig Core commit
 [`5a4310debbcee26b3d2391bab2339f79cd6ec52e`](https://github.com/678mjoe/JMCLCore/commit/5a4310debbcee26b3d2391bab2339f79cd6ec52e).
 This pins behavior after the world-overwrite and native Windows I/O repairs.

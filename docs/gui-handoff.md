@@ -1,6 +1,10 @@
 # JMCL Core — GUI Integration Contract
 
 Audience: the agent/developer building the JMCL GUI in a separate repository.
+This is the established Core interface contract, not a claim that every method
+is complete in the experimental Rust implementation. For Rust availability,
+platforms and actual GUI/native evidence, see the
+[current candidate acceptance map](rewrite/candidate-acceptance-20261107.md).
 This document is self-contained; reading the core's source is not required.
 Details beyond the contract live in `docs/*.md` of the core repository
 (`protocol.md`, `content.md`, `modpack.md`, `authentication.md`, `accounts.md`,
@@ -129,7 +133,9 @@ CLI-equivalent `index`, `total`, and processor `name`; its result reports
 `launch.plan`, `launch.execute`, and `install.execute` accept
 `java_policy` (`auto` default, `local`, `managed`) and `store_directory`;
 the launch methods also accept `java_override` (explicit executable, skips
-the exact-major/architecture gates, mutually exclusive with `java_policy`).
+the exact-major/architecture gates, mutually exclusive with non-empty
+`java_paths`). A valid `java_policy` may accompany an override; the explicit
+executable takes precedence, without candidate selection or managed download.
 Default `auto` covers most cases: local exact-major first, then installed
 managed runtimes, then a managed download. Pre-provision with
 `java.runtime.install` when the GUI wants explicit control (for example
@@ -147,11 +153,20 @@ reports `JAVA_INCOMPATIBLE` when nothing installed matches.
 optional `"client_id"`/`"xuid"`. `options` may include
 `resolution_width`/`resolution_height`.
 
-**Offline sessions** are supported: construct the session client-side as
-`player_name` = chosen name, `uuid` = hex MD5 of `"OfflinePlayer:" ++ name`
-(no dashes, matching the vanilla offline-mode derivation),
-`access_token` = `"offline"`, `"user_type":"legacy"`. The CLI twin is
-`--offline-name`.
+**Offline sessions** are supported: set `player_name` to the chosen name,
+`access_token` to `"offline"`, and `user_type` to `"legacy"`. Derive `uuid`
+using the same name-based UUID v3 algorithm as the CLI's `--offline-name`:
+
+1. Compute MD5 over the UTF-8 bytes of `"OfflinePlayer:"` followed by the name.
+2. Set the version and RFC variant bits in the 16-byte digest, using zero-based
+   indices: `digest[6] = (digest[6] & 0x0f) | 0x30` and
+   `digest[8] = (digest[8] & 0x3f) | 0x80`.
+3. Encode all 16 bytes as 32 lowercase hexadecimal characters, with no dashes.
+
+Fixed vectors: `Notch` → `b50ad385829d3141a2167e7d7539ba7f`;
+`Steve` → `5627dd98e6be3c21b8a8e92344183641`.
+Do not use the unmodified MD5 digest: it can identify a different player from
+the CLI for the same name. RPC uses the caller-supplied UUID unchanged.
 
 ### Instances and content
 

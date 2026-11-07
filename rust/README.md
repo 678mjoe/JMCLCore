@@ -1,5 +1,11 @@
 # Experimental Rust Core
 
+For the exact preserved candidate, current implementation, platform boundaries
+and remaining GUI/game gates, read the
+[2026-11-07 acceptance map](../docs/rewrite/candidate-acceptance-20261107.md).
+Milestone sections below retain their historical scope; they are not a current
+missing-feature list or acceptance result for later trees.
+
 This additive implementation is **not a replacement for the Zig Core yet**.
 The executable is deliberately named `jmcl-core-rust`, while implemented wire
 identity stays `jmcl-core`, protocol 1, version `0.1.0-dev`. No Zig delegation or
@@ -51,7 +57,7 @@ values. Decoded owned request keys/identity fields are wiped on drop, including
 partial-deserialization failures. Typed authentication handlers now have synthetic injected-oracle evidence; this is
 not a general audited secret-memory or live authentication guarantee.
 
-## First additive milestone
+## First additive milestone (historical snapshot)
 
 - Serial RPC framing, ping/version and basic CLI observations are compared to the
   fixed Zig oracle. The approved ZIG-001 oversized-pipeline correction is separately asserted.

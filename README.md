@@ -6,6 +6,7 @@ Its hard-link-first immutable artifact model, protocol v1, CLI behavior and exis
 disk layouts are compatibility requirements, not optional redesign opportunities.
 
 - [Rust build and current limitations](rust/README.md)
+- [Current candidate and GUI acceptance (2026-11-07)](docs/rewrite/candidate-acceptance-20261107.md)
 - [Rewrite roadmap](docs/rewrite/README.md) and [per-method evidence matrix](rust/compat/coverage.json)
 - [Technical design articles](docs/blog/README.md)
 

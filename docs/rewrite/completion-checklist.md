@@ -1,5 +1,10 @@
 # Bounded rewrite completion checklist
 
+For the current preserved candidate and later native Session evidence, start
+with [the 2026-11-07 acceptance map](candidate-acceptance-20261107.md).
+The checkpoints below retain their recorded dates/trees; their pending labels
+must not override later evidence, and their passes do not certify later trees.
+
 This checklist separates **implemented names**, **finite contract evidence**, and **replacement readiness**. It is not permission to replace Zig `main`. All integration goes to `rust-rewrite`; `main` remains the pinned Zig project.
 
 ## Published checkpoints
