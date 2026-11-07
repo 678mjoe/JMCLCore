@@ -1,0 +1,26 @@
+{"binary": "/workspace/scratch/6fda792bd6ec/jmcl-tools/acceptance-matrix-target-20261107/debug/deps/server_lifecycle-bb2ee2f25e6f3a99", "binary_sha256": "ec4c15b566302b3f0b817ab2febc9e506045a80db43770f024563ad447b353c5", "commit": "effef4043ce823891399431e8ebe7ae9a6661854", "core_sha256": "dad858d76f05cc4fad65814b03790a83e02e9244c5fa1d3155f882b89c1fd1f5", "env": {"JMCL_TEST_SERVER_FIXTURE_MAJOR": "99", "LANG": "C", "LC_ALL": "C", "PATH": "/usr/local/sbin", "TMPDIR": "/workspace/scratch/6fda792bd6ec/jmcl-tools/server-lifecycle-extended-owned-20261107", "TZ": "UTC"}, "release_sha256": "9ea31b3dc0252da52ff041118beb6f39aa27a45ed94464abe8589f21817bb3d0", "scope": "Handshake failure uses owned absolute fixture only. RCON/Query executes installed JVM property/version probes, owned major99 shell server, and self-owned TCP/UDP endpoints on 127.0.0.1 only. No download/install/archive or real Minecraft server.", "system_candidates": [{"path": "/usr/lib/jvm/default-java/bin/java", "resolved": "/usr/lib/jvm/java-21-openjdk-amd64/bin/java", "sha256": "1a7e0b17c39003c75b457d686775ccb032e56fa9c8afe3c492d8eb3715e8951a"}, {"path": "/usr/lib/jvm/java-1.21.0-openjdk-amd64/bin/java", "resolved": "/usr/lib/jvm/java-21-openjdk-amd64/bin/java", "sha256": "1a7e0b17c39003c75b457d686775ccb032e56fa9c8afe3c492d8eb3715e8951a"}, {"path": "/usr/lib/jvm/java-21-openjdk-amd64/bin/java", "resolved": "/usr/lib/jvm/java-21-openjdk-amd64/bin/java", "sha256": "1a7e0b17c39003c75b457d686775ccb032e56fa9c8afe3c492d8eb3715e8951a"}], "tree": "93ac3f10cfa0cb4b268fbbd1f43b5ae1342dfc01"}
+{"command": ["/workspace/scratch/6fda792bd6ec/jmcl-tools/acceptance-matrix-target-20261107/debug/deps/server_lifecycle-bb2ee2f25e6f3a99", "supervisor_handshake_failure_kills_child_and_cleans_state", "--exact", "--nocapture", "--test-threads=1"]}
+
+running 1 test
+test supervisor_handshake_failure_kills_child_and_cleans_state ... owned failing supervisor: pid=17 root=/workspace/scratch/6fda792bd6ec/jmcl-tools/server-lifecycle-extended-owned-20261107/.tmpI9l4IO
+owned process scan: no live fixture arguments for /workspace/scratch/6fda792bd6ec/jmcl-tools/server-lifecycle-extended-owned-20261107/.tmpI9l4IO
+ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 7 filtered out; finished in 0.00s
+
+{"verified": "supervisor_handshake_failure_kills_child_and_cleans_state", "passed": 1, "failed": 0, "ignored": 0, "observed_fixture_children": 0, "failed_supervisors": 1, "live_owned_processes_after": 0, "owned_tmp_entries_after": 0}
+{"command": ["/workspace/scratch/6fda792bd6ec/jmcl-tools/acceptance-matrix-target-20261107/debug/deps/server_lifecycle-bb2ee2f25e6f3a99", "managed_rcon_and_query_use_property_derived_loopback_ports", "--exact", "--nocapture", "--test-threads=1"]}
+
+running 1 test
+test managed_rcon_and_query_use_property_derived_loopback_ports ... fixture-selection probe: /workspace/scratch/6fda792bd6ec/jmcl-tools/server-lifecycle-extended-owned-20261107/.tmpSEXMvw/java-fixture major=99
+fixture-selection probe: /usr/lib/jvm/default-java/bin/java major=21
+fixture-selection probe: /usr/lib/jvm/java-1.21.0-openjdk-amd64/bin/java major=21
+fixture-selection probe: /usr/lib/jvm/java-21-openjdk-amd64/bin/java major=21
+owned fixture root: /workspace/scratch/6fda792bd6ec/jmcl-tools/server-lifecycle-extended-owned-20261107/.tmpSEXMvw
+owned fixture running: pid=130 supervisor=129 executable=/workspace/scratch/6fda792bd6ec/jmcl-tools/server-lifecycle-extended-owned-20261107/.tmpSEXMvw/java-fixture
+owned process scan: no live fixture arguments for /workspace/scratch/6fda792bd6ec/jmcl-tools/server-lifecycle-extended-owned-20261107/.tmpSEXMvw
+ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 7 filtered out; finished in 0.35s
+
+{"verified": "managed_rcon_and_query_use_property_derived_loopback_ports", "passed": 1, "failed": 0, "ignored": 0, "observed_fixture_children": 1, "failed_supervisors": 0, "live_owned_processes_after": 0, "owned_tmp_entries_after": 0}

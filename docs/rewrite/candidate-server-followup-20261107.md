@@ -5,6 +5,9 @@ Unlike that earlier no-real-Java slice, this slice **executes the existing
 OpenJDK 21 for version/property probes**. All four server child executions are
 owned synthetic shell fixtures. No real Minecraft server is run.
 
+See the [current scoped status matrix](candidate-status-20261107.md) for later
+handshake/loopback evidence and the important remaining acceptance prerequisites.
+
 ## Exact subject
 
 - Executed local commit: `031098063d01bbdc0a72e8aecff10982dd2eefc7`.

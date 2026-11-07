@@ -1,0 +1,171 @@
+{
+  "tested_commit": "effef4043ce823891399431e8ebe7ae9a6661854",
+  "tested_tree": "93ac3f10cfa0cb4b268fbbd1f43b5ae1342dfc01",
+  "baseline_remote_commit": "e5380182472f4c92147f6f3ac84fcda7793dd375",
+  "baseline_tree": "12d406b588ed0b2683f996abe8d5b554580e2f83",
+  "production_sources_dependencies_workflows_unchanged": true,
+  "toolchain": "Rust/Cargo 1.99.1 on Linux x86_64 GNU",
+  "test_source_sha256": "a6ebd7feb14f1a0ffca568e2e0034439bfdb404ad49ed861c6183e33ed1c971c",
+  "execution_header": {
+    "binary": "/workspace/scratch/6fda792bd6ec/jmcl-tools/acceptance-matrix-target-20261107/debug/deps/server_lifecycle-bb2ee2f25e6f3a99",
+    "binary_sha256": "ec4c15b566302b3f0b817ab2febc9e506045a80db43770f024563ad447b353c5",
+    "commit": "effef4043ce823891399431e8ebe7ae9a6661854",
+    "core_sha256": "dad858d76f05cc4fad65814b03790a83e02e9244c5fa1d3155f882b89c1fd1f5",
+    "env": {
+      "JMCL_TEST_SERVER_FIXTURE_MAJOR": "99",
+      "LANG": "C",
+      "LC_ALL": "C",
+      "PATH": "/usr/local/sbin",
+      "TMPDIR": "/workspace/scratch/6fda792bd6ec/jmcl-tools/server-lifecycle-extended-owned-20261107",
+      "TZ": "UTC"
+    },
+    "release_sha256": "9ea31b3dc0252da52ff041118beb6f39aa27a45ed94464abe8589f21817bb3d0",
+    "scope": "Handshake failure uses owned absolute fixture only. RCON/Query executes installed JVM property/version probes, owned major99 shell server, and self-owned TCP/UDP endpoints on 127.0.0.1 only. No download/install/archive or real Minecraft server.",
+    "system_candidates": [
+      {
+        "path": "/usr/lib/jvm/default-java/bin/java",
+        "resolved": "/usr/lib/jvm/java-21-openjdk-amd64/bin/java",
+        "sha256": "1a7e0b17c39003c75b457d686775ccb032e56fa9c8afe3c492d8eb3715e8951a"
+      },
+      {
+        "path": "/usr/lib/jvm/java-1.21.0-openjdk-amd64/bin/java",
+        "resolved": "/usr/lib/jvm/java-21-openjdk-amd64/bin/java",
+        "sha256": "1a7e0b17c39003c75b457d686775ccb032e56fa9c8afe3c492d8eb3715e8951a"
+      },
+      {
+        "path": "/usr/lib/jvm/java-21-openjdk-amd64/bin/java",
+        "resolved": "/usr/lib/jvm/java-21-openjdk-amd64/bin/java",
+        "sha256": "1a7e0b17c39003c75b457d686775ccb032e56fa9c8afe3c492d8eb3715e8951a"
+      }
+    ],
+    "tree": "93ac3f10cfa0cb4b268fbbd1f43b5ae1342dfc01"
+  },
+  "preflight": {
+    "loopback_only": true,
+    "attempts_per_protocol": 1,
+    "checks": [
+      {
+        "protocol": "TCP",
+        "address": [
+          "127.0.0.1",
+          42643
+        ],
+        "peer": [
+          "127.0.0.1",
+          53020
+        ],
+        "passed": true
+      },
+      {
+        "protocol": "UDP",
+        "address": [
+          "127.0.0.1",
+          40206
+        ],
+        "peer": [
+          "127.0.0.1",
+          40206
+        ],
+        "passed": true
+      }
+    ],
+    "result": "passed"
+  },
+  "results": [
+    {
+      "test": "supervisor_handshake_failure_kills_child_and_cleans_state",
+      "passed": 1,
+      "failed": 0,
+      "ignored": 0,
+      "filtered_out": 7,
+      "known_failed_supervisor": 1,
+      "positively_observed_fixture_children": 0,
+      "no_live_owned_argv": true,
+      "owned_tmp_empty": true
+    },
+    {
+      "test": "managed_rcon_and_query_use_property_derived_loopback_ports",
+      "passed": 1,
+      "failed": 0,
+      "ignored": 0,
+      "filtered_out": 7,
+      "positively_observed_fixture_children": 1,
+      "no_live_owned_argv": true,
+      "owned_tmp_empty": true
+    }
+  ],
+  "not_executed": [
+    "Java acquisition/installation/runtime archives",
+    "real Minecraft server/game",
+    "real credentials/accounts/providers",
+    "external service networking",
+    "Tauri/UI",
+    "Windows/macOS native matrix",
+    "full runtime test suite"
+  ],
+  "tool_denials": 0,
+  "files": {
+    "preflight.log": "0ff696cc97be6cd4726b3c19d778c4af90f1dcc6897f08b9f501ce02920868c1",
+    "targeted-compile.log": "e2dd55010e2f863409beb6d94e2915094fb564fc7b6db7cb47e54c6528bda8e0",
+    "pre-execution-clippy.log": "93944589fea2c2c616104fc8ec49b91c18f940cfa69bbbb09e70e95efaf4df49",
+    "execution.log": "e39ed690c850207a8fb9fc2d67fcf2b777d325c47c866189363a4a7222cc7c6b",
+    "runner.py": "24fa7490d9c4789d711e428707bc502e4ea51947f65986fbc72d9b95ce097163",
+    "final-fmt.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "final-compile.log": "3942f828d428c5951dbc0d3964c04320240b12a880602cb88325da06054a29b4",
+    "final-clippy.log": "1094a36867300c1838cdc4ee40efe961d83bac574665f8ee57a40d5b1e88698c"
+  },
+  "final_integrated_checks": {
+    "tested_commit": "5c6ab9015c83ecda688ef9930ce2728728469aaa",
+    "tested_tree": "ed014cd634318228cb606a4297d5568de795c024",
+    "clean_tree_before_and_after": true,
+    "commands": {
+      "fmt": {
+        "command": [
+          "cargo",
+          "fmt",
+          "--manifest-path",
+          "rust/Cargo.toml",
+          "--all",
+          "--",
+          "--check"
+        ],
+        "returncode": 0,
+        "log": "final-fmt.log"
+      },
+      "compile": {
+        "command": [
+          "cargo",
+          "test",
+          "--manifest-path",
+          "rust/Cargo.toml",
+          "--offline",
+          "--locked",
+          "--all-targets",
+          "--no-run"
+        ],
+        "returncode": 0,
+        "log": "final-compile.log"
+      },
+      "clippy": {
+        "command": [
+          "cargo",
+          "clippy",
+          "--manifest-path",
+          "rust/Cargo.toml",
+          "--offline",
+          "--locked",
+          "--all-targets",
+          "--",
+          "-D",
+          "warnings"
+        ],
+        "returncode": 0,
+        "log": "final-clippy.log"
+      }
+    },
+    "rust_src_tree": "99bfa7577af7597ab8069aecd278bb4e9a352296",
+    "zig_src_tree": "2c182bdb99c9c11b8bb203948c0f9b0ce160ed32",
+    "rust_tests_tree": "5ec30243b8760224ee92c1dcb27c1b9c75122c48",
+    "subsequent_changes": "Retained logs/manifest and explanatory docs only; no further source, tests, dependencies or workflow edits."
+  }
+}

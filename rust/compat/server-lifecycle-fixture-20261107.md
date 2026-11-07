@@ -70,3 +70,24 @@ No runtime download, installation, archive processing, real Minecraft server,
 network-provider request, Tauri interaction or other-platform execution is part
 of these two tests. This file describes the isolation and execution contract;
 run-specific identities and results belong in a separate dated evidence record.
+
+## Subsequent handshake and loopback slice
+
+The existing handshake-failure test now records the directly spawned supervisor
+PID, waits for its `/dev/full`-induced failure, then scans for remaining processes
+whose complete NUL-separated argv entries equal its owned server directory or
+fixture executable. The failure may precede an observable child entry, so it
+makes no positive claim that a child PID was observed. A successful bounded scan
+means no matching live argv at that point, not immediate OS reaping. Missing or
+exited process records are skipped; other read errors or truncation fail the
+check and preserve the owned directory for inspection.
+
+`managed_rcon_and_query_use_property_derived_loopback_ports` also uses the opt-in
+major-99 constructor and selected-path/PID assertions. Its endpoints are freshly
+bound to `127.0.0.1` only. The fixture's TCP accept has a three-second deadline;
+accepted TCP reads/writes and UDP reads/writes have three-second timeouts. This
+is test-side bounding, not a production transport change. The test checks
+synthetic authentication, multi-part command response and basic query output,
+joins both fixture threads, explicitly stops its owned shell server and scans
+for remaining owned processes. The actual RPC/handshake helper still lacks an
+overall timeout, so the external runner retains the no-blind-kill rule above.

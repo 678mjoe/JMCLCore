@@ -151,6 +151,90 @@ impl Fixture {
         assert!(!lifecycle::status(&self.dir).unwrap().running);
         assert!(!self.tmp.path().join("test/.jmcl/server.pid").exists());
     }
+    fn assert_no_owned_processes(&mut self) {
+        use std::io::Read;
+        let server = self.tmp.path().join("test");
+        let java = self.tmp.path().join("java-fixture");
+        let expected = [
+            server.to_str().unwrap().as_bytes(),
+            java.to_str().unwrap().as_bytes(),
+        ];
+        let deadline = Instant::now() + Duration::from_secs(3);
+        loop {
+            let mut owned_pids = Vec::new();
+            let scan = || -> std::io::Result<Vec<u32>> {
+                let mut owned = Vec::new();
+                for entry in fs::read_dir("/proc")? {
+                    let entry = entry?;
+                    let Some(pid) = entry
+                        .file_name()
+                        .to_str()
+                        .and_then(|s| s.parse::<u32>().ok())
+                    else {
+                        continue;
+                    };
+                    if pid == std::process::id() {
+                        continue;
+                    }
+                    let read = || -> std::io::Result<Vec<u8>> {
+                        let file = File::open(entry.path().join("cmdline"))?;
+                        let mut bytes = Vec::new();
+                        file.take(64 * 1024).read_to_end(&mut bytes)?;
+                        if bytes.len() == 64 * 1024 {
+                            return Err(std::io::Error::other(
+                                "process command line exceeds scan bound",
+                            ));
+                        }
+                        Ok(bytes)
+                    };
+                    let bytes = match read() {
+                        Ok(bytes) => bytes,
+                        Err(error)
+                            if error.kind() == std::io::ErrorKind::NotFound
+                                || error.raw_os_error() == Some(libc::ESRCH) =>
+                        {
+                            continue;
+                        }
+                        Err(error) => {
+                            return Err(std::io::Error::new(
+                                error.kind(),
+                                format!("process {pid}: {error}"),
+                            ));
+                        }
+                    };
+                    if bytes.split(|b| *b == 0).any(|arg| expected.contains(&arg)) {
+                        owned.push(pid);
+                    }
+                }
+                Ok(owned)
+            };
+            owned_pids.extend(match scan() {
+                Ok(owned) => owned,
+                Err(error) => {
+                    self.tmp.disable_cleanup(true);
+                    panic!(
+                        "cannot confirm owned cleanup; retained {}: {error}",
+                        self.tmp.path().display()
+                    );
+                }
+            });
+            if owned_pids.is_empty() {
+                eprintln!(
+                    "owned process scan: no live fixture arguments for {}",
+                    self.tmp.path().display()
+                );
+                return;
+            }
+            if Instant::now() >= deadline {
+                self.tmp.disable_cleanup(true);
+                panic!(
+                    "live owned fixture processes {owned_pids:?}; retained {}",
+                    self.tmp.path().display()
+                );
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+    }
     fn params(&self) -> Value {
         json!({"directory":self.tmp.path(),"id":"test"})
     }
@@ -395,7 +479,7 @@ fn lifecycle_numeric_parameter_compatibility() {
 
 #[test]
 fn supervisor_handshake_failure_kills_child_and_cleans_state() {
-    let f = Fixture::new();
+    let mut f = Fixture::new();
     rustix::fs::mknodat(
         &f.dir,
         ".jmcl/console.fifo",
@@ -408,7 +492,7 @@ fn supervisor_handshake_failure_kills_child_and_cleans_state() {
         .write(true)
         .open("/dev/full")
         .unwrap();
-    let status = Command::new(env!("CARGO_BIN_EXE_jmcl-core-rust"))
+    let mut child = Command::new(env!("CARGO_BIN_EXE_jmcl-core-rust"))
         .arg("__server_supervisor")
         .arg(f.tmp.path().join("test"))
         .arg(f.tmp.path().join("java-fixture"))
@@ -416,10 +500,17 @@ fn supervisor_handshake_failure_kills_child_and_cleans_state() {
         .stdin(Stdio::null())
         .stdout(full)
         .stderr(Stdio::null())
-        .status()
+        .spawn()
         .unwrap();
+    eprintln!(
+        "owned failing supervisor: pid={} root={}",
+        child.id(),
+        f.tmp.path().display()
+    );
+    let status = child.wait().unwrap();
     assert!(!status.success());
     assert!(!f.tmp.path().join("test/.jmcl/server.pid").exists());
+    f.assert_no_owned_processes();
 }
 
 #[test]
@@ -448,13 +539,29 @@ fn managed_rcon_and_query_use_property_derived_loopback_ports() {
         bytes.extend_from_slice(&[0, 0]);
         stream.write_all(&bytes).unwrap();
     }
-    let f = Fixture::new();
+    let mut f = Fixture::for_lifecycle();
     let tcp = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
+    tcp.set_nonblocking(true).unwrap();
     let udp = UdpSocket::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
     udp.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
+    udp.set_write_timeout(Some(Duration::from_secs(3))).unwrap();
     fs::write(f.tmp.path().join("test/server.properties"),format!("enable-rcon=true\nrcon.port={}\nenable-query=true\nquery.port={}\nserver-ip=not-a-host-to-dial.invalid\n",tcp.local_addr().unwrap().port(),udp.local_addr().unwrap().port())).unwrap();
     let t = std::thread::spawn(move || {
-        let (mut stream, _) = tcp.accept().unwrap();
+        let deadline = Instant::now() + Duration::from_secs(3);
+        let (mut stream, _) = loop {
+            match tcp.accept() {
+                Ok(connection) => break connection,
+                Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                    assert!(Instant::now() < deadline, "loopback accept timed out");
+                    std::thread::sleep(Duration::from_millis(10));
+                }
+                Err(error) => panic!("loopback accept failed: {error}"),
+            }
+        };
+        stream.set_nonblocking(false).unwrap();
+        stream
+            .set_write_timeout(Some(Duration::from_secs(3)))
+            .unwrap();
         stream
             .set_read_timeout(Some(Duration::from_secs(3)))
             .unwrap();
@@ -486,7 +593,8 @@ fn managed_rcon_and_query_use_property_derived_loopback_ports() {
         response.extend_from_slice(b"fixture\0SMP\0world\x000\x0020\0\xdd\x63127.0.0.1\0");
         udp.send_to(&response, peer).unwrap();
     });
-    assert_eq!(rpc("server.start", f.params())["result"]["running"], true);
+    let start = rpc("server.start", f.params());
+    f.assert_started_fixture(&start);
     let mut p = f.params();
     p["password"] = "synthetic-secret".into();
     p["command"] = "list".into();
@@ -500,4 +608,8 @@ fn managed_rcon_and_query_use_property_derived_loopback_ports() {
     assert_eq!(r["result"]["host_port"], 25565);
     t.join().unwrap();
     u.join().unwrap();
+    let stop = rpc("server.stop", f.params());
+    assert_eq!(stop["result"]["termination"], "graceful", "{stop}");
+    f.assert_stopped_fixture();
+    f.assert_no_owned_processes();
 }

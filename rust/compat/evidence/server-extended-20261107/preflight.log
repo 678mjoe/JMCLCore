@@ -1,0 +1,1 @@
+{"loopback_only": true, "attempts_per_protocol": 1, "checks": [{"protocol": "TCP", "address": ["127.0.0.1", 42643], "peer": ["127.0.0.1", 53020], "passed": true}, {"protocol": "UDP", "address": ["127.0.0.1", 40206], "peer": ["127.0.0.1", 40206], "passed": true}], "result": "passed"}

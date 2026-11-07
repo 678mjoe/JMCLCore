@@ -17,6 +17,9 @@ The separately reviewed [client-world follow-up](worlds-candidate-20261107.md)
 adds owned synthetic NBT/region/world-ZIP workflows and pinned CLI comparisons.
 It does not claim Java runtime archive installation or real game generation.
 
+See the [current scoped status matrix](candidate-status-20261107.md) for later
+handshake/loopback evidence and the important remaining acceptance prerequisites.
+
 ## 1. Exact subject and distribution boundary
 
 | Subject | Identity and meaning |

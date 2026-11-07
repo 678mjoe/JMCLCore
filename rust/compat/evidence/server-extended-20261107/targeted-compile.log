@@ -1,0 +1,3 @@
+   Compiling jmcl-core-rust v0.1.0-dev (/workspace/scratch/6fda792bd6ec/JMCLCore-acceptance-20261107/rust)
+    Finished `test` profile [unoptimized] target(s) in 0.49s
+  Executable tests/server_lifecycle.rs (/workspace/scratch/6fda792bd6ec/jmcl-tools/acceptance-matrix-target-20261107/debug/deps/server_lifecycle-bb2ee2f25e6f3a99)

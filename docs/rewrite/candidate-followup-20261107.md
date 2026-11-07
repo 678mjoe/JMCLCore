@@ -13,6 +13,9 @@ The separately reviewed [client-world follow-up](worlds-candidate-20261107.md)
 adds owned synthetic NBT/region/world-ZIP workflows and pinned CLI comparisons.
 It does not claim Java runtime archive installation or real game generation.
 
+See the [current scoped status matrix](candidate-status-20261107.md) for later
+handshake/loopback evidence and the important remaining acceptance prerequisites.
+
 ## Exact tested subject
 
 - Preserved remote commit: `d8bb78d3eca19cd068adaff07920522ae1c2e593`.
