@@ -1,0 +1,117 @@
+{
+  "run_url": "https://github.com/678mjoe/JMCLCore/actions/runs/42391458369",
+  "job_id": 128459732314,
+  "raw_command": {
+    "command": [
+      "cargo",
+      "test",
+      "--offline",
+      "--locked",
+      "--manifest-path",
+      "rust/Cargo.toml",
+      "--target",
+      "x86_64-pc-windows-msvc",
+      "--test",
+      "content_adopt",
+      "adoption_reuses_real_file_identity_and_manual_registry",
+      "--",
+      "--exact",
+      "--nocapture",
+      "--test-threads=1"
+    ],
+    "returncode": 0,
+    "timed_out": false,
+    "raw_bytes": 4353,
+    "raw_sha256": "1b5b75d7f17eef3e8187d0ed227b07a61226a0ae6a965938791b1cf96ada802d",
+    "raw_base64": "ICAgQ29tcGlsaW5nIHByb2MtbWFjcm8yIHYxLjAuMTA3CiAgIENvbXBpbGluZyB1bmljb2RlLWlkZW50IHYxLjAuMjcKICAgQ29tcGlsaW5nIHF1b3RlIHYxLjAuNDcKICAgQ29tcGlsaW5nIGdldHJhbmRvbSB2MC40LjMKICAgQ29tcGlsaW5nIGNmZy1pZiB2MS4wLjUKICAgQ29tcGlsaW5nIHN0YWJsZV9kZXJlZl90cmFpdCB2MS4yLjEKICAgQ29tcGlsaW5nIGZpbmQtbXN2Yy10b29scyB2MC4xLjE1CiAgIENvbXBpbGluZyBzaGxleCB2Mi4wLjEKICAgQ29tcGlsaW5nIHdpbmRvd3MtbGluayB2MC4yLjEKICAgQ29tcGlsaW5nIHdpbmRvd3Mtc3lzIHYwLjYxLjIKICAgQ29tcGlsaW5nIGZzX2V4dHJhIHYxLjMuMAogICBDb21waWxpbmcgam9ic2VydmVyIHYwLjEuMzUKICAgQ29tcGlsaW5nIGNjIHYxLjEwLjAKICAgQ29tcGlsaW5nIGR1bmNlIHYxLjAuNQogICBDb21waWxpbmcgc3luIHYzLjAuOQogICBDb21waWxpbmcgcGluLXByb2plY3QtbGl0ZSB2MC4yLjE3CiAgIENvbXBpbGluZyBieXRlcyB2MS4xMi4xCiAgIENvbXBpbGluZyBjbWFrZSB2MC4xLjU4CiAgIENvbXBpbGluZyBmdXR1cmVzLWNvcmUgdjAuMy4zNAogICBDb21waWxpbmcgc21hbGx2ZWMgdjEuMTYuNAogICBDb21waWxpbmcgaXRvYSB2MS4wLjE4CiAgIENvbXBpbGluZyB3cml0ZWFibGUgdjAuNi40CiAgIENvbXBpbGluZyBhd3MtbGMtc3lzIHYwLjQ2LjAKICAgQ29tcGlsaW5nIGxpdGVtYXAgdjAuOC4zCiAgIENvbXBpbGluZyBhd3MtbGMtcnMgdjEuMTguMgogICBDb21waWxpbmcgb25jZV9jZWxsIHYxLjIxLjQKICAgQ29tcGlsaW5nIHN5bnN0cnVjdHVyZSB2MC4xNC4wCiAgIENvbXBpbGluZyBzb2NrZXQyIHYwLjYuNQogICBDb21waWxpbmcgbWlvIHYxLjIuNAogICBDb21waWxpbmcgaWN1X25vcm1hbGl6ZXJfZGF0YSB2Mi40LjAKICAgQ29tcGlsaW5nIGljdV9wcm9wZXJ0aWVzX2RhdGEgdjIuNC4wCiAgIENvbXBpbGluZyB1dGY4X2l0ZXIgdjEuMC40CiAgIENvbXBpbGluZyB6ZXJvaXplIHYxLjkuMQogICBDb21waWxpbmcgbWVtY2hyIHYyLjguMwogICBDb21waWxpbmcgdG9raW8gdjEuNTQuMQogICBDb21waWxpbmcgemVyb2Zyb20tZGVyaXZlIHYwLjEuOAogICBDb21waWxpbmcgeW9rZS1kZXJpdmUgdjAuOC40CiAgIENvbXBpbGluZyB6ZXJvZnJvbSB2MC4xLjgKICAgQ29tcGlsaW5nIHplcm92ZWMtZGVyaXZlIHYwLjExLjcKICAgQ29tcGlsaW5nIHlva2UgdjAuOC40CiAgIENvbXBpbGluZyBkaXNwbGF5ZG9jIHYwLjIuNwogICBDb21waWxpbmcgemVyb3RyaWUgdjAuMi41CiAgIENvbXBpbGluZyB6ZXJvdmVjIHYwLjExLjkKICAgQ29tcGlsaW5nIGh0dHAgdjEuNS4wCiAgIENvbXBpbGluZyB0aW55c3RyIHYwLjguNQogICBDb21waWxpbmcgaWN1X2xvY2FsZV9jb3JlIHYyLjQuMAogICBDb21waWxpbmcgcG90ZW50aWFsX3V0ZiB2MC4xLjYKICAgQ29tcGlsaW5nIGljdV9jb2xsZWN0aW9ucyB2Mi40LjAKICAgQ29tcGlsaW5nIGljdV9wcm92aWRlciB2Mi40LjAKICAgQ29tcGlsaW5nIGZ1dHVyZXMtc2luayB2MC4zLjM0CiAgIENvbXBpbGluZyB2ZXJzaW9uX2NoZWNrIHYwLjkuNQogICBDb21waWxpbmcgaHR0cC1ib2R5IHYxLjEuMAogICBDb21waWxpbmcgZ2VuZXJpYy1hcnJheSB2MC4xNC43CiAgIENvbXBpbGluZyBydXN0bHMtcGtpLXR5cGVzIHYxLjE1LjEKICAgQ29tcGlsaW5nIHVudHJ1c3RlZCB2MC45LjAKICAgQ29tcGlsaW5nIHBlcmNlbnQtZW5jb2RpbmcgdjIuMy4yCiAgIENvbXBpbGluZyBydXN0bHMgdjAuMjMuNDYKICAgQ29tcGlsaW5nIGZ1dHVyZXMtaW8gdjAuMy4zNAogICBDb21waWxpbmcgZnV0dXJlcy10YXNrIHYwLjMuMzQKICAgQ29tcGlsaW5nIGh0dHBhcnNlIHYxLjEwLjEKICAgQ29tcGlsaW5nIHNsYWIgdjAuNC4xMgogICBDb21waWxpbmcgaWN1X3Byb3BlcnRpZXMgdjIuNC4wCiAgIENvbXBpbGluZyBmdXR1cmVzLXV0aWwgdjAuMy4zNAogICBDb21waWxpbmcgaWN1X25vcm1hbGl6ZXIgdjIuNC4wCiAgIENvbXBpbGluZyBsaWJjIHYwLjIuMTkxCiAgIENvbXBpbGluZyB0cnktbG9jayB2MC4yLjUKICAgQ29tcGlsaW5nIHR5cGVudW0gdjEuMjAuMQogICBDb21waWxpbmcgdG93ZXItc2VydmljZSB2MC4zLjMKICAgQ29tcGlsaW5nIHN1YnRsZSB2Mi42LjEKICAgQ29tcGlsaW5nIHdhbnQgdjAuMy4yCiAgIENvbXBpbGluZyBpZG5hX2FkYXB0ZXIgdjEuMi4yCiAgIENvbXBpbGluZyB0cmFjaW5nLWNvcmUgdjAuMS4zNgogICBDb21waWxpbmcgc2VyZGVfY29yZSB2MS4wLjIyOQogICBDb21waWxpbmcgY3JjMzJmYXN0IHYxLjUuMAogICBDb21waWxpbmcgYXRvbWljLXdha2VyIHYxLjEuMgogICBDb21waWxpbmcgaHlwZXIgdjEuMTIuMAogICBDb21waWxpbmcgdHJhY2luZyB2MC4xLjQ0CiAgIENvbXBpbGluZyBpZG5hIHYxLjEuMAogICBDb21waWxpbmcgZm9ybV91cmxlbmNvZGVkIHYxLjIuMgogICBDb21waWxpbmcgZnV0dXJlcy1jaGFubmVsIHYwLjMuMzQKICAgQ29tcGlsaW5nIHN5bmNfd3JhcHBlciB2MS4wLjIKICAgQ29tcGlsaW5nIGVxdWl2YWxlbnQgdjEuMC4zCiAgIENvbXBpbGluZyBiaXRmbGFncyB2Mi4xMy4yCiAgIENvbXBpbGluZyBoYXNoYnJvd24gdjAuMTcuMQogICBDb21waWxpbmcgem1paiB2MS4wLjIzCiAgIENvbXBpbGluZyBzaW1kLWFkbGVyMzIgdjAuMy4xMAogICBDb21waWxpbmcgaXBuZXQgdjIuMTIuMgogICBDb21waWxpbmcgYWRsZXIyIHYyLjAuMQogICBDb21waWxpbmcgYmFzZTY0IHYwLjIzLjEKICAgQ29tcGlsaW5nIHRvd2VyLWxheWVyIHYwLjMuMwogICBDb21waWxpbmcgdG93ZXIgdjAuNS4zCiAgIENvbXBpbGluZyBoeXBlci11dGlsIHYwLjEuMjEKICAgQ29tcGlsaW5nIG1pbml6X294aWRlIHYwLjguOQogICBDb21waWxpbmcgaW5kZXhtYXAgdjIuMTQuMgogICBDb21waWxpbmcgdXJsIHYyLjUuOAogICBDb21waWxpbmcgYmxvY2stYnVmZmVyIHYwLjEwLjQKICAgQ29tcGlsaW5nIGNyeXB0by1jb21tb24gdjAuMS43CiAgIENvbXBpbGluZyBzZXJkZSB2MS4wLjIyOQogICBDb21waWxpbmcgbG9nIHYwLjQuMzQKICAgQ29tcGlsaW5nIHJ1c3RjX2FwZmxvYXQgdjAuMi4zK2xsdm0tNDYyYTMxZjVhNWFiCiAgIENvbXBpbGluZyBzZXJkZV9qc29uIHYxLjAuMTU0CiAgIENvbXBpbGluZyBkaWdlc3QgdjAuMTAuNwogICBDb21waWxpbmcgdG93ZXItaHR0cCB2MC42LjExCiAgIENvbXBpbGluZyBmbGF0ZTIgdjEuMS45CiAgIENvbXBpbGluZyBodHRwLWJvZHktdXRpbCB2MC4xLjUKICAgQ29tcGlsaW5nIHNlcmRlX2Rlcml2ZSB2MS4wLjIyOQogICBDb21waWxpbmcgbnVtLWNvbnYgdjAuMi4yCiAgIENvbXBpbGluZyBjcHVmZWF0dXJlcyB2MC4yLjE3CiAgIENvbXBpbGluZyB0aW1lLWNvcmUgdjAuMS45CiAgIENvbXBpbGluZyBiYXNlNjQgdjAuMjIuMQogICBDb21waWxpbmcgcG93ZXJmbXQgdjAuMi4wCiAgIENvbXBpbGluZyBmb2xkaGFzaCB2MC4yLjAKICAgQ29tcGlsaW5nIGRlcmFuZ2VkIHYwLjUuOAogICBDb21waWxpbmcgdGltZSB2MC4zLjU0CiAgIENvbXBpbGluZyBzaGExIHYwLjEwLjcKICAgQ29tcGlsaW5nIHppcCB2NC42LjEKICAgQ29tcGlsaW5nIGZhc3RyYW5kIHYyLjUuMAogICBDb21waWxpbmcgdGVtcGZpbGUgdjMuMjcuMAogICBDb21waWxpbmcgcnVzdGxzLXdlYnBraSB2MC4xMDMuMTYKICAgQ29tcGlsaW5nIHRva2lvLXJ1c3RscyB2MC4yNi42CiAgIENvbXBpbGluZyBydXN0bHMtcGxhdGZvcm0tdmVyaWZpZXIgdjAuNy4xCiAgIENvbXBpbGluZyBoeXBlci1ydXN0bHMgdjAuMjcuMTAKICAgQ29tcGlsaW5nIHJlcXdlc3QgdjAuMTMuNAogICBDb21waWxpbmcgam1jbC1jb3JlLXJ1c3QgdjAuMS4wLWRldiAoRDpcYVxKTUNMQ29yZVxKTUNMQ29yZVxydXN0KQogICAgRmluaXNoZWQgYHRlc3RgIHByb2ZpbGUgW3Vub3B0aW1pemVkXSB0YXJnZXQocykgaW4gMW0gMDZzCiAgICAgUnVubmluZyB0ZXN0c1xjb250ZW50X2Fkb3B0LnJzIChEOlxhXF90ZW1wXGptY2wtd2luZG93cy1hZG9wdC1xMXVhZHZfNVx0YXJnZXRceDg2XzY0LXBjLXdpbmRvd3MtbXN2Y1xkZWJ1Z1xkZXBzXGNvbnRlbnRfYWRvcHQtODlhYzg1OWYwMjNkNTc4OS5leGUpCgpydW5uaW5nIDEgdGVzdAp0ZXN0IGFkb3B0aW9uX3JldXNlc19yZWFsX2ZpbGVfaWRlbnRpdHlfYW5kX21hbnVhbF9yZWdpc3RyeSAuLi4gV0lORE9XU19BRE9QVF9JREVOVElUWV9PSyBvcmlnaW5hbD1zb3VyY2U9Y2FzIGFmdGVyX2ZpcnN0X2FuZF9zZWNvbmRfYWRvcHQKb2sKCnRlc3QgcmVzdWx0OiBvay4gMSBwYXNzZWQ7IDAgZmFpbGVkOyAwIGlnbm9yZWQ7IDAgbWVhc3VyZWQ7IDIgZmlsdGVyZWQgb3V0OyBmaW5pc2hlZCBpbiAwLjAxcwoK"
+  },
+  "verified": {
+    "commit": "e0ec798e863c877c3fde77f1f86c1e06c5583d3a",
+    "tree": "5f4599323c9a17bef83737f2890326e0d38f2ee6",
+    "production_rust_tree": "99bfa7577af7597ab8069aecd278bb4e9a352296",
+    "test_sha256": "28fb816e464c205e2fdf021b9b5ab74d0f80c3aadc310ffbbe9dccf3035abe0c",
+    "executable_sha256": "58c957b12de43c3e219a049839674c47871a09c51efce96d915e575de3f71cde",
+    "executable_bytes": 3902976,
+    "kind": "PE32+/x86_64",
+    "host": "rustc 1.99.1 (58cf8f9c3 2026-10-13)\nbinary: rustc\ncommit-hash: 58cf8f9c35b355199727627d07ae34a4e2846d67\ncommit-date: 2026-10-13\nhost: x86_64-pc-windows-msvc\nrelease: 1.99.1\nLLVM version: 23.1.1\n",
+    "passed": 1,
+    "failed": 0,
+    "ignored": 0
+  },
+  "run_summary": {
+    "id": 42391458369,
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "e0ec798e863c877c3fde77f1f86c1e06c5583d3a",
+    "head_branch": "rust-windows-adopt-20261107",
+    "event": "push",
+    "run_attempt": 1,
+    "html_url": "https://github.com/678mjoe/JMCLCore/actions/runs/42391458369",
+    "created_at": "2026-11-07T16:28:25Z",
+    "updated_at": "2026-11-07T16:30:15Z"
+  },
+  "job_summary": {
+    "id": 128459732314,
+    "name": "identity",
+    "status": "completed",
+    "conclusion": "success",
+    "run_id": 42391458369,
+    "logs_url": null,
+    "steps": [
+      {
+        "name": "Set up job",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 1
+      },
+      {
+        "name": "Preserve exact checkout bytes",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 2
+      },
+      {
+        "name": "Run actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 3
+      },
+      {
+        "name": "Install official pinned Rust",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 4
+      },
+      {
+        "name": "Guard negative controls",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 5
+      },
+      {
+        "name": "Fetch locked dependencies",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 6
+      },
+      {
+        "name": "Execute only real adoption identity test",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 7
+      },
+      {
+        "name": "Post Run actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 14
+      },
+      {
+        "name": "Complete job",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 15
+      }
+    ]
+  }
+}
