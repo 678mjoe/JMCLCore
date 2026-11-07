@@ -9,33 +9,63 @@ use std::{
     path::Path,
     process::{Command, Stdio},
 };
+#[cfg(unix)]
+fn identity(path: &Path) -> (u64, u64) {
+    use std::os::unix::fs::MetadataExt;
+    let m = fs::metadata(path).unwrap();
+    (m.dev(), m.ino())
+}
+#[cfg(windows)]
+fn identity(path: &Path) -> (u64, u64) {
+    use std::os::windows::io::AsRawHandle;
+    use windows_sys::Win32::Storage::FileSystem::{
+        BY_HANDLE_FILE_INFORMATION, GetFileInformationByHandle,
+    };
+    let file = fs::File::open(path).unwrap();
+    let mut info = BY_HANDLE_FILE_INFORMATION::default();
+    assert_ne!(
+        unsafe { GetFileInformationByHandle(file.as_raw_handle(), &mut info) },
+        0
+    );
+    (
+        u64::from(info.dwVolumeSerialNumber),
+        (u64::from(info.nFileIndexHigh) << 32) | u64::from(info.nFileIndexLow),
+    )
+}
 #[test]
 fn adoption_reuses_real_file_identity_and_manual_registry() {
     let t = tempfile::tempdir().unwrap();
     let game = t.path().join("game");
     fs::create_dir_all(game.join("mods")).unwrap();
-    fs::write(game.join("mods/one.jar"), b"content").unwrap();
+    let source = game.join("mods/one.jar");
+    fs::write(&source, b"content").unwrap();
+    let before = identity(&source);
     fs::write(game.join("mods/ignore.txt"), b"ignore").unwrap();
     let root = Root::open(game.to_str().unwrap()).unwrap();
     let store = Store::open(t.path().join("cache")).unwrap();
     let a = root.adopt(Kind::Mod, &store).unwrap();
     assert_eq!(a.len(), 1);
     assert_eq!(a[0].size, 7);
-    assert!(root.adopt(Kind::Mod, &store).unwrap().is_empty());
     let object = t
         .path()
         .join("cache")
         .join(object_path(&a[0].sha1).unwrap());
     assert_eq!(fs::read(&object).unwrap(), b"content");
     assert!(fs::metadata(&object).unwrap().permissions().readonly());
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::MetadataExt;
-        assert_eq!(
-            fs::metadata(&object).unwrap().ino(),
-            fs::metadata(game.join("mods/one.jar")).unwrap().ino()
-        );
-    }
+    assert_eq!(identity(&source), before, "adopt replaced original source");
+    assert_eq!(
+        identity(&object),
+        before,
+        "CAS must hardlink original source"
+    );
+    assert_eq!(fs::read(&source).unwrap(), b"content");
+    assert!(fs::metadata(&source).unwrap().permissions().readonly());
+    assert!(store.verify(&a[0].sha1, a[0].size).unwrap());
+    assert!(root.adopt(Kind::Mod, &store).unwrap().is_empty());
+    assert_eq!(identity(&source), before, "second adopt replaced source");
+    assert_eq!(identity(&object), before, "second adopt replaced CAS");
+    #[cfg(windows)]
+    eprintln!("WINDOWS_ADOPT_IDENTITY_OK original=source=cas after_first_and_second_adopt");
     let r = root.load().unwrap();
     assert_eq!(
         r.entries[0].source.provider,

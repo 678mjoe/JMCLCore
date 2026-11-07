@@ -1,0 +1,42 @@
+name: Windows original adopt identity
+on:
+  push:
+    branches: [rust-windows-adopt-20261107]
+    paths:
+      - '.github/workflows/windows-adopt.yml'
+      - 'rust/tests/content_adopt.rs'
+      - 'rust/compat/windows_adopt/*.py'
+permissions:
+  contents: read
+concurrency:
+  group: windows-adopt-${{ github.ref }}
+  cancel-in-progress: false
+env:
+  PYTHONDONTWRITEBYTECODE: '1'
+jobs:
+  identity:
+    if: github.event.repository.visibility == 'public' && github.ref == 'refs/heads/rust-windows-adopt-20261107'
+    runs-on: windows-2025
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Preserve exact checkout bytes
+        run: git config --global core.autocrlf false
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Install official pinned Rust
+        run: |
+          rustup toolchain install 1.99.1 --profile minimal
+          rustup default 1.99.1
+      - name: Guard negative controls
+        run: |
+          python rust/compat/windows_adopt/test_run.py
+          python -O rust/compat/windows_adopt/test_run.py
+      - name: Fetch locked dependencies
+        run: cargo fetch --locked --manifest-path rust/Cargo.toml --target x86_64-pc-windows-msvc
+      - name: Execute only real adoption identity test
+        run: python rust/compat/windows_adopt/run.py
