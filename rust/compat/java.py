@@ -44,7 +44,7 @@ with tempfile.TemporaryDirectory() as temp:
  # A real native host executable closes the prior Windows-positive-fixture gap.
  # This is a tiny property-printing fixture, not a JVM or acquired runtime.
  fake=root/('java.exe' if os.name=='nt' else 'java')
- source=pathlib.Path(__file__).resolve().parents[1]/'tests'/'fixtures'/'java_probe.rs'
+ source=pathlib.Path(__file__).resolve().parents[1]/'tests'/'fixtures'/'java_probe_explicit_x64.rs'
  subprocess.run(['rustc',str(source),'-o',str(fake)],check=True,timeout=120)
  detected=rpc('java.detect',{'paths':[str(fake),str(fake)]})
  doc=json.loads(detected.stdout)['result']
