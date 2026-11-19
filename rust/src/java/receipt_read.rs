@@ -1,4 +1,5 @@
-//! Listing-only persisted byte view. Operational Receipt parsing is unchanged.
+//! Persisted byte view shared by listing and existing managed-runtime selection.
+//! The legacy String-based Receipt parser and serialized receipt writer are unchanged.
 use super::*;
 use serde_json::value::RawValue;
 
@@ -174,7 +175,7 @@ mod tests {
         assert_eq!(read.rpc("directory-name")["vendor"], v["vendor"]);
         assert!(read.rpc("name").get("package_name").is_none());
         assert!(read.cli("name").get("source_url").is_none());
-        assert!(parse(&raw).is_err()); // Shared managed-selection parser unchanged.
+        assert!(parse(&raw).is_err()); // The legacy String-based parser remains separate.
         assert!(serde_json::from_str::<Provider>("0").is_err());
         assert!(serde_json::from_str::<Provider>("\"0\"").is_err());
     }

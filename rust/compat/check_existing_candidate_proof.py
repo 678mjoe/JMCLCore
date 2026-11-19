@@ -34,4 +34,4 @@ def validate(data):
 
 if __name__ == '__main__':
     validate(sources())
-    print('PASS: reviewed buffer proof is test-only; operational managed and protected dependencies unchanged')
+    print('PASS: reviewed buffer proof is test-only; selection source and protected dependencies match the reviewed digests')

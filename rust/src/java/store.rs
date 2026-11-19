@@ -230,7 +230,8 @@ pub fn list(store: &str) -> Result<Vec<Document>, Error> {
     docs.sort_by(|a, b| a.name.cmp(&b.name));
     Ok(docs)
 }
-// A separate listing view deliberately leaves managed selection on list/Receipt.
+// Byte-preserving persisted view shared by listing and existing-runtime selection.
+// The legacy String-based list/Receipt API remains separate.
 #[derive(Debug)]
 pub(super) struct ReadDocument {
     pub name: String,

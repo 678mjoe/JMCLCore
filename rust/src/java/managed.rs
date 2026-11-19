@@ -2,6 +2,9 @@
 #[cfg(test)]
 #[path = "existing_candidate.rs"]
 mod existing_candidate;
+#[cfg(test)]
+#[path = "managed_receipt_selection_tests.rs"]
+mod receipt_selection_tests;
 use super::{
     detect::{self, CandidateSource, Environment, Error, Runtime},
     receipt, store,
@@ -49,7 +52,7 @@ fn local(env: &Environment, r: &Request) -> (Option<Runtime>, usize) {
     }
 }
 fn managed(env: &Environment, r: &Request) -> Option<Runtime> {
-    let docs = store::list(&r.store_directory).ok()?;
+    let docs = store::list_read(&r.store_directory).ok()?;
     let os = host_os()?;
     for pass in 0..2 {
         for d in &docs {
@@ -57,7 +60,8 @@ fn managed(env: &Environment, r: &Request) -> Option<Runtime> {
             if receipt.major_version != r.required_major {
                 continue;
             }
-            let (ro, ra) = receipt::platform_target(&receipt.platform)?;
+            let platform = std::str::from_utf8(&receipt.platform.0).ok()?;
+            let (ro, ra) = receipt::platform_target(platform)?;
             if ro != os || ra != r.arch {
                 continue;
             }
@@ -65,14 +69,20 @@ fn managed(env: &Environment, r: &Request) -> Option<Runtime> {
                 let Some(component) = r.component.as_ref() else {
                     break;
                 };
-                if receipt.component.as_ref() != Some(component) {
+                if receipt.component.as_ref().map(|v| v.0.as_slice()) != Some(component.as_bytes())
+                {
                     continue;
                 }
             }
+            // Detection currently accepts UTF-8 paths only. Opaque executable
+            // bytes remain an explicit compatibility gap, not an invalid receipt.
+            let Ok(executable) = std::str::from_utf8(&receipt.executable.0) else {
+                continue;
+            };
             let path = Path::new(&r.store_directory)
                 .join("runtimes")
                 .join(&d.name)
-                .join(&receipt.executable);
+                .join(executable);
             if let Some(path) = path.to_str()
                 && let Ok(runtime) = detect::probe(path, CandidateSource::Managed, env)
             {

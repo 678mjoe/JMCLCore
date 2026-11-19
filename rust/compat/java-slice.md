@@ -28,6 +28,11 @@ new on-disk migration.
 - Installed receipts are filtered by their recorded major and platform before
   probing; the baseline does not then revalidate the reported JVM against those
   receipt fields. Tightening this requires a separately reviewed policy change.
+- Existing managed-candidate lookup shares the byte-preserving persisted view
+  used by runtime listing, so byte-array metadata and numeric provider tags do
+  not incorrectly hide otherwise eligible UTF-8 executable paths. Opaque
+  non-UTF-8 executable paths remain unresolved because the probe API accepts
+  UTF-8 paths. See [the bounded follow-up](existing-candidate-proof.md).
 - `java.select` uses the requested metadata source, not preferred-source fallback.
 - Receipt reads permit a file symlink alias; removal unlinks descendants without
   following them. Root ancestor symlinks may resolve; the final root must be a
