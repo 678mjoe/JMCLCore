@@ -84,10 +84,26 @@ instance using that digest. JMCL therefore never repairs or upgrades an object
 in place: it verifies or publishes a complete replacement object, then replaces
 only the affected instance path.
 
-Mutable runtime data is deliberately excluded from the repository:
+Managed mod JARs and resource-pack, shader-pack, and datapack ZIPs are shared
+immutable artifacts too. [Content installation](content.md) verifies downloaded
+archives against provider metadata and uses the same artifact store and
+hard-link materialization. Eligible manually supplied archives enter that
+scheme when `adopt` hashes and imports them; adoption does not authenticate
+their origin. The hard-link and copy-fallback boundaries above still apply.
 
-- saves, screenshots, logs, options, and resource packs;
-- `mods/` and mod configuration;
+The boundary follows each file's role, not its directory name. `mods/` and
+`resourcepacks/` are not excluded as whole directories. Managed datapack ZIPs
+can also be shared even though their paths are inside a world's `datapacks/`
+directory. Unmanaged files and directory-shaped packs are not automatically
+imported into the store.
+
+Mutable state and private files remain outside the shared object repository:
+
+- world data such as `level.dat` and region files, screenshots, logs, options,
+  and mod configuration;
+- instance manifests and content registries;
+- [modpack overrides](modpack.md), initially written as private instance files,
+  even when an override targets `mods/` or `resourcepacks/`;
 - extracted native files in the per-launch runtime directory;
 - account data and credentials.
 
@@ -111,10 +127,11 @@ but they remain valid after that object is removed.
 
 ## Security Properties
 
-- Every object identity is a validated 40-character SHA-1 digest and every use
-  rechecks the expected digest and size.
-- Object and destination access is constrained to directory handles with
-  symbolic-link following disabled.
+- Object paths use validated 40-character SHA-1 digests. The planned-file
+  installer rechecks the expected digest and size of both instance destinations
+  and stored objects before reuse.
+- Those verification reads use directory handles, disable symbolic-link
+  following, and require resolution beneath the supplied directory.
 - Downloads are written atomically and are rejected on overflow, short body, or
   hash mismatch.
 - Native extraction is separate from object storage and has its own path and
@@ -122,9 +139,10 @@ but they remain valid after that object is removed.
 - Windows path conversion uses directory-handle-derived paths and native wide
   APIs; positional reads used for hashing avoid the Zig 0.16 Windows I/O issue.
 
-The SHA-1 value comes from the selected upstream metadata and is an integrity
-identifier for the existing Minecraft ecosystem. It does not add a signature or
-replace trust in the metadata source.
+For downloaded artifacts, the SHA-1 value comes from the selected upstream
+metadata and is an integrity identifier for the existing Minecraft ecosystem.
+For `adopt`, it is computed from the local file instead. Neither source adds a
+signature or establishes the artifact's trustworthiness.
 
 ## Operational Consequences
 
