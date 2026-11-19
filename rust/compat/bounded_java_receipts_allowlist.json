@@ -1,0 +1,23 @@
+{
+  "common": [
+    "java::managed::receipt_selection_tests::listed_receipt_representations_select_the_owned_existing_runtime",
+    "java::managed::receipt_selection_tests::byte_components_preserve_preference_and_sorted_fallback",
+    "java::managed::receipt_selection_tests::invalid_receipts_do_not_become_candidates",
+    "java::managed::receipt_selection_tests::opaque_executable_remains_a_listed_unresolved_candidate",
+    "java::managed::receipt_selection_tests::opaque_executable_does_not_hide_a_later_eligible_candidate",
+    "java::managed::existing_candidate::buffer_grammar_accepts_source_receipts_without_lookup",
+    "java::managed::existing_candidate::candidate_filters_preserve_two_pass_matching",
+    "java::managed::existing_candidate::invalid_buffers_never_become_candidates",
+    "java::managed::existing_candidate::opaque_executable_is_explicitly_unresolved",
+    "java::receipt::tests::defaults_and_roundtrip",
+    "java::receipt::tests::malformed_limits",
+    "java::receipt::tests::platforms_and_paths",
+    "java::receipt::tests::legacy_numeric_coercion",
+    "java::receipt::read::tests::listing_bytes_preserve_operational_boundary_and_wire_shapes",
+    "java::receipt::read::tests::listing_typed_byte_precision_and_provider_grammar",
+    "java::receipt::read::tests::listing_validation_order_matches_normal_receipts"
+  ],
+  "unix": [],
+  "linux": [],
+  "windows": []
+}

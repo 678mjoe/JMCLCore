@@ -1,2 +1,4 @@
 # Embedded protocol/CLI text must not change with Windows checkout settings.
 rust/src/help.txt text eol=lf
+# The bounded Java guard verifies the exact allowlist bytes on every host.
+rust/compat/bounded_java_receipts_allowlist.json text eol=lf

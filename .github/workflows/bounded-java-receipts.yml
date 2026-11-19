@@ -1,0 +1,81 @@
+name: Bounded existing Java receipt tests
+on:
+  push:
+    branches: [rust-java-bounded-ci-20261119]
+    paths:
+      - '.gitattributes'
+      - '.github/workflows/bounded-java-receipts.yml'
+      - 'rust/compat/bounded_java_receipts.py'
+      - 'rust/compat/bounded_java_receipts_allowlist.json'
+      - 'rust/compat/test_bounded_java_receipts.py'
+permissions:
+  contents: read
+concurrency:
+  group: rust-java-receipts-${{ github.ref }}
+  cancel-in-progress: true
+env:
+  RUST_VERSION: 1.99.1
+  RUSTUP_TOOLCHAIN: 1.99.1
+  CARGO_INCREMENTAL: "0"
+  CARGO_PROFILE_DEV_DEBUG: "0"
+  CARGO_PROFILE_TEST_DEBUG: "0"
+jobs:
+  receipts:
+    if: github.event.repository.visibility == 'public' && github.ref == 'refs/heads/rust-java-bounded-ci-20261119'
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            host: x86_64-unknown-linux-gnu
+          - os: macos-15
+            host: aarch64-apple-darwin
+          - os: macos-15-intel
+            host: x86_64-apple-darwin
+          - os: windows-2025
+            host: x86_64-pc-windows-msvc
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          path: harness
+          persist-credentials: false
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: 0b937fb1e68067a76b4324f22fb7af9a2d9cbd18
+          path: source
+          persist-credentials: false
+      - name: Install official pinned compiler only
+        run: |
+          rustup toolchain install "$RUST_VERSION" --profile minimal
+          rustup default "$RUST_VERSION"
+      - name: Require the native target for this matrix entry
+        run: |
+          rustc -vV
+          test "$(rustc -vV | sed -n 's/^host: //p' | tr -d '\r')" = '${{ matrix.host }}'
+      - name: Guard regression tests without compiler subprocesses
+        run: |
+          python harness/rust/compat/test_bounded_java_receipts.py
+          python -O harness/rust/compat/test_bounded_java_receipts.py
+      - name: Verify frozen source and prepare locked standard-registry dependencies only
+        run: |
+          python - <<'PY'
+          import sys
+          from pathlib import Path
+          sys.path.insert(0, 'harness/rust/compat')
+          import bounded_java_receipts as guard
+          guard.verify_source(Path('source'))
+          PY
+          cargo fetch --locked --manifest-path source/rust/Cargo.toml
+      - name: Compile library offline, then run exactly 16 existing-receipt tests
+        run: python harness/rust/compat/bounded_java_receipts.py --source source --offline
+      # No PR triggers, workflow_dispatch, Zig, JVM, game, runtime archive operation,
+      # server, GC, credentials, release, upload or deployment steps.
+      # Only preparation above fetches standard registry sources pinned by Cargo.lock.
+      # Cargo --offline is NOT OS network/process/filesystem isolation. The exact
+      # test allowlist is procedural scope control, not a security sandbox.
